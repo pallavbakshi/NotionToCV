@@ -3,7 +3,6 @@
   import { onMount, onDestroy } from 'svelte';
   import { Editor } from '@tiptap/core';
   import { StarterKit } from '@tiptap/starter-kit';
-  import { Underline } from '@tiptap/extension-underline';
   import { TextStyle } from '@tiptap/extension-text-style';
   import { Color } from '@tiptap/extension-color';
   import { FontFamily } from '@tiptap/extension-font-family';
@@ -31,11 +30,7 @@
   let rowElement;
   let editor = $state();
   
-  let current = $state({ index, block });
-  $effect(() => {
-    current.index = index;
-    current.block = block;
-  });
+  let current = $derived({ index, block });
   
   // Custom bubble menu element bindings
   let showBubbleMenu = $state(false);
@@ -111,6 +106,12 @@
     )
   );
 
+  // ProseMirror forbids empty text nodes. Strip any {type:'text', text:''}
+  // before feeding content to Tiptap (content can come from import / localStorage).
+  function cleanInlineContent(arr) {
+    return (arr || []).filter(n => !(n.type === 'text' && (!n.text || n.text.length === 0)));
+  }
+
   // Helper to split JSON content array at specific character offset
   function splitInlineContent(contentArray, splitOffset) {
     let before = [];
@@ -167,7 +168,6 @@
           code: false,
           hardBreak: false,
         }),
-        Underline,
         TextStyle,
         Color,
         FontFamily,
@@ -185,7 +185,7 @@
         content: [{
           type: nodeType,
           attrs,
-          content: block.content || []
+          content: cleanInlineContent(block.content)
         }]
       },
       editorProps: {
@@ -305,6 +305,7 @@
         }
       },
       onUpdate: () => {
+        if (!editor || editor.isDestroyed) return;
         const docNode = editor.state.doc;
         const firstChild = docNode.firstChild;
         const newContent = firstChild ? (firstChild.toJSON().content ?? []) : [];
@@ -350,6 +351,7 @@
         }
       },
       onSelectionUpdate: () => {
+        if (!editor || editor.isDestroyed) return;
         currentColor = editor.getAttributes('textStyle').color || '#37352f';
         currentFont = editor.getAttributes('textStyle').fontFamily || 'Default';
         isBold = editor.isActive('bold');
@@ -393,9 +395,20 @@
     }
   });
 
+  // Normalize inline nodes for comparison so stored content matches Tiptap's
+  // output: drop empty text nodes (Tiptap rejects them) and drop the marks key
+  // when empty (Tiptap omits it).
+  function normalizeForCompare(nodes) {
+    return cleanInlineContent(nodes).map(n => {
+      if (n.type !== 'text') return n;
+      const { marks, ...rest } = n;
+      return marks?.length ? { ...rest, marks } : rest;
+    });
+  }
+
   // Sync editor content from outside updates (e.g. reordering/dragging/JSON loading)
   $effect(() => {
-    if (editor && block) {
+    if (editor && block && !editor.isDestroyed) {
       const docNode = editor.state.doc;
       const firstChild = docNode.firstChild;
       const editorContent = firstChild ? (firstChild.toJSON().content ?? []) : [];
@@ -403,7 +416,7 @@
         ? `h${firstChild.attrs.level}`
         : 'paragraph';
 
-      const isContentSync = JSON.stringify(editorContent) === JSON.stringify(block.content);
+      const isContentSync = JSON.stringify(normalizeForCompare(editorContent)) === JSON.stringify(normalizeForCompare(block.content));
       const isTypeSync = editorType === block.type;
 
       if (!isContentSync || !isTypeSync) {
@@ -418,7 +431,7 @@
           content: [{
             type: nodeType,
             attrs,
-            content: block.content || []
+            content: cleanInlineContent(block.content)
           }]
         });
         

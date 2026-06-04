@@ -11,6 +11,7 @@
     isExportMode = false,
     pageTitle = '',
     templateName = 'clean',
+    customTemplates = {},
     onChangeTemplate
   } = $props();
 
@@ -80,7 +81,8 @@
           blocks,
           pageTitle,
           paddingMm,
-          templateName
+          templateName,
+          customTemplates
         })
       });
 

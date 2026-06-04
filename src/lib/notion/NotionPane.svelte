@@ -6,7 +6,10 @@
   let { 
     blocks = $bindable(), 
     pageTitle = $bindable(),
-    draggedBlockId = $bindable()
+    draggedBlockId = $bindable(),
+    paddingMm = $bindable(15),
+    activeTemplate = $bindable('clean'),
+    customTemplates = $bindable({})
   } = $props();
 
   let fileInput;
@@ -127,7 +130,10 @@
   function exportJSON() {
     const data = {
       pageTitle,
-      blocks
+      blocks,
+      paddingMm,
+      templateName: activeTemplate,
+      customTemplates
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -153,6 +159,9 @@
         if (data && Array.isArray(data.blocks)) {
           blocks = data.blocks;
           pageTitle = data.pageTitle || '';
+          if (data.paddingMm !== undefined) paddingMm = data.paddingMm;
+          if (data.templateName) activeTemplate = data.templateName;
+          if (data.customTemplates) customTemplates = data.customTemplates;
         } else {
           alert('Invalid JSON file format. It must contain a "blocks" array.');
         }

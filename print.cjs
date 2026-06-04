@@ -55,7 +55,9 @@ async function main() {
       res.end(JSON.stringify({
         blocks: resumeData.blocks || [],
         pageTitle: resumeData.pageTitle || 'Untitled',
-        paddingMm: resumeData.paddingMm || 15
+        paddingMm: resumeData.paddingMm || 15,
+        templateName: resumeData.templateName || 'clean',
+        customTemplates: resumeData.customTemplates || {}
       }));
       return;
     }

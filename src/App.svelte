@@ -59,6 +59,15 @@
     console.error('Error loading template from localStorage', e);
   }
 
+  // Custom templates: { [templateId]: cssString }
+  let initialCustomTemplates = {};
+  try {
+    const stored = localStorage.getItem('notionToCV_customTemplates');
+    if (stored) initialCustomTemplates = JSON.parse(stored);
+  } catch (e) {
+    console.error('Error loading custom templates from localStorage', e);
+  }
+
   // Reactive states
   let blocks = $state(initialBlocks);
   let pageTitle = $state(initialPageTitle);
@@ -69,6 +78,7 @@
   let draggedBlockId = $state(null);
   let isExportMode = $state(false);
   let activeTemplate = $state(initialTemplate);
+  let customTemplates = $state(initialCustomTemplates); // { [id]: cssString }
 
   // Sync to localStorage
   $effect(() => {
@@ -93,6 +103,22 @@
     }
   });
 
+  $effect(() => {
+    localStorage.setItem('notionToCV_customTemplates', JSON.stringify(customTemplates));
+  });
+
+  // Inject all custom template CSS into a single <style> tag in <head>
+  $effect(() => {
+    const allCss = Object.values(customTemplates).join('\n');
+    let styleEl = document.getElementById('custom-template-styles');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'custom-template-styles';
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = allCss;
+  });
+
   onMount(async () => {
     const params = new URLSearchParams(window.location.search);
     const hasExport = params.has('export');
@@ -113,6 +139,7 @@
             pageTitle = data.pageTitle ?? '';
             paddingMm = data.paddingMm ?? 15;
             if (data.templateName) activeTemplate = data.templateName;
+            if (data.customTemplates) customTemplates = data.customTemplates;
           }
         }
       } catch (err) {
@@ -145,7 +172,10 @@
   function updateBlockCanvas(id, patch) {
     const idx = blocks.findIndex(b => b.id === id);
     if (idx !== -1) {
-      blocks[idx] = { ...blocks[idx], canvas: patch };
+      blocks[idx] = {
+        ...blocks[idx],
+        canvas: patch === null ? null : { ...(blocks[idx].canvas || {}), ...patch }
+      };
     }
   }
 
@@ -163,6 +193,12 @@
   function handleChangeTemplate() {
     activeTemplate = null;
   }
+
+  function handleImport({ blocks: importedBlocks, css, templateId }) {
+    customTemplates = { ...customTemplates, [templateId]: css };
+    blocks = importedBlocks;
+    activeTemplate = templateId;
+  }
 </script>
 
 <svelte:window
@@ -171,12 +207,19 @@
 />
 
 {#if !activeTemplate && !isExportMode}
-  <TemplateGallery onSelect={handleTemplateSelect} />
+  <TemplateGallery onSelect={handleTemplateSelect} onImport={handleImport} />
 {:else}
   <div class="split-container" class:export-mode={isExportMode}>
     {#if !isExportMode}
       <div class="left-pane" style="width: {paneWidth}px;">
-        <NotionPane bind:blocks bind:pageTitle bind:draggedBlockId={draggedBlockId} />
+        <NotionPane
+          bind:blocks
+          bind:pageTitle
+          bind:draggedBlockId={draggedBlockId}
+          bind:paddingMm={paddingMm}
+          bind:activeTemplate={activeTemplate}
+          bind:customTemplates={customTemplates}
+        />
       </div>
 
       <button
@@ -199,6 +242,7 @@
         {isExportMode}
         {pageTitle}
         templateName={activeTemplate ?? 'clean'}
+        customTemplates={customTemplates}
         onChangeTemplate={handleChangeTemplate}
       />
     </div>

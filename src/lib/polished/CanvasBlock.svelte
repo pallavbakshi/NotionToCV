@@ -246,6 +246,10 @@
     e.stopPropagation();
     updateBlockCanvas(block.id, null);
   }
+
+  function setAlignment(align) {
+    updateBlockCanvas(block.id, { align });
+  }
 </script>
 
 <!-- Outer Block Wrapper -->
@@ -277,6 +281,53 @@
         <span class="icon">⠿</span> Move
       </div>
       <div class="toolbar-divider"></div>
+      
+      <button 
+        type="button" 
+        class="toolbar-align-btn" 
+        class:active={(block.canvas?.align || 'left') === 'left'}
+        onclick={() => setAlignment('left')}
+        title="Align Left"
+      >
+        <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
+        </svg>
+      </button>
+      <button 
+        type="button" 
+        class="toolbar-align-btn" 
+        class:active={block.canvas?.align === 'center'}
+        onclick={() => setAlignment('center')}
+        title="Align Center"
+      >
+        <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1zm-2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1z"/>
+        </svg>
+      </button>
+      <button 
+        type="button" 
+        class="toolbar-align-btn" 
+        class:active={block.canvas?.align === 'right'}
+        onclick={() => setAlignment('right')}
+        title="Align Right"
+      >
+        <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1zm-4 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1z"/>
+        </svg>
+      </button>
+      <button 
+        type="button" 
+        class="toolbar-align-btn" 
+        class:active={block.canvas?.align === 'justify'}
+        onclick={() => setAlignment('justify')}
+        title="Justify"
+      >
+        <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
+        </svg>
+      </button>
+      
+      <div class="toolbar-divider"></div>
       <button type="button" class="toolbar-delete-btn" onclick={handleDeleteClick}>
         Delete
       </button>
@@ -285,12 +336,15 @@
 
   <!-- Hover drag handle in the top-left corner (Section 5.2) -->
   {#if !selected}
-    <div 
-      class="hover-drag-handle" 
-      draggable="true" 
-      ondragstart={handleCanvasDragStart} 
+    <div
+      class="hover-drag-handle"
+      draggable="true"
+      ondragstart={handleCanvasDragStart}
       ondragend={handleCanvasDragEnd}
       contenteditable="false"
+      role="button"
+      tabindex="-1"
+      aria-label="Drag to move block"
       title="Drag to move"
     >
       ⠿
@@ -298,20 +352,24 @@
   {/if}
 
   <!-- Actual content container -->
-  <div class="block-content-container tmpl-{templateName} block-type-{block.type}" bind:this={contentEl}>
+  <div 
+    class="block-content-container tmpl-{templateName} block-type-{block.type}" 
+    bind:this={contentEl}
+    style="text-align: {block.canvas?.align || 'left'};"
+  >
     <BlockRenderer content={block.content} />
   </div>
 
   <!-- Resize handles (Section 5.3) -->
   {#if selected}
-    <div class="resize-handle tl" onpointerdown={(e) => handleResizeStart('tl', e)}></div>
-    <div class="resize-handle t" onpointerdown={(e) => handleResizeStart('t', e)}></div>
-    <div class="resize-handle tr" onpointerdown={(e) => handleResizeStart('tr', e)}></div>
-    <div class="resize-handle r" onpointerdown={(e) => handleResizeStart('r', e)}></div>
-    <div class="resize-handle br" onpointerdown={(e) => handleResizeStart('br', e)}></div>
-    <div class="resize-handle b" onpointerdown={(e) => handleResizeStart('b', e)}></div>
-    <div class="resize-handle bl" onpointerdown={(e) => handleResizeStart('bl', e)}></div>
-    <div class="resize-handle l" onpointerdown={(e) => handleResizeStart('l', e)}></div>
+    <div class="resize-handle tl" role="presentation" onpointerdown={(e) => handleResizeStart('tl', e)}></div>
+    <div class="resize-handle t"  role="presentation" onpointerdown={(e) => handleResizeStart('t', e)}></div>
+    <div class="resize-handle tr" role="presentation" onpointerdown={(e) => handleResizeStart('tr', e)}></div>
+    <div class="resize-handle r"  role="presentation" onpointerdown={(e) => handleResizeStart('r', e)}></div>
+    <div class="resize-handle br" role="presentation" onpointerdown={(e) => handleResizeStart('br', e)}></div>
+    <div class="resize-handle b"  role="presentation" onpointerdown={(e) => handleResizeStart('b', e)}></div>
+    <div class="resize-handle bl" role="presentation" onpointerdown={(e) => handleResizeStart('bl', e)}></div>
+    <div class="resize-handle l"  role="presentation" onpointerdown={(e) => handleResizeStart('l', e)}></div>
   {/if}
 </div>
 
@@ -466,5 +524,34 @@
     .hover-drag-handle {
       display: none !important;
     }
+  }
+
+  .toolbar-align-btn {
+    border: none;
+    background: transparent;
+    color: #a1a1aa;
+    cursor: pointer;
+    padding: 4px;
+    margin: 0 2px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s, color 0.15s;
+  }
+
+  .toolbar-align-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+  }
+
+  .toolbar-align-btn.active {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #3b82f6;
+  }
+
+  .align-icon {
+    width: 14px;
+    height: 14px;
   }
 </style>
