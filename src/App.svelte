@@ -135,6 +135,34 @@
       blocks[idx] = { ...blocks[idx], name };
     }
   }
+
+  // Canvas element management (non-Notion decorative blocks)
+  function addCanvasElement(elementType) {
+    const id = 'ce_' + Math.random().toString(36).substring(2, 9);
+    const newBlock = {
+      id,
+      type: elementType,
+      content: [],
+      canvas: null,
+      name: null,
+      source: 'canvas',
+      elementType,
+      imageData: null
+    };
+    blocks = [...blocks, newBlock];
+    return id;
+  }
+
+  function removeCanvasElement(id) {
+    blocks = blocks.filter(b => b.id !== id);
+  }
+
+  function updateBlockImageData(id, dataUrl) {
+    const idx = blocks.findIndex(b => b.id === id);
+    if (idx !== -1) {
+      blocks[idx] = { ...blocks[idx], imageData: dataUrl };
+    }
+  }
 </script>
 
 <svelte:window 
@@ -165,6 +193,9 @@
       bind:draggedBlockId={draggedBlockId}
       {updateBlockCanvas}
       {updateBlockName}
+      {addCanvasElement}
+      {removeCanvasElement}
+      {updateBlockImageData}
       {isExportMode}
       {pageTitle}
       templateName={activeTemplate}

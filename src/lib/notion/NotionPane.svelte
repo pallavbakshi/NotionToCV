@@ -11,6 +11,9 @@
 
   let fileInput;
   let focusTarget = $state({ index: null, position: 'end', timestamp: 0 });
+
+  // Filter out canvas-sourced blocks — they should not appear in the Notion editor
+  let notionBlocks = $derived(blocks.filter(b => b.source !== 'canvas'));
   
   // Drag and drop states
   let dragFromIndex = $state(null);
@@ -265,7 +268,8 @@
 
     <!-- Drag drop list container -->
     <div class="blocks-container">
-      {#each blocks as block, idx (block.id)}
+      {#each notionBlocks as block, idx (block.id)}
+        {@const realIdx = blocks.findIndex(b => b.id === block.id)}
         <div 
           class="block-row-wrapper"
           ondragover={(e) => handleDragOver(idx, e)}
@@ -273,11 +277,11 @@
           role="listitem"
         >
           <BlockEditor 
-            bind:block={blocks[idx]}
+            bind:block={blocks[realIdx]}
             blocks={blocks}
-            index={idx}
+            index={realIdx}
             isFirst={idx === 0}
-            isLast={idx === blocks.length - 1}
+            isLast={idx === notionBlocks.length - 1}
             {focusTarget}
             {addBlockAfter}
             {deleteBlock}
@@ -286,7 +290,7 @@
             {focusBlock}
             {mergeWithPrevious}
             {duplicateBlock}
-            onDragStart={(e) => handleDragStart(idx, e)}
+            onDragStart={(e) => handleDragStart(realIdx, e)}
             onDragEnd={handleDragEnd}
           />
         </div>

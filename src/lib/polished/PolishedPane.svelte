@@ -1,6 +1,8 @@
 <!-- PolishedPane.svelte -->
 <script>
   import CvPage from './CvPage.svelte';
+  import ElementsDock from './ElementsDock.svelte';
+  import { findOverlappingIds } from './canvasUtils.js';
 
   let {
     blocks,
@@ -8,6 +10,9 @@
     draggedBlockId = $bindable(),
     updateBlockCanvas,
     updateBlockName,
+    addCanvasElement = null,
+    removeCanvasElement = null,
+    updateBlockImageData = null,
     isExportMode = false,
     pageTitle = '',
     templateName = 'clean'
@@ -20,6 +25,15 @@
   let unplacedCount = $derived(
     blocks.filter(b => b.canvas === null).length
   );
+
+  // Compute column width (same formula used everywhere)
+  let colWidth = $derived((210 - 2 * paddingMm - 12) / 4);
+
+  // Detect overlapping blocks across all pages
+  let overlappingBlockIds = $derived(
+    findOverlappingIds(blocks, colWidth, paddingMm)
+  );
+  let overlapCount = $derived(overlappingBlockIds.size);
 
   // Find the maximum page containing at least one placed block
   let maxPlacedPage = $derived.by(() => {
@@ -166,6 +180,14 @@
       </div>
     {/if}
 
+    {#if !isExportMode && overlapCount > 0}
+      <!-- Overlap Warning Banner -->
+      <div class="overlap-banner">
+        <span class="banner-icon">⚠️</span>
+        <span class="banner-text">{overlapCount} block{overlapCount > 1 ? 's' : ''} overlapping! Move or resize the highlighted blocks to fix.</span>
+      </div>
+    {/if}
+
     <div class="pages-list">
       {#each pagesToRender as pageNum}
         <div class="page-wrapper" class:is-ghost={pageNum > maxPlacedPage}>
@@ -176,6 +198,8 @@
             bind:selectedBlockId={selectedBlockId}
             {updateBlockCanvas}
             {updateBlockName}
+            {updateBlockImageData}
+            {overlappingBlockIds}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
           />
@@ -186,6 +210,15 @@
       {/each}
     </div>
   </div>
+
+  {#if !isExportMode && addCanvasElement}
+    <ElementsDock
+      {addCanvasElement}
+      {removeCanvasElement}
+      bind:draggedBlockId={draggedBlockId}
+      {blocks}
+    />
+  {/if}
 </div>
 
 <style>
@@ -344,6 +377,21 @@
     box-sizing: border-box;
   }
 
+  /* Overlap Warning Banner */
+  .overlap-banner {
+    width: 210mm;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #991b1b;
+    box-sizing: border-box;
+  }
+
   .banner-icon {
     font-size: 16px;
   }
@@ -408,6 +456,7 @@
       gap: 0 !important;
     }
     .unplaced-banner,
+    .overlap-banner,
     .ghost-page-label {
       display: none !important;
     }

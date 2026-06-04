@@ -2,18 +2,24 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import BlockRenderer from './BlockRenderer.svelte';
+  import { anyOverlap } from './canvasUtils.js';
 
   let {
     block,
     blocks,
     paddingMm,
     selected = false,
+    isOverlapping = false,
     onSelect,
     updateBlockCanvas,
     updateBlockName,
+    updateBlockImageData = null,
     draggedBlockId = $bindable(),
     templateName = 'clean'
   } = $props();
+
+  let isCanvasElement = $derived(block?.source === 'canvas');
+  let isGutterElement = $derived(block?.type === 'vertical_divider' && block?.canvas?.colSpan === 0);
 
   const PX_PER_MM = 96 / 25.4;
 
@@ -53,10 +59,22 @@
   // Column width calculation
   let colWidth = $derived((210 - 2 * paddingMm - 12) / 4);
 
-  // Dimensions based on canvas coordinates
-  let leftMm = $derived(block.canvas ? paddingMm + block.canvas.col * (colWidth + 4) : 0);
+  // Dimensions based on canvas coordinates (gutter-aware)
+  let leftMm = $derived(
+    block.canvas
+      ? (isGutterElement
+          ? paddingMm + block.canvas.col * (colWidth + 4) + colWidth  // gutter start
+          : paddingMm + block.canvas.col * (colWidth + 4))            // column start
+      : 0
+  );
   let topMm = $derived(block.canvas ? paddingMm + block.canvas.row * 5 : 0);
-  let widthMm = $derived(block.canvas ? block.canvas.colSpan * colWidth + (block.canvas.colSpan - 1) * 4 : 0);
+  let widthMm = $derived(
+    block.canvas
+      ? (isGutterElement
+          ? 4                                                          // gutter = 4mm
+          : block.canvas.colSpan * colWidth + (block.canvas.colSpan - 1) * 4)
+      : 0
+  );
   let heightMm = $derived(block.canvas ? block.canvas.rowSpan * 5 : 0);
 
   function pxToGrid(pxX, pxY, paddingMm) {
@@ -71,17 +89,7 @@
     return { col, row };
   }
 
-  function cellsOccupied(blocksList, candidateId, page, col, row, colSpan, rowSpan) {
-    for (const b of blocksList) {
-      if (!b.canvas || b.id === candidateId) continue;
-      if (b.canvas.page !== page) continue;
-      const c = b.canvas;
-      const colOverlap = col < c.col + c.colSpan && col + colSpan > c.col;
-      const rowOverlap = row < c.row + c.rowSpan && row + rowSpan > c.row;
-      if (colOverlap && rowOverlap) return true;
-    }
-    return false;
-  }
+  // Unified collision — using anyOverlap from canvasUtils.js (no separate functions needed)
 
   // Check content overflow
   function checkOverflow() {
@@ -164,36 +172,39 @@
       const rightEdge = resizeState.original.col + resizeState.original.colSpan;
       const bottomEdge = resizeState.original.row + resizeState.original.rowSpan;
 
-      // High-precision column snapping for resizing
-      if (handle.includes('r')) {
-        let bestCol = 0;
-        let minDiff = Infinity;
-        for (let c = 0; c < 4; c++) {
-          const edge = (c + 1) * colWidthVal + c * 4;
-          const diff = Math.abs(contentX - edge);
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestCol = c;
+      // Skip horizontal resizing entirely for gutter elements
+      if (newColSpan !== 0) {
+        // High-precision column snapping for resizing
+        if (handle.includes('r')) {
+          let bestCol = 0;
+          let minDiff = Infinity;
+          for (let c = 0; c < 4; c++) {
+            const edge = (c + 1) * colWidthVal + c * 4;
+            const diff = Math.abs(contentX - edge);
+            if (diff < minDiff) {
+              minDiff = diff;
+              bestCol = c;
+            }
+          }
+          newColSpan = Math.max(1, bestCol - resizeState.original.col + 1);
+          if (newCol + newColSpan > 4) {
+            newColSpan = 4 - newCol;
           }
         }
-        newColSpan = Math.max(1, bestCol - resizeState.original.col + 1);
-        if (newCol + newColSpan > 4) {
-          newColSpan = 4 - newCol;
-        }
-      }
-      if (handle.includes('l')) {
-        let bestCol = 0;
-        let minDiff = Infinity;
-        for (let c = 0; c < 4; c++) {
-          const edge = c * (colWidthVal + 4);
-          const diff = Math.abs(contentX - edge);
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestCol = c;
+        if (handle.includes('l')) {
+          let bestCol = 0;
+          let minDiff = Infinity;
+          for (let c = 0; c < 4; c++) {
+            const edge = c * (colWidthVal + 4);
+            const diff = Math.abs(contentX - edge);
+            if (diff < minDiff) {
+              minDiff = diff;
+              bestCol = c;
+            }
           }
+          newCol = Math.max(0, Math.min(rightEdge - 1, bestCol));
+          newColSpan = rightEdge - newCol;
         }
-        newCol = Math.max(0, Math.min(rightEdge - 1, bestCol));
-        newColSpan = rightEdge - newCol;
       }
 
       // High-precision row snapping for resizing
@@ -228,18 +239,16 @@
         newRowSpan = bottomEdge - newRow;
       }
 
-      const collides = cellsOccupied(
-        blocks,
-        block.id,
-        block.canvas.page,
-        newCol,
-        newRow,
-        newColSpan,
-        newRowSpan
-      );
-
-      const isValid = !collides && 
-                      (newCol + newColSpan <= 4) && 
+      const candidateCanvas = {
+        page: block.canvas.page,
+        col: newCol,
+        row: newRow,
+        colSpan: newColSpan,
+        rowSpan: newRowSpan
+      };
+      const collides = anyOverlap(blocks, block.id, block.canvas.page, candidateCanvas, colWidth, paddingMm);
+      const isValid = !collides &&
+                      (newColSpan === 0 || (newCol + newColSpan <= 4)) &&
                       (newRow + newRowSpan <= 53);
 
       resizeState.current = {
@@ -283,6 +292,33 @@
     e.stopPropagation();
     updateBlockCanvas(block.id, null);
   }
+
+  // Headshot image upload handler
+  let imageInput = $state(null);
+  function handleUploadClick(e) {
+    e.stopPropagation();
+    imageInput?.click();
+  }
+
+  function handleImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Limit to 200KB
+    if (file.size > 200 * 1024) {
+      alert('Image must be under 200 KB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (updateBlockImageData) {
+        updateBlockImageData(block.id, ev.target.result);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
 </script>
 
 <!-- Outer Block Wrapper -->
@@ -292,6 +328,8 @@
   class:overflowing={overflowing}
   class:is-dragging={isDraggingThis}
   class:resize-invalid={resizeState && !resizeState.isValid}
+  class:gutter-element={isGutterElement}
+  class:is-overlapping={isOverlapping}
   style="
     left: {leftMm}mm;
     top: {topMm}mm;
@@ -317,19 +355,34 @@
       <button type="button" class="toolbar-delete-btn" onclick={handleDeleteClick}>
         Delete
       </button>
-      <div class="toolbar-divider"></div>
-      <div class="toolbar-name-group">
-        <span class="toolbar-name-symbol">@</span>
+      {#if isCanvasElement && block.elementType === 'headshot'}
+        <div class="toolbar-divider"></div>
+        <button type="button" class="toolbar-upload-btn" onclick={handleUploadClick}>
+          📷 {block.imageData ? 'Replace' : 'Upload'}
+        </button>
         <input 
-          type="text" 
-          class="toolbar-name-input" 
-          class:invalid={nameError}
-          placeholder="Name..." 
-          value={block.name || ''} 
-          oninput={handleCanvasNameInput}
-          title={nameError || 'Assign unique block name'}
+          type="file" 
+          accept="image/*" 
+          style="display: none;" 
+          bind:this={imageInput} 
+          onchange={handleImageChange}
         />
-      </div>
+      {/if}
+      {#if !isCanvasElement}
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-name-group">
+          <span class="toolbar-name-symbol">@</span>
+          <input 
+            type="text" 
+            class="toolbar-name-input" 
+            class:invalid={nameError}
+            placeholder="Name..." 
+            value={block.name || ''} 
+            oninput={handleCanvasNameInput}
+            title={nameError || 'Assign unique block name'}
+          />
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -349,20 +402,26 @@
 
 
   <!-- Actual content container -->
-  <div class="block-content-container tmpl-{templateName} block-type-{block.type}" bind:this={contentEl}>
-    <BlockRenderer content={block.content} />
+  <div class="block-content-container tmpl-{templateName} block-type-{block.type}" class:canvas-element={isCanvasElement} bind:this={contentEl}>
+    <BlockRenderer content={block.content} {block} />
   </div>
 
   <!-- Resize handles (Section 5.3) -->
   {#if selected}
-    <div class="resize-handle tl" onpointerdown={(e) => handleResizeStart('tl', e)}></div>
-    <div class="resize-handle t" onpointerdown={(e) => handleResizeStart('t', e)}></div>
-    <div class="resize-handle tr" onpointerdown={(e) => handleResizeStart('tr', e)}></div>
-    <div class="resize-handle r" onpointerdown={(e) => handleResizeStart('r', e)}></div>
-    <div class="resize-handle br" onpointerdown={(e) => handleResizeStart('br', e)}></div>
-    <div class="resize-handle b" onpointerdown={(e) => handleResizeStart('b', e)}></div>
-    <div class="resize-handle bl" onpointerdown={(e) => handleResizeStart('bl', e)}></div>
-    <div class="resize-handle l" onpointerdown={(e) => handleResizeStart('l', e)}></div>
+    {#if isGutterElement}
+      <!-- Gutter elements: vertical-only resize (top & bottom) -->
+      <div class="resize-handle t" onpointerdown={(e) => handleResizeStart('t', e)}></div>
+      <div class="resize-handle b" onpointerdown={(e) => handleResizeStart('b', e)}></div>
+    {:else}
+      <div class="resize-handle tl" onpointerdown={(e) => handleResizeStart('tl', e)}></div>
+      <div class="resize-handle t" onpointerdown={(e) => handleResizeStart('t', e)}></div>
+      <div class="resize-handle tr" onpointerdown={(e) => handleResizeStart('tr', e)}></div>
+      <div class="resize-handle r" onpointerdown={(e) => handleResizeStart('r', e)}></div>
+      <div class="resize-handle br" onpointerdown={(e) => handleResizeStart('br', e)}></div>
+      <div class="resize-handle b" onpointerdown={(e) => handleResizeStart('b', e)}></div>
+      <div class="resize-handle bl" onpointerdown={(e) => handleResizeStart('bl', e)}></div>
+      <div class="resize-handle l" onpointerdown={(e) => handleResizeStart('l', e)}></div>
+    {/if}
   {/if}
 </div>
 
@@ -376,6 +435,11 @@
     transition: opacity 0.15s ease-out;
     background-color: #ffffff;
     z-index: 5;
+  }
+
+  /* Gutter elements (vertical dividers) sit in the 4mm gap — no background */
+  .canvas-block.gutter-element {
+    background-color: transparent;
   }
 
   .canvas-block.is-dragging {
@@ -398,12 +462,33 @@
     background-color: rgba(239, 68, 68, 0.05);
   }
 
+  /* Overlap warning — red pulsing border */
+  .canvas-block.is-overlapping {
+    outline: 2px solid #ef4444;
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3);
+    animation: overlap-pulse 1.5s ease-in-out infinite;
+  }
+
+  .canvas-block.is-overlapping.gutter-element {
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+  }
+
+  @keyframes overlap-pulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3); }
+    50% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+  }
+
   /* Text Container */
   .block-content-container {
     width: 100%;
     height: 100%;
     overflow: visible;
     word-break: break-word;
+  }
+
+  /* Canvas elements don't need text background */
+  .block-content-container.canvas-element {
+    overflow: hidden;
   }
 
   /* Hover Drag Handle */
@@ -518,6 +603,23 @@
     .hover-drag-handle {
       display: none !important;
     }
+  }
+
+  /* Upload button in toolbar */
+  .toolbar-upload-btn {
+    border: none;
+    background: transparent;
+    color: #a78bfa;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .toolbar-upload-btn:hover {
+    background-color: rgba(167, 139, 250, 0.15);
   }
 
 
