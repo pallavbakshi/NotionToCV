@@ -1,0 +1,57 @@
+/* elegant.css — Playfair Display headings, Lora body, warm terracotta accent */
+.tmpl-elegant {
+  font-family: 'Lora', serif;
+  color: #292524;
+  background-color: #ffffff;
+}
+
+.tmpl-elegant.block-type-h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 16mm;
+  font-weight: 700;
+  color: #292524;
+  letter-spacing: 0.5pt;
+  line-height: 20mm;
+  margin: 0;
+  display: block;
+}
+
+.tmpl-elegant.block-type-h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 8mm;
+  font-weight: 700;
+  font-style: italic;
+  color: #78350f;
+  border-bottom: 0.5pt solid #78350f;
+  line-height: 13mm;
+  margin: 0;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tmpl-elegant.block-type-h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 6mm;
+  font-weight: 700;
+  color: #292524;
+  line-height: 9mm;
+  margin: 0;
+  display: block;
+}
+
+.tmpl-elegant.block-type-paragraph {
+  font-family: 'Lora', serif;
+  font-size: 4mm;
+  font-weight: 400;
+  color: #44403c;
+  line-height: 5.5mm;
+  margin: 0;
+  white-space: pre-wrap;
+  display: block;
+}
+
+.tmpl-elegant strong, .tmpl-elegant b { font-weight: 700; }
+.tmpl-elegant em, .tmpl-elegant i { font-style: italic; }
+.tmpl-elegant u { text-decoration: underline; }
+.tmpl-elegant s, .tmpl-elegant strike { text-decoration: line-through; }

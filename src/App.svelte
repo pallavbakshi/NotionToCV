@@ -2,10 +2,14 @@
   import { onMount } from 'svelte';
   import NotionPane from './lib/notion/NotionPane.svelte';
   import PolishedPane from './lib/polished/PolishedPane.svelte';
+  import TemplateGallery from './lib/polished/TemplateGallery.svelte';
   import './lib/polished/templates/clean.css';
+  import './lib/polished/templates/modern.css';
+  import './lib/polished/templates/elegant.css';
+  import './lib/polished/templates/compact.css';
 
   // Restore state from localStorage
-  let initialBlocks = [{ id: 'b_initial', type: 'paragraph', content: [], canvas: null }];
+  let initialBlocks = [{ id: 'b_initial', type: 'paragraph', content: [], canvas: null, name: null }];
   try {
     const storedBlocks = localStorage.getItem('notionToCV_blocks');
     if (storedBlocks) {
@@ -45,6 +49,16 @@
     console.error('Error loading padding from localStorage', e);
   }
 
+  let initialTemplate = null;
+  try {
+    const storedTemplate = localStorage.getItem('notionToCV_template');
+    if (storedTemplate) {
+      initialTemplate = storedTemplate;
+    }
+  } catch (e) {
+    console.error('Error loading template from localStorage', e);
+  }
+
   // Reactive states
   let blocks = $state(initialBlocks);
   let pageTitle = $state(initialPageTitle);
@@ -54,7 +68,7 @@
   let paddingMm = $state(initialPaddingMm);
   let draggedBlockId = $state(null);
   let isExportMode = $state(false);
-  let activeTemplate = $state('clean');
+  let activeTemplate = $state(initialTemplate);
 
   // Sync to localStorage
   $effect(() => {
@@ -71,6 +85,12 @@
 
   $effect(() => {
     localStorage.setItem('notionToCV_paddingMm', paddingMm.toString());
+  });
+
+  $effect(() => {
+    if (activeTemplate) {
+      localStorage.setItem('notionToCV_template', activeTemplate);
+    }
   });
 
   onMount(async () => {
@@ -92,6 +112,7 @@
             blocks = data.blocks;
             pageTitle = data.pageTitle ?? '';
             paddingMm = data.paddingMm ?? 15;
+            if (data.templateName) activeTemplate = data.templateName;
           }
         }
       } catch (err) {
@@ -107,12 +128,11 @@
 
   function handlePointerMove(e) {
     if (!isDragging) return;
-    
+
     const newWidth = e.clientX;
     const rightPaneMinWidth = 400;
     const maxPaneWidth = window.innerWidth - rightPaneMinWidth;
-    
-    // Left pane min width 320px
+
     if (newWidth >= 320 && newWidth <= maxPaneWidth) {
       paneWidth = newWidth;
     }
@@ -128,38 +148,59 @@
       blocks[idx] = { ...blocks[idx], canvas: patch };
     }
   }
+
+  function updateBlockName(id, name) {
+    const idx = blocks.findIndex(b => b.id === id);
+    if (idx !== -1) {
+      blocks[idx] = { ...blocks[idx], name };
+    }
+  }
+
+  function handleTemplateSelect(templateId) {
+    activeTemplate = templateId;
+  }
+
+  function handleChangeTemplate() {
+    activeTemplate = null;
+  }
 </script>
 
-<svelte:window 
-  onpointermove={handlePointerMove} 
-  onpointerup={stopDragging} 
+<svelte:window
+  onpointermove={handlePointerMove}
+  onpointerup={stopDragging}
 />
 
-<div class="split-container" class:export-mode={isExportMode}>
-  {#if !isExportMode}
-    <div class="left-pane" style="width: {paneWidth}px;">
-      <NotionPane bind:blocks bind:pageTitle bind:draggedBlockId={draggedBlockId} />
+{#if !activeTemplate && !isExportMode}
+  <TemplateGallery onSelect={handleTemplateSelect} />
+{:else}
+  <div class="split-container" class:export-mode={isExportMode}>
+    {#if !isExportMode}
+      <div class="left-pane" style="width: {paneWidth}px;">
+        <NotionPane bind:blocks bind:pageTitle bind:draggedBlockId={draggedBlockId} />
+      </div>
+
+      <button
+        type="button"
+        class="divider"
+        class:active={isDragging}
+        onpointerdown={startDragging}
+        aria-label="Resize layout panes"
+        style="border: none; outline: none; padding: 0; display: block;"
+      ></button>
+    {/if}
+
+    <div class="right-pane" style={isExportMode ? 'width: 100%; max-width: none; flex: 1;' : ''}>
+      <PolishedPane
+        blocks={blocks}
+        bind:paddingMm={paddingMm}
+        bind:draggedBlockId={draggedBlockId}
+        {updateBlockCanvas}
+        {updateBlockName}
+        {isExportMode}
+        {pageTitle}
+        templateName={activeTemplate ?? 'clean'}
+        onChangeTemplate={handleChangeTemplate}
+      />
     </div>
-
-    <button 
-      type="button"
-      class="divider" 
-      class:active={isDragging}
-      onpointerdown={startDragging}
-      aria-label="Resize layout panes"
-      style="border: none; outline: none; padding: 0; display: block;"
-    ></button>
-  {/if}
-
-  <div class="right-pane" style={isExportMode ? 'width: 100%; max-width: none; flex: 1;' : ''}>
-    <PolishedPane
-      blocks={blocks}
-      bind:paddingMm={paddingMm}
-      bind:draggedBlockId={draggedBlockId}
-      {updateBlockCanvas}
-      {isExportMode}
-      {pageTitle}
-      templateName={activeTemplate}
-    />
   </div>
-</div>
+{/if}

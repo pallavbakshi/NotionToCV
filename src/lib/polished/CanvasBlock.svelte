@@ -10,6 +10,7 @@
     selected = false,
     onSelect,
     updateBlockCanvas,
+    updateBlockName,
     draggedBlockId = $bindable(),
     templateName = 'clean'
   } = $props();
@@ -32,18 +33,6 @@
   let topMm = $derived(block.canvas ? paddingMm + block.canvas.row * 5 : 0);
   let widthMm = $derived(block.canvas ? block.canvas.colSpan * colWidth + (block.canvas.colSpan - 1) * 4 : 0);
   let heightMm = $derived(block.canvas ? block.canvas.rowSpan * 5 : 0);
-
-  function pxToGrid(pxX, pxY, paddingMm) {
-    const mmX = pxX / PX_PER_MM;
-    const mmY = pxY / PX_PER_MM;
-    const contentX = mmX - paddingMm;
-    const contentY = mmY - paddingMm;
-    const colWidthVal = (210 - 2 * paddingMm - 12) / 4;
-
-    const col = Math.max(0, Math.min(3, Math.round(contentX / (colWidthVal + 4))));
-    const row = Math.max(0, Math.min(52, Math.round(contentY / 5)));
-    return { col, row };
-  }
 
   function cellsOccupied(blocksList, candidateId, page, col, row, colSpan, rowSpan) {
     for (const b of blocksList) {

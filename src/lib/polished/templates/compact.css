@@ -1,0 +1,58 @@
+/* compact.css — Outfit, deep green accent, tighter line heights */
+.tmpl-compact {
+  font-family: 'Outfit', sans-serif;
+  color: #0f172a;
+  background-color: #ffffff;
+}
+
+.tmpl-compact.block-type-h1 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 14mm;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 17mm;
+  letter-spacing: -0.5pt;
+  margin: 0;
+  display: block;
+}
+
+.tmpl-compact.block-type-h2 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 5.5mm;
+  font-weight: 700;
+  color: #065f46;
+  text-transform: uppercase;
+  letter-spacing: 1.5pt;
+  border-bottom: 0.75pt solid #065f46;
+  line-height: 9mm;
+  margin: 0;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tmpl-compact.block-type-h3 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 5.5mm;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 7.5mm;
+  margin: 0;
+  display: block;
+}
+
+.tmpl-compact.block-type-paragraph {
+  font-family: 'Outfit', sans-serif;
+  font-size: 3.6mm;
+  font-weight: 400;
+  color: #334155;
+  line-height: 4.8mm;
+  margin: 0;
+  white-space: pre-wrap;
+  display: block;
+}
+
+.tmpl-compact strong, .tmpl-compact b { font-weight: 700; }
+.tmpl-compact em, .tmpl-compact i { font-style: italic; }
+.tmpl-compact u { text-decoration: underline; }
+.tmpl-compact s, .tmpl-compact strike { text-decoration: line-through; }
