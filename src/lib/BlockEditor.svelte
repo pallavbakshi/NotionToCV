@@ -159,6 +159,7 @@
           horizontalRule: false,
           codeBlock: false,
           code: false,
+          hardBreak: false,
         }),
         Underline,
         TextStyle,
