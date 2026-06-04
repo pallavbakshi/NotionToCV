@@ -88,9 +88,11 @@
         const res = await fetch(`/api/print-data?id=${printId}`);
         if (res.ok) {
           const data = await res.json();
-          blocks = data.blocks;
-          pageTitle = data.pageTitle;
-          paddingMm = data.paddingMm;
+          if (data && Array.isArray(data.blocks)) {
+            blocks = data.blocks;
+            pageTitle = data.pageTitle ?? '';
+            paddingMm = data.paddingMm ?? 15;
+          }
         }
       } catch (err) {
         console.error('Failed to load print data:', err);

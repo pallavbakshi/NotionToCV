@@ -37,7 +37,7 @@
     for (let p = 1; p <= maxPlacedPage; p++) {
       pages.push(p);
     }
-    if (draggedBlockId !== null) {
+    if (draggedBlockId) {
       pages.push(maxPlacedPage + 1);
     }
     return pages;
@@ -90,7 +90,8 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${pageTitle.trim() || 'Untitled'}_resume.pdf`;
+      const sanitizedTitle = (pageTitle.trim() || 'Untitled').replace(/[/\\:*?"<>|]/g, '_');
+      a.download = `${sanitizedTitle}_resume.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {

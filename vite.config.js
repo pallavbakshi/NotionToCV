@@ -11,8 +11,14 @@ function printPlugin() {
       server.middlewares.use((req, res, next) => {
         if (req.url === '/api/print' && req.method === 'POST') {
           let body = '';
+          const MAX_BODY_SIZE = 10 * 1024 * 1024;
           req.on('data', chunk => {
             body += chunk.toString();
+            if (body.length > MAX_BODY_SIZE) {
+              res.statusCode = 413;
+              res.end('Payload too large');
+              req.destroy();
+            }
           });
           req.on('end', async () => {
             try {
@@ -51,8 +57,11 @@ function printPlugin() {
                 }
               });
 
-              await browser.close();
-              printCache.delete(printId);
+              try {
+                await browser.close();
+              } finally {
+                printCache.delete(printId);
+              }
 
               // Respond with PDF binary
               res.setHeader('Content-Type', 'application/pdf');

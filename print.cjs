@@ -91,6 +91,7 @@ async function main() {
     const port = address.port;
     console.log(`Temporary print server running at http://127.0.0.1:${port}`);
 
+    let hasError = false;
     try {
       console.log('Launching headless browser...');
       const browser = await puppeteer.launch({
@@ -124,10 +125,11 @@ async function main() {
       await browser.close();
     } catch (err) {
       console.error(`Error printing PDF: ${err.message}`);
+      hasError = true;
     } finally {
       server.close(() => {
         console.log('Temporary print server shut down.');
-        process.exit(0);
+        process.exit(hasError ? 1 : 0);
       });
     }
   });
