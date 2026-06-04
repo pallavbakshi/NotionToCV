@@ -128,6 +128,13 @@
       blocks[idx] = { ...blocks[idx], canvas: patch };
     }
   }
+
+  function updateBlockName(id, name) {
+    const idx = blocks.findIndex(b => b.id === id);
+    if (idx !== -1) {
+      blocks[idx] = { ...blocks[idx], name };
+    }
+  }
 </script>
 
 <svelte:window 
@@ -157,6 +164,7 @@
       bind:paddingMm={paddingMm}
       bind:draggedBlockId={draggedBlockId}
       {updateBlockCanvas}
+      {updateBlockName}
       {isExportMode}
       {pageTitle}
       templateName={activeTemplate}

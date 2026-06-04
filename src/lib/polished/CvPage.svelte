@@ -9,6 +9,7 @@
     paddingMm,
     selectedBlockId = $bindable(),
     updateBlockCanvas,
+    updateBlockName,
     draggedBlockId = $bindable(),
     templateName = 'clean'
   } = $props();
@@ -176,6 +177,7 @@
           selected={selectedBlockId === block.id}
           onSelect={handleSelectBlock}
           updateBlockCanvas={updateBlockCanvas}
+          updateBlockName={updateBlockName}
           bind:draggedBlockId={draggedBlockId}
           templateName={templateName}
         />

@@ -7,6 +7,7 @@
     paddingMm = $bindable(15),
     draggedBlockId = $bindable(),
     updateBlockCanvas,
+    updateBlockName,
     isExportMode = false,
     pageTitle = '',
     templateName = 'clean'
@@ -46,6 +47,16 @@
   // Handle global keyboard shortcuts for selection
   function handleKeyDown(e) {
     if (!selectedBlockId) return;
+
+    // Ignore shortcut if user is typing in an input, textarea, or contenteditable element
+    const active = document.activeElement;
+    if (active && (
+      active.tagName === 'INPUT' || 
+      active.tagName === 'TEXTAREA' || 
+      active.isContentEditable
+    )) {
+      return;
+    }
 
     if (e.key === 'Delete' || e.key === 'Backspace') {
       updateBlockCanvas(selectedBlockId, null);
@@ -164,6 +175,7 @@
             paddingMm={paddingMm}
             bind:selectedBlockId={selectedBlockId}
             {updateBlockCanvas}
+            {updateBlockName}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
           />

@@ -12,6 +12,7 @@
   // Svelte 5 props
   let {
     block = $bindable(),
+    blocks = [],
     index,
     isFirst,
     isLast,
@@ -27,14 +28,75 @@
     onDragEnd
   } = $props();
 
+
   let editorElement;
   let rowElement;
   let editor = $state();
   
-  let current = $state({ index, block });
+  let current = $state({ index, block, blocks });
   $effect(() => {
     current.index = index;
     current.block = block;
+    current.blocks = blocks;
+  });
+
+  // Name modal state
+  let showNameModal = $state(false);
+  let modalNameVal = $state('');
+  let modalNameError = $state('');
+  let modalInputEl = $state();
+
+  function validateModalName(val) {
+    const trimmed = val.trim();
+    if (trimmed === '') {
+      modalNameError = '';
+      return;
+    }
+    if (!/^[a-zA-Z0-9-_]+$/.test(trimmed)) {
+      modalNameError = 'Letters, numbers, dashes (-), and underscores (_) only';
+      return;
+    }
+    const isDuplicate = current.blocks.some((b, i) => i !== current.index && b.name && b.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      modalNameError = 'Name must be unique';
+    } else {
+      modalNameError = '';
+    }
+  }
+
+  function handleModalNameInput(e) {
+    modalNameVal = e.target.value;
+    validateModalName(modalNameVal);
+  }
+
+  function saveModalName() {
+    validateModalName(modalNameVal);
+    if (modalNameError) return;
+
+    const trimmed = modalNameVal.trim();
+    if (trimmed === '') {
+      updateBlock(current.index, { name: null });
+    } else {
+      updateBlock(current.index, { name: trimmed });
+    }
+    showNameModal = false;
+    if (editor) {
+      editor.commands.focus();
+    }
+  }
+
+  function closeModal() {
+    showNameModal = false;
+    if (editor) {
+      editor.commands.focus();
+    }
+  }
+
+  $effect(() => {
+    if (showNameModal && modalInputEl) {
+      modalInputEl.focus();
+      modalInputEl.select();
+    }
   });
   
   // Custom bubble menu element bindings
@@ -99,7 +161,8 @@
     { type: 'paragraph', label: 'Text', desc: 'Plain paragraph', keywords: ['text', 'paragraph'], icon: '¶' },
     { type: 'h1', label: 'Heading 1', desc: 'Large section title', keywords: ['h1', 'heading1'], icon: 'H1' },
     { type: 'h2', label: 'Heading 2', desc: 'Medium heading', keywords: ['h2', 'heading2'], icon: 'H2' },
-    { type: 'h3', label: 'Heading 3', desc: 'Small heading', keywords: ['h3', 'heading3'], icon: 'H3' }
+    { type: 'h3', label: 'Heading 3', desc: 'Small heading', keywords: ['h3', 'heading3'], icon: 'H3' },
+    { type: 'name', label: 'Name Block', desc: 'Assign a unique name to this block', keywords: ['name', 'rename'], icon: '@' }
   ];
 
   // Derived filtered items for Slash Menu
@@ -212,6 +275,28 @@
             if (event.key === 'Escape') {
               closeSlashMenu();
               editor.commands.setContent('');
+              event.preventDefault();
+              return true;
+            }
+          }
+
+          // 1.5 Intercept Enter for /name command
+          if (event.key === 'Enter' && !event.shiftKey) {
+            const rawText = view.state.doc.textContent;
+            const match = rawText.match(/^\/name(?:\s+([^\s]+))?(?:\s|$)/);
+            if (match) {
+              const matchedString = match[0];
+              const namePart = match[1] ? match[1].trim() : '';
+
+              // Open rename modal
+              modalNameVal = namePart || current.block.name || '';
+              showNameModal = true;
+              validateModalName(modalNameVal);
+
+              // Delete command prefix from the editor text using a ProseMirror transaction
+              const tr = view.state.tr.delete(1, matchedString.length + 1);
+              view.dispatch(tr);
+              closeSlashMenu();
               event.preventDefault();
               return true;
             }
@@ -441,11 +526,22 @@
   function applySlashItem(item) {
     if (!editor) return;
     
+    if (item.type === 'name') {
+      modalNameVal = current.block.name || '';
+      showNameModal = true;
+      validateModalName(modalNameVal);
+
+      editor.commands.setContent('');
+      closeSlashMenu();
+      editor.commands.focus();
+      return;
+    }
+
     // Clear editor slash text
     editor.commands.setContent('');
     
     // Update block state
-    updateBlock(index, { type: item.type, content: [] });
+    updateBlock(current.index, { type: item.type, content: [] });
 
     // Re-initialize editor type with empty content
     const nodeType = item.type === 'paragraph' ? 'paragraph' : 'heading';
@@ -582,6 +678,7 @@
 <div 
   class="block-editor-row type-{block.type}"
   class:is-first-block={isFirst}
+  class:has-name={block.name}
   bind:this={rowElement}
 >
   <!-- Gutter Controls: Visible on hover -->
@@ -612,6 +709,21 @@
       ⠿
     </div>
   </div>
+
+  <!-- Green Name Badge (Only if block has a name) -->
+  {#if block.name}
+    <div class="block-name-badge" contenteditable="false">
+      <span class="badge-text">@{block.name}</span>
+      <button 
+        type="button" 
+        class="block-name-clear-btn" 
+        onclick={() => updateBlock(current.index, { name: null })}
+        title="Remove name"
+      >
+        ×
+      </button>
+    </div>
+  {/if}
 
   <!-- Tiptap Editor Wrapper -->
   <div 
@@ -787,6 +899,60 @@
     </div>
   {/if}
 </div>
+
+{#if showNameModal}
+  <div class="name-modal-backdrop" onclick={closeModal} role="presentation">
+    <div class="name-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div class="name-modal-header">
+        <h3 class="name-modal-title">Rename Block</h3>
+        <button type="button" class="name-modal-close-icon" onclick={closeModal}>×</button>
+      </div>
+      
+      <div class="name-modal-body">
+        <label for="block-name-input-{current.index}" class="name-modal-label">Assign @name to this block</label>
+        <div class="name-modal-input-wrapper">
+          <span class="name-modal-at">@</span>
+          <input 
+            id="block-name-input-{current.index}"
+            type="text" 
+            class="name-modal-input" 
+            class:is-invalid={modalNameError}
+            placeholder="e.g. contact-section" 
+            value={modalNameVal} 
+            oninput={handleModalNameInput}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                saveModalName();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeModal();
+              }
+            }}
+            bind:this={modalInputEl}
+          />
+        </div>
+        {#if modalNameError}
+          <div class="name-modal-error-msg">{modalNameError}</div>
+        {:else if modalNameVal.trim() !== ''}
+          <div class="name-modal-success-msg">✓ Name is unique and valid</div>
+        {/if}
+      </div>
+
+      <div class="name-modal-footer">
+        <button type="button" class="name-modal-btn cancel-btn" onclick={closeModal}>Cancel</button>
+        <button 
+          type="button" 
+          class="name-modal-btn save-btn" 
+          onclick={saveModalName}
+          disabled={!!modalNameError}
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .block-editor-row {
@@ -1196,5 +1362,235 @@
     color: var(--notion-text-muted);
     width: 14px;
     text-align: center;
+  }
+
+  /* Block Naming Styles */
+  .block-name-badge {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    background-color: #10b981;
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    user-select: none;
+    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .block-name-clear-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    transition: color 0.15s, background-color 0.15s;
+    pointer-events: auto;
+  }
+
+  .block-name-clear-btn:hover {
+    color: #ffffff;
+    background-color: rgba(0, 0, 0, 0.2);
+  }
+
+  .block-editor-row.has-name .editor-wrapper {
+    padding-right: 90px;
+  }
+
+  /* Custom Naming Modal Styles */
+  .name-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+
+  .name-modal-card {
+    background: var(--notion-bg, #ffffff);
+    border-radius: 12px;
+    border: 1px solid var(--notion-border, #e2e8f0);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    width: 380px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: modalFadeIn 0.2s ease-out;
+  }
+
+  @keyframes modalFadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .name-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--notion-border, #f1f5f9);
+  }
+
+  .name-modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--notion-text, #1e293b);
+    margin: 0;
+  }
+
+  .name-modal-close-icon {
+    background: transparent;
+    border: none;
+    font-size: 20px;
+    color: #94a3b8;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    transition: color 0.15s;
+  }
+
+  .name-modal-close-icon:hover {
+    color: #475569;
+  }
+
+  .name-modal-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .name-modal-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+  }
+
+  .name-modal-input-wrapper {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--notion-border, #cbd5e1);
+    border-radius: 6px;
+    padding: 0 10px;
+    background: #f8fafc;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .name-modal-input-wrapper:focus-within {
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  }
+
+  .name-modal-at {
+    color: #10b981;
+    font-weight: bold;
+    font-size: 14px;
+    margin-right: 4px;
+    user-select: none;
+  }
+
+  .name-modal-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 8px 0;
+    font-size: 13.5px;
+    color: var(--notion-text, #1e293b);
+    outline: none;
+  }
+
+  .name-modal-input.is-invalid {
+    color: #eb5757;
+  }
+
+  .name-modal-input-wrapper:has(.name-modal-input.is-invalid) {
+    border-color: #eb5757;
+  }
+
+  .name-modal-input-wrapper:has(.name-modal-input.is-invalid):focus-within {
+    box-shadow: 0 0 0 3px rgba(235, 87, 87, 0.15);
+  }
+
+  .name-modal-error-msg {
+    font-size: 11px;
+    color: #eb5757;
+    margin-top: 2px;
+  }
+
+  .name-modal-success-msg {
+    font-size: 11px;
+    color: #10b981;
+    margin-top: 2px;
+  }
+
+  .name-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px;
+    background: #f8fafc;
+    border-top: 1px solid var(--notion-border, #f1f5f9);
+  }
+
+  .name-modal-btn {
+    padding: 6px 12px;
+    font-size: 12.5px;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .name-modal-btn.cancel-btn {
+    background: transparent;
+    border: 1px solid var(--notion-border, #e2e8f0);
+    color: #64748b;
+  }
+
+  .name-modal-btn.cancel-btn:hover {
+    background: #f1f5f9;
+    color: #334155;
+  }
+
+  .name-modal-btn.save-btn {
+    background: #10b981;
+    border: 1px solid #059669;
+    color: white;
+  }
+
+  .name-modal-btn.save-btn:hover:not(:disabled) {
+    background: #059669;
+  }
+
+  .name-modal-btn.save-btn:disabled {
+    background: #cbd5e1;
+    border-color: #cbd5e1;
+    color: #94a3b8;
+    cursor: not-allowed;
   }
 </style>

@@ -32,7 +32,8 @@
       id: 'b_' + Math.random().toString(36).substring(2, 9),
       type: 'paragraph',
       content: afterCursorContent,
-      canvas: null
+      canvas: null,
+      name: null
     };
     blocks.splice(index + 1, 0, newBlock);
     blocks = [...blocks];
@@ -46,7 +47,8 @@
         id: 'b_' + Math.random().toString(36).substring(2, 9),
         type: 'paragraph',
         content: [],
-        canvas: null
+        canvas: null,
+        name: null
       }];
       focusBlock(0);
     } else {
@@ -64,7 +66,8 @@
       id: 'b_' + Math.random().toString(36).substring(2, 9),
       type: original.type,
       content: JSON.parse(JSON.stringify(original.content)),
-      canvas: null
+      canvas: null,
+      name: null
     };
     blocks.splice(index + 1, 0, newBlock);
     blocks = [...blocks];
@@ -271,6 +274,7 @@
         >
           <BlockEditor 
             bind:block={blocks[idx]}
+            blocks={blocks}
             index={idx}
             isFirst={idx === 0}
             isLast={idx === blocks.length - 1}

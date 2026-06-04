@@ -10,6 +10,7 @@
     selected = false,
     onSelect,
     updateBlockCanvas,
+    updateBlockName,
     draggedBlockId = $bindable(),
     templateName = 'clean'
   } = $props();
@@ -23,6 +24,31 @@
 
   // Live resizing state
   let resizeState = $state(null);
+  let nameError = $state('');
+
+  function handleCanvasNameInput(e) {
+    const val = e.target.value;
+    const trimmed = val.trim();
+    
+    if (trimmed === '') {
+      nameError = '';
+      updateBlockName(block.id, null);
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9-_]+$/.test(trimmed)) {
+      nameError = 'Letters, numbers, dash, underscore only';
+      return;
+    }
+
+    const isDuplicate = blocks.some(b => b.id !== block.id && b.name && b.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      nameError = 'Name must be unique';
+    } else {
+      nameError = '';
+      updateBlockName(block.id, trimmed);
+    }
+  }
 
   // Column width calculation
   let colWidth = $derived((210 - 2 * paddingMm - 12) / 4);
@@ -291,6 +317,19 @@
       <button type="button" class="toolbar-delete-btn" onclick={handleDeleteClick}>
         Delete
       </button>
+      <div class="toolbar-divider"></div>
+      <div class="toolbar-name-group">
+        <span class="toolbar-name-symbol">@</span>
+        <input 
+          type="text" 
+          class="toolbar-name-input" 
+          class:invalid={nameError}
+          placeholder="Name..." 
+          value={block.name || ''} 
+          oninput={handleCanvasNameInput}
+          title={nameError || 'Assign unique block name'}
+        />
+      </div>
     </div>
   {/if}
 
@@ -307,6 +346,7 @@
       ⠿
     </div>
   {/if}
+
 
   <!-- Actual content container -->
   <div class="block-content-container tmpl-{templateName} block-type-{block.type}" bind:this={contentEl}>
@@ -344,6 +384,7 @@
 
   .canvas-block.selected {
     outline: 1.5px solid #2383e2;
+    z-index: 20;
   }
 
   /* Overflow warning always beats selection blue */
@@ -477,5 +518,47 @@
     .hover-drag-handle {
       display: none !important;
     }
+  }
+
+
+
+  /* Floating Toolbar Block Naming styles */
+  .toolbar-name-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background-color: rgba(255, 255, 255, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  .toolbar-name-symbol {
+    color: #10b981;
+    font-weight: 700;
+    font-size: 11px;
+  }
+
+  .toolbar-name-input {
+    border: none;
+    background: transparent;
+    color: #ffffff;
+    font-size: 11px;
+    outline: none;
+    width: 60px;
+    font-family: inherit;
+    padding: 0;
+  }
+
+  .toolbar-name-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .toolbar-name-input.invalid {
+    color: #ff5c5c;
+  }
+
+  .toolbar-name-group:has(.toolbar-name-input.invalid) {
+    border-color: #ff5c5c;
   }
 </style>
