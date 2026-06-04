@@ -1,0 +1,73 @@
+/* clean.css — Inter is loaded via <link> in index.html, not @import */
+.tmpl-clean {
+  font-family: 'Inter', sans-serif;
+  color: #111111;
+  background-color: #ffffff;
+}
+
+.tmpl-clean.block-type-h1 {
+  font-family: 'Inter', sans-serif;
+  font-size: 16mm;
+  font-weight: 800;
+  color: #111111;
+  letter-spacing: -0.5pt;
+  line-height: 20mm;
+  margin: 0;
+  display: block;
+}
+
+.tmpl-clean.block-type-h2 {
+  font-family: 'Inter', sans-serif;
+  font-size: 12mm;
+  font-weight: 700;
+  color: #111111;
+  text-transform: uppercase;
+  letter-spacing: 1.5pt;
+  border-bottom: 0.75pt solid #111111;
+  line-height: 15mm;
+  margin: 0;
+  width: 100%;
+  display: block;
+  box-sizing: border-box;
+}
+
+.tmpl-clean.block-type-h3 {
+  font-family: 'Inter', sans-serif;
+  font-size: 8mm;
+  font-weight: 600;
+  color: #111111;
+  line-height: 10mm;
+  margin: 0;
+  display: block;
+}
+
+.tmpl-clean.block-type-paragraph {
+  font-family: 'Inter', sans-serif;
+  font-size: 4mm;
+  font-weight: 400;
+  color: #4b4b4b;
+  line-height: 5mm;
+  margin: 0;
+  white-space: pre-wrap;
+  display: block;
+}
+
+/* Base styles for marks inside the clean template */
+.tmpl-clean strong, 
+.tmpl-clean b {
+  font-weight: 700;
+}
+
+.tmpl-clean em, 
+.tmpl-clean i {
+  font-style: italic;
+}
+
+.tmpl-clean u {
+  text-decoration: underline;
+}
+
+.tmpl-clean s, 
+.tmpl-clean strike {
+  text-decoration: line-through;
+}

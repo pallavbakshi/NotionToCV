@@ -94,6 +94,14 @@ body {
   width: 100%;
 }
 
+/* Give every block node a comfortable click target and vertical rhythm */
+.ProseMirror p,
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3 {
+  padding: 3px 0;
+}
+
 .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;

@@ -29,7 +29,13 @@
 
   let editorElement;
   let rowElement;
-  let editor;
+  let editor = $state();
+  
+  let current = $state({ index, block });
+  $effect(() => {
+    current.index = index;
+    current.block = block;
+  });
   
   // Custom bubble menu element bindings
   let showBubbleMenu = $state(false);
@@ -228,11 +234,11 @@
             const { before, after } = splitInlineContent(contentArray, splitOffset);
 
             // Update current block content in the parent blocks array
-            updateBlock(index, { content: before });
+            updateBlock(current.index, { content: before });
 
             // Force set content in current editor to prevent cursor flashing or newline inserts
-            const nodeType = block.type === 'paragraph' ? 'paragraph' : 'heading';
-            const attrs = block.type !== 'paragraph' ? { level: parseInt(block.type[1]) } : {};
+            const nodeType = current.block.type === 'paragraph' ? 'paragraph' : 'heading';
+            const attrs = current.block.type !== 'paragraph' ? { level: parseInt(current.block.type[1]) } : {};
             editor.commands.setContent({
               type: 'doc',
               content: [{
@@ -243,7 +249,7 @@
             });
 
             // Insert new block with remaining content
-            addBlockAfter(index, after);
+            addBlockAfter(current.index, after);
             event.preventDefault();
             return true;
           }
@@ -254,13 +260,13 @@
             if (selection.empty && selection.from === 1) {
               const isEmpty = editor.getText().trim() === '';
               
-              if (isEmpty && index > 0) {
-                deleteBlock(index);
+              if (isEmpty && current.index > 0) {
+                deleteBlock(current.index);
                 event.preventDefault();
                 return true;
-              } else if (index > 0) {
+              } else if (current.index > 0) {
                 const currentContent = editor.state.doc.firstChild.toJSON().content || [];
-                mergeWithPrevious(index, currentContent);
+                mergeWithPrevious(current.index, currentContent);
                 event.preventDefault();
                 return true;
               }
@@ -270,8 +276,8 @@
           // 4. Custom Arrow Navigation
           if (event.key === 'ArrowUp') {
             const { selection } = editor.state;
-            if (selection.from === 1 && index > 0) {
-              focusBlock(index - 1, 'end');
+            if (selection.from === 1 && current.index > 0) {
+              focusBlock(current.index - 1, 'end');
               event.preventDefault();
               return true;
             }
@@ -283,7 +289,7 @@
             const endOfDoc = docLength - 1;
             
             if (selection.from === endOfDoc) {
-              focusBlock(index + 1, 'start');
+              focusBlock(current.index + 1, 'start');
               event.preventDefault();
               return true;
             }
@@ -337,10 +343,10 @@
         updateBubbleMenu();
 
         // Sync back to Svelte block state if changed
-        const contentChanged = JSON.stringify(block.content) !== JSON.stringify(newContent);
-        const typeChanged = block.type !== newType;
+        const contentChanged = JSON.stringify(current.block.content) !== JSON.stringify(newContent);
+        const typeChanged = current.block.type !== newType;
         if (contentChanged || typeChanged) {
-          updateBlock(index, { content: newContent, type: newType });
+          updateBlock(current.index, { content: newContent, type: newType });
         }
       },
       onSelectionUpdate: () => {
@@ -366,7 +372,7 @@
     });
 
     // Handle initial autofocus if requested
-    if (index === 0 && block.content.length === 0 && !localStorage.getItem('notionToCV_blocks')) {
+    if (current.index === 0 && current.block.content.length === 0 && !localStorage.getItem('notionToCV_blocks')) {
       editor.commands.focus();
     }
   });
@@ -379,10 +385,47 @@
 
   // Watch programmatic focus requests from parent NotionPane
   $effect(() => {
-    if (focusTarget && focusTarget.index === index && focusTarget.timestamp > lastHandledFocusTime) {
+    if (focusTarget && focusTarget.index === current.index && focusTarget.timestamp > lastHandledFocusTime) {
       lastHandledFocusTime = focusTarget.timestamp;
       if (editor) {
         editor.commands.focus(focusTarget.position);
+      }
+    }
+  });
+
+  // Sync editor content from outside updates (e.g. reordering/dragging/JSON loading)
+  $effect(() => {
+    if (editor && block) {
+      const docNode = editor.state.doc;
+      const firstChild = docNode.firstChild;
+      const editorContent = firstChild ? (firstChild.toJSON().content ?? []) : [];
+      const editorType = firstChild && firstChild.type.name === 'heading'
+        ? `h${firstChild.attrs.level}`
+        : 'paragraph';
+
+      const isContentSync = JSON.stringify(editorContent) === JSON.stringify(block.content);
+      const isTypeSync = editorType === block.type;
+
+      if (!isContentSync || !isTypeSync) {
+        const nodeType = block.type === 'paragraph' ? 'paragraph' : 'heading';
+        const attrs = block.type !== 'paragraph' ? { level: parseInt(block.type[1]) } : {};
+        
+        // Save current selection to restore it
+        const { from, to } = editor.state.selection;
+        
+        editor.commands.setContent({
+          type: 'doc',
+          content: [{
+            type: nodeType,
+            attrs,
+            content: block.content || []
+          }]
+        });
+        
+        // Restore selection if editor is focused
+        if (editor.isFocused) {
+          editor.commands.setTextSelection({ from, to });
+        }
       }
     }
   });

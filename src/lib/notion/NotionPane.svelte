@@ -5,7 +5,8 @@
   // Svelte 5 props
   let { 
     blocks = $bindable(), 
-    pageTitle = $bindable() 
+    pageTitle = $bindable(),
+    draggedBlockId = $bindable()
   } = $props();
 
   let fileInput;
@@ -166,8 +167,12 @@
   // Drag and Drop Event Handlers
   function handleDragStart(index, e) {
     dragFromIndex = index;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', index.toString());
+    const block = blocks[index];
+    if (block) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', block.id);
+      draggedBlockId = block.id;
+    }
   }
 
   function handleDragOver(index, e) {
@@ -211,6 +216,7 @@
     dragFromIndex = null;
     dropTargetIndex = null;
     dropIndicatorTop = null;
+    draggedBlockId = null;
   }
 
   function handleDrop(index, e) {
