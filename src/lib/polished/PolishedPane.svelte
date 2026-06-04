@@ -12,6 +12,7 @@
     pageTitle = '',
     templateName = 'clean',
     customTemplates = {},
+    onGoToDashboard,
     onChangeTemplate
   } = $props();
 
@@ -121,6 +122,12 @@
     <!-- Toolbar (Section 7.3) -->
     <div class="canvas-toolbar">
       <div class="toolbar-left">
+        {#if onGoToDashboard}
+          <button type="button" class="btn-goto-dashboard" onclick={onGoToDashboard}>
+            ← Dashboard
+          </button>
+          <div class="toolbar-divider-v"></div>
+        {/if}
         <div class="toolbar-label">Polished View</div>
         {#if onChangeTemplate}
           <button type="button" class="btn-change-template" onclick={onChangeTemplate}>
@@ -440,5 +447,32 @@
     .page-wrapper.is-ghost {
       display: none !important;
     }
+  }
+
+  .btn-goto-dashboard {
+    font-size: 11px;
+    font-weight: 600;
+    color: #2383e2;
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .btn-goto-dashboard:hover {
+    background-color: rgba(35, 131, 226, 0.08);
+  }
+
+  .toolbar-divider-v {
+    width: 1px;
+    height: 16px;
+    background-color: rgba(55, 53, 47, 0.12);
+    margin: 0 4px;
   }
 </style>

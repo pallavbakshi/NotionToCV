@@ -2,7 +2,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
 
-  let { onSelect, onImport } = $props();
+  let { onSelect, onImport, onBackToDashboard } = $props();
 
   onDestroy(() => stopFunLoaders());
 
@@ -221,6 +221,11 @@
 <div class="gallery-backdrop">
   <div class="gallery-content">
     <div class="gallery-header">
+      {#if onBackToDashboard}
+        <button type="button" class="btn-back-dashboard" onclick={onBackToDashboard}>
+          ← Back to Dashboard
+        </button>
+      {/if}
       <h1 class="gallery-title">Choose a template</h1>
       <p class="gallery-subtitle">You can change this any time from the toolbar</p>
     </div>
@@ -694,5 +699,26 @@
     color: #ef4444;
     text-align: center;
     font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+
+  .btn-back-dashboard {
+    background: transparent;
+    border: none;
+    color: #2383e2;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: background-color 0.15s;
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+
+  .btn-back-dashboard:hover {
+    background-color: rgba(35, 131, 226, 0.08);
   }
 </style>
