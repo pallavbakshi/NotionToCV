@@ -22,6 +22,14 @@
 
   let resumes = $state(initialResumes);
 
+  // Default font mapping for each template
+  const templateDefaultFonts = {
+    clean: { h1: 'Inter', h2: 'Inter', h3: 'Inter', text: 'Inter' },
+    modern: { h1: 'Space Grotesk', h2: 'Space Grotesk', h3: 'Space Grotesk', text: 'Space Grotesk' },
+    elegant: { h1: 'Playfair Display', h2: 'Playfair Display', h3: 'Playfair Display', text: 'Lora' },
+    compact: { h1: 'Outfit', h2: 'Outfit', h3: 'Outfit', text: 'Outfit' }
+  };
+
   // Router state
   let currentPath = $state('/dashboard');
   let activeResumeId = $state(null);
@@ -37,7 +45,11 @@
     h2Color: '#0a2463',
     h3Color: '#1e1b18',
     textColor: '#1e1b18',
-    backgroundColor: '#ffffff'
+    backgroundColor: '#ffffff',
+    h1Font: 'Inter',
+    h2Font: 'Inter',
+    h3Font: 'Inter',
+    textFont: 'Inter'
   });
 
   // Shared UI states
@@ -78,6 +90,14 @@
       styleEl.id = 'theme-color-overrides';
       document.head.appendChild(styleEl);
     }
+    // Helper function to format font stack
+    function getFontStack(f) {
+      const serif = ['Lora', 'Playfair Display'];
+      const mono = ['Fira Code'];
+      const generic = serif.includes(f) ? 'serif' : mono.includes(f) ? 'monospace' : 'sans-serif';
+      return `'${f}', ${generic}`;
+    }
+
     styleEl.textContent = `
       .tmpl-${activeTemplate}, [class*="tmpl-"], .polished-container {
         --cv-h1-color: ${themeColors.h1Color};
@@ -85,6 +105,10 @@
         --cv-h3-color: ${themeColors.h3Color};
         --cv-text-color: ${themeColors.textColor};
         --cv-bg-color: ${themeColors.backgroundColor};
+        --cv-h1-font: ${getFontStack(themeColors.h1Font ?? 'Inter')};
+        --cv-h2-font: ${getFontStack(themeColors.h2Font ?? 'Inter')};
+        --cv-h3-font: ${getFontStack(themeColors.h3Font ?? 'Inter')};
+        --cv-text-font: ${getFontStack(themeColors.textFont ?? 'Inter')};
       }
       
       .polished-container .cv-page-container,
@@ -95,15 +119,18 @@
       
       .polished-container .block-type-h1 {
         color: var(--cv-h1-color) !important;
+        font-family: var(--cv-h1-font);
         background-color: transparent !important;
       }
       .polished-container .block-type-h2 {
         color: var(--cv-h2-color) !important;
         border-color: var(--cv-h2-color) !important;
+        font-family: var(--cv-h2-font);
         background-color: transparent !important;
       }
       .polished-container .block-type-h3 {
         color: var(--cv-h3-color) !important;
+        font-family: var(--cv-h3-font);
         background-color: transparent !important;
       }
       
@@ -112,6 +139,7 @@
       .polished-container .block-type-bullet,
       .polished-container .block-type-number {
         color: var(--cv-text-color) !important;
+        font-family: var(--cv-text-font);
         background-color: transparent !important;
       }
     `;
@@ -171,7 +199,11 @@
           h2Color: resume.themeColors?.h2Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
           h3Color: resume.themeColors?.h3Color ?? resume.themeColors?.textColor ?? '#1e1b18',
           textColor: resume.themeColors?.textColor ?? '#1e1b18',
-          backgroundColor: resume.themeColors?.backgroundColor ?? '#ffffff'
+          backgroundColor: resume.themeColors?.backgroundColor ?? '#ffffff',
+          h1Font: resume.themeColors?.h1Font ?? templateDefaultFonts[resume.templateName]?.h1 ?? 'Inter',
+          h2Font: resume.themeColors?.h2Font ?? templateDefaultFonts[resume.templateName]?.h2 ?? 'Inter',
+          h3Font: resume.themeColors?.h3Font ?? templateDefaultFonts[resume.templateName]?.h3 ?? 'Inter',
+          textFont: resume.themeColors?.textFont ?? templateDefaultFonts[resume.templateName]?.text ?? 'Inter'
         };
       }
     } else {
@@ -213,7 +245,11 @@
                 h2Color: data.themeColors.h2Color ?? data.themeColors.primaryColor ?? '#0a2463',
                 h3Color: data.themeColors.h3Color ?? data.themeColors.textColor ?? '#1e1b18',
                 textColor: data.themeColors.textColor ?? '#1e1b18',
-                backgroundColor: data.themeColors.backgroundColor ?? '#ffffff'
+                backgroundColor: data.themeColors.backgroundColor ?? '#ffffff',
+                h1Font: data.themeColors.h1Font ?? templateDefaultFonts[data.templateName]?.h1 ?? 'Inter',
+                h2Font: data.themeColors.h2Font ?? templateDefaultFonts[data.templateName]?.h2 ?? 'Inter',
+                h3Font: data.themeColors.h3Font ?? templateDefaultFonts[data.templateName]?.h3 ?? 'Inter',
+                textFont: data.themeColors.textFont ?? templateDefaultFonts[data.templateName]?.text ?? 'Inter'
               };
             }
           }
@@ -291,7 +327,11 @@
         h2Color: '#0a2463',
         h3Color: '#1e1b18',
         textColor: '#1e1b18',
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        h1Font: templateDefaultFonts[templateId]?.h1 ?? 'Inter',
+        h2Font: templateDefaultFonts[templateId]?.h2 ?? 'Inter',
+        h3Font: templateDefaultFonts[templateId]?.h3 ?? 'Inter',
+        textFont: templateDefaultFonts[templateId]?.text ?? 'Inter'
       },
       updatedAt: new Date().toISOString()
     };
@@ -308,12 +348,16 @@
       paddingMm: 15,
       templateName: templateId,
       customTemplates: { [templateId]: css },
-      themeColors: importedColors || {
-        h1Color: '#0a2463',
-        h2Color: '#0a2463',
-        h3Color: '#1e1b18',
-        textColor: '#1e1b18',
-        backgroundColor: '#ffffff'
+      themeColors: {
+        h1Color: importedColors?.h1Color ?? '#0a2463',
+        h2Color: importedColors?.h2Color ?? '#0a2463',
+        h3Color: importedColors?.h3Color ?? '#1e1b18',
+        textColor: importedColors?.textColor ?? '#1e1b18',
+        backgroundColor: importedColors?.backgroundColor ?? '#ffffff',
+        h1Font: importedColors?.h1Font ?? 'Inter',
+        h2Font: importedColors?.h2Font ?? 'Inter',
+        h3Font: importedColors?.h3Font ?? 'Inter',
+        textFont: importedColors?.textFont ?? 'Inter'
       },
       updatedAt: new Date().toISOString()
     };

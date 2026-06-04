@@ -20,28 +20,32 @@
 
   let isDrawerOpen = $state(false);
   let activePicker = $state(null); // 'h1' | 'h2' | 'h3' | 'text' | 'bg'
-  let originalColors = null;
+  let originalStyle = null;
 
-  function openColorsDrawer() {
-    originalColors = JSON.parse(JSON.stringify(themeColors));
+  function openStyleDrawer() {
+    originalStyle = JSON.parse(JSON.stringify(themeColors));
     isDrawerOpen = true;
     activePicker = null;
   }
 
-  function saveColors() {
-    originalColors = null;
+  function saveStyle() {
+    originalStyle = null;
     isDrawerOpen = false;
   }
 
-  function discardColors() {
-    if (originalColors) {
-      themeColors.h1Color = originalColors.h1Color;
-      themeColors.h2Color = originalColors.h2Color;
-      themeColors.h3Color = originalColors.h3Color;
-      themeColors.textColor = originalColors.textColor;
-      themeColors.backgroundColor = originalColors.backgroundColor;
+  function discardStyle() {
+    if (originalStyle) {
+      themeColors.h1Color = originalStyle.h1Color;
+      themeColors.h2Color = originalStyle.h2Color;
+      themeColors.h3Color = originalStyle.h3Color;
+      themeColors.textColor = originalStyle.textColor;
+      themeColors.backgroundColor = originalStyle.backgroundColor;
+      themeColors.h1Font = originalStyle.h1Font;
+      themeColors.h2Font = originalStyle.h2Font;
+      themeColors.h3Font = originalStyle.h3Font;
+      themeColors.textFont = originalStyle.textFont;
     }
-    originalColors = null;
+    originalStyle = null;
     isDrawerOpen = false;
   }
 
@@ -52,7 +56,11 @@
       h2Color: '#0a2463',
       h3Color: '#1e293b',
       textColor: '#1e1b18',
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      h1Font: 'Inter',
+      h2Font: 'Inter',
+      h3Font: 'Inter',
+      textFont: 'Inter'
     },
     {
       name: 'Modern Bloom',
@@ -60,7 +68,11 @@
       h2Color: '#d8315b',
       h3Color: '#1e293b',
       textColor: '#1e1b18',
-      backgroundColor: '#fbf5f3'
+      backgroundColor: '#fbf5f3',
+      h1Font: 'Space Grotesk',
+      h2Font: 'Space Grotesk',
+      h3Font: 'Space Grotesk',
+      textFont: 'Space Grotesk'
     },
     {
       name: 'Warm Editorial',
@@ -68,7 +80,11 @@
       h2Color: '#006466',
       h3Color: '#212529',
       textColor: '#212529',
-      backgroundColor: '#f4efe6'
+      backgroundColor: '#f4efe6',
+      h1Font: 'Playfair Display',
+      h2Font: 'Playfair Display',
+      h3Font: 'Playfair Display',
+      textFont: 'Lora'
     },
     {
       name: 'Classic Ink',
@@ -76,7 +92,11 @@
       h2Color: '#1b1b1b',
       h3Color: '#3f3f3f',
       textColor: '#3f3f3f',
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      h1Font: 'Inter',
+      h2Font: 'Inter',
+      h3Font: 'Inter',
+      textFont: 'Inter'
     }
   ];
 
@@ -207,13 +227,13 @@
           class:active={isDrawerOpen}
           onclick={() => {
             if (isDrawerOpen) {
-              saveColors();
+              saveStyle();
             } else {
-              openColorsDrawer();
+              openStyleDrawer();
             }
           }}
         >
-          🎨 Colors
+          🎨 Style
         </button>
         <div class="slider-group">
           <span class="slider-label">Page Padding: {paddingMm}mm</span>
@@ -245,8 +265,8 @@
   {#if !isExportMode && isDrawerOpen}
     <div class="theme-drawer" onclick={(e) => e.stopPropagation()}>
       <div class="drawer-header">
-        <h3>🎨 Color Settings</h3>
-        <button type="button" class="btn-close-drawer" onclick={saveColors}>✕</button>
+        <h3>🎨 Style Settings</h3>
+        <button type="button" class="btn-close-drawer" onclick={saveStyle}>✕</button>
       </div>
       
       <div class="drawer-content">
@@ -263,6 +283,10 @@
                   themeColors.h3Color = preset.h3Color;
                   themeColors.textColor = preset.textColor;
                   themeColors.backgroundColor = preset.backgroundColor;
+                  themeColors.h1Font = preset.h1Font;
+                  themeColors.h2Font = preset.h2Font;
+                  themeColors.h3Font = preset.h3Font;
+                  themeColors.textFont = preset.textFont;
                 }}
               >
                 <span class="preset-name">{preset.name}</span>
@@ -294,7 +318,9 @@
             </div>
             {#if activePicker === 'h1'}
               <div class="inline-picker-container">
-                <ColorPicker bind:hex={themeColors.h1Color} isAlpha={false} isDialog={false} />
+                <div class="inline-color-wrapper">
+                  <ColorPicker bind:hex={themeColors.h1Color} isAlpha={false} isDialog={false} />
+                </div>
               </div>
             {/if}
           </div>
@@ -312,7 +338,9 @@
             </div>
             {#if activePicker === 'h2'}
               <div class="inline-picker-container">
-                <ColorPicker bind:hex={themeColors.h2Color} isAlpha={false} isDialog={false} />
+                <div class="inline-color-wrapper">
+                  <ColorPicker bind:hex={themeColors.h2Color} isAlpha={false} isDialog={false} />
+                </div>
               </div>
             {/if}
           </div>
@@ -330,7 +358,9 @@
             </div>
             {#if activePicker === 'h3'}
               <div class="inline-picker-container">
-                <ColorPicker bind:hex={themeColors.h3Color} isAlpha={false} isDialog={false} />
+                <div class="inline-color-wrapper">
+                  <ColorPicker bind:hex={themeColors.h3Color} isAlpha={false} isDialog={false} />
+                </div>
               </div>
             {/if}
           </div>
@@ -348,7 +378,9 @@
             </div>
             {#if activePicker === 'text'}
               <div class="inline-picker-container">
-                <ColorPicker bind:hex={themeColors.textColor} isAlpha={false} isDialog={false} />
+                <div class="inline-color-wrapper">
+                  <ColorPicker bind:hex={themeColors.textColor} isAlpha={false} isDialog={false} />
+                </div>
               </div>
             {/if}
           </div>
@@ -366,16 +398,74 @@
             </div>
             {#if activePicker === 'bg'}
               <div class="inline-picker-container">
-                <ColorPicker bind:hex={themeColors.backgroundColor} isAlpha={false} isDialog={false} />
+                <div class="inline-color-wrapper">
+                  <ColorPicker bind:hex={themeColors.backgroundColor} isAlpha={false} isDialog={false} />
+                </div>
               </div>
             {/if}
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h4>Custom Fonts</h4>
+          
+          <!-- H1 Font -->
+          <div class="font-group">
+            <span class="font-label">Name / H1 Title</span>
+            <select bind:value={themeColors.h1Font} class="font-select-input">
+              <option value="Inter">Inter</option>
+              <option value="Lora">Lora</option>
+              <option value="Playfair Display">Playfair Display</option>
+              <option value="Space Grotesk">Space Grotesk</option>
+              <option value="Fira Code">Fira Code</option>
+              <option value="Outfit">Outfit</option>
+            </select>
+          </div>
+
+          <!-- H2 Font -->
+          <div class="font-group">
+            <span class="font-label">Section Header / H2</span>
+            <select bind:value={themeColors.h2Font} class="font-select-input">
+              <option value="Inter">Inter</option>
+              <option value="Lora">Lora</option>
+              <option value="Playfair Display">Playfair Display</option>
+              <option value="Space Grotesk">Space Grotesk</option>
+              <option value="Fira Code">Fira Code</option>
+              <option value="Outfit">Outfit</option>
+            </select>
+          </div>
+
+          <!-- H3 Font -->
+          <div class="font-group">
+            <span class="font-label">Role Title / H3</span>
+            <select bind:value={themeColors.h3Font} class="font-select-input">
+              <option value="Inter">Inter</option>
+              <option value="Lora">Lora</option>
+              <option value="Playfair Display">Playfair Display</option>
+              <option value="Space Grotesk">Space Grotesk</option>
+              <option value="Fira Code">Fira Code</option>
+              <option value="Outfit">Outfit</option>
+            </select>
+          </div>
+
+          <!-- Body Text Font -->
+          <div class="font-group">
+            <span class="font-label">Body Text</span>
+            <select bind:value={themeColors.textFont} class="font-select-input">
+              <option value="Inter">Inter</option>
+              <option value="Lora">Lora</option>
+              <option value="Playfair Display">Playfair Display</option>
+              <option value="Space Grotesk">Space Grotesk</option>
+              <option value="Fira Code">Fira Code</option>
+              <option value="Outfit">Outfit</option>
+            </select>
           </div>
         </div>
       </div>
 
       <div class="drawer-actions">
-        <button type="button" class="btn-save-colors" onclick={saveColors}>Save & Apply</button>
-        <button type="button" class="btn-discard-colors" onclick={discardColors}>Discard</button>
+        <button type="button" class="btn-save-style" onclick={saveStyle}>Save & Apply</button>
+        <button type="button" class="btn-discard-style" onclick={discardStyle}>Discard</button>
       </div>
     </div>
   {/if}
@@ -895,6 +985,48 @@
     box-sizing: border-box;
   }
 
+  .inline-color-wrapper {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .font-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  .font-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #4b5563;
+  }
+
+  .font-select-input {
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 12px;
+    color: #1e1b18;
+    background-color: #ffffff;
+    border: 1px solid rgba(55, 53, 47, 0.16);
+    border-radius: 5px;
+    outline: none;
+    cursor: pointer;
+    box-sizing: border-box;
+    font-family: var(--font-sans);
+  }
+
+  .font-select-input:hover {
+    border-color: #2383e2;
+  }
+
+  .font-select-input:focus {
+    border-color: #2383e2;
+    box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.15);
+  }
+
   .inline-picker-container :global(.kl-color-picker) {
     margin: 0 auto;
     max-width: 100%;
@@ -912,7 +1044,7 @@
     flex-shrink: 0;
   }
 
-  .btn-save-colors {
+  .btn-save-style {
     flex: 1;
     background-color: #2383e2;
     color: #ffffff;
@@ -926,11 +1058,11 @@
     text-align: center;
   }
 
-  .btn-save-colors:hover {
+  .btn-save-style:hover {
     background-color: #1a6fc2;
   }
 
-  .btn-discard-colors {
+  .btn-discard-style {
     background-color: transparent;
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.3);
@@ -943,7 +1075,7 @@
     text-align: center;
   }
 
-  .btn-discard-colors:hover {
+  .btn-discard-style:hover {
     background-color: rgba(239, 68, 68, 0.05);
     border-color: #ef4444;
   }
