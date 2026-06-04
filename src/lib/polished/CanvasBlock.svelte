@@ -381,8 +381,13 @@
     cursor: pointer;
     user-select: none;
     transition: opacity 0.15s ease-out;
-    background-color: #ffffff;
+    background-color: var(--cv-bg-color, #ffffff);
     z-index: 5;
+  }
+
+  /* Lift selected block above all siblings so toolbar is never obscured */
+  .canvas-block.selected {
+    z-index: 200;
   }
 
   .canvas-block.is-dragging {
@@ -390,18 +395,18 @@
   }
 
   .canvas-block.selected {
-    outline: 1.5px solid #2383e2;
+    outline: 1.5px solid var(--color-imperial-blue);
   }
 
   /* Overflow warning always beats selection blue */
   .canvas-block.overflowing,
   .canvas-block.selected.overflowing {
-    outline: 1.5px solid #ef4444;
+    outline: 1.5px solid var(--color-magenta-bloom);
   }
 
   .canvas-block.resize-invalid {
-    outline: 1.5px solid #ef4444 !important;
-    background-color: rgba(239, 68, 68, 0.05);
+    outline: 1.5px solid var(--color-magenta-bloom) !important;
+    background-color: rgba(216, 49, 91, 0.05);
   }
 
   /* Text Container */
@@ -422,11 +427,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #ffffff;
-    border: 1px solid rgba(55, 53, 47, 0.09);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-    border-radius: 4px;
-    color: #878682;
+    background: var(--color-ghost-white);
+    border: 1px solid var(--outline-subtle);
+    box-shadow: 0 1px 4px rgba(10, 36, 99, 0.05);
+    border-radius: var(--radius-sm);
+    color: var(--color-imperial-blue);
     font-size: 11px;
     cursor: grab;
     opacity: 0;
@@ -443,8 +448,8 @@
     position: absolute;
     width: 6px;
     height: 6px;
-    background-color: #2383e2;
-    border: 1px solid #ffffff;
+    background-color: var(--color-imperial-blue);
+    border: 1px solid var(--color-ghost-white);
     border-radius: 1px;
     z-index: 100;
   }
@@ -464,15 +469,15 @@
     top: -36px;
     left: 0;
     height: 28px;
-    background-color: #1e1e20;
+    background-color: var(--color-imperial-blue);
     color: #ffffff;
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: var(--radius-default);
+    box-shadow: var(--shadow-ambient);
     display: flex;
     align-items: center;
     padding: 0 8px;
     z-index: 110;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-sans);
     font-size: 12px;
     pointer-events: auto;
   }
@@ -483,9 +488,9 @@
     gap: 4px;
     cursor: grab;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     user-select: none;
-    font-weight: 500;
+    font-weight: 600;
   }
 
   .toolbar-drag-handle:hover {
@@ -495,22 +500,24 @@
   .toolbar-divider {
     width: 1px;
     height: 14px;
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.25);
     margin: 0 6px;
   }
 
   .toolbar-delete-btn {
     border: none;
     background: transparent;
-    color: #ff5c5c;
-    font-weight: 500;
+    color: #fca5a5;
+    font-weight: 600;
     cursor: pointer;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
   }
 
   .toolbar-delete-btn:hover {
-    background-color: rgba(255, 92, 92, 0.15);
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #fee2e2;
   }
 
   /* Printing tweaks */
@@ -529,11 +536,11 @@
   .toolbar-align-btn {
     border: none;
     background: transparent;
-    color: #a1a1aa;
+    color: #cbd5e1;
     cursor: pointer;
     padding: 4px;
     margin: 0 2px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -541,13 +548,13 @@
   }
 
   .toolbar-align-btn:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.15);
     color: #ffffff;
   }
 
   .toolbar-align-btn.active {
-    background-color: rgba(255, 255, 255, 0.15);
-    color: #3b82f6;
+    background-color: rgba(255, 255, 255, 0.25);
+    color: var(--color-magenta-bloom);
   }
 
   .align-icon {

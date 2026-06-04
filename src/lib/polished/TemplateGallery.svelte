@@ -167,12 +167,12 @@
 
       importStep = 'Extracting content & design…';
       const result = await response.json();
-      const { blocks, css, templateId } = result;
+      const { blocks, css, templateId, themeColors } = result;
 
       if (!blocks?.length) throw new Error(result.error || 'No content could be extracted from the PDF. The file may be empty or unsupported.');
       if (!css) throw new Error('No design could be extracted from the PDF. The file may use unsupported formatting.');
 
-      onImport?.({ blocks, css, templateId });
+      onImport?.({ blocks, css, templateId, themeColors });
     } catch (err) {
       importError = err.message;
     } finally {
@@ -316,13 +316,13 @@
     position: fixed;
     inset: 0;
     z-index: 2000;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 90, 0.92));
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: linear-gradient(135deg, rgba(10, 36, 99, 0.95), rgba(30, 41, 90, 0.95));
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
     animation: overlay-fade 0.3s ease-out;
   }
 
@@ -353,7 +353,7 @@
     position: absolute;
     inset: 0;
     background: #ffffff;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
     padding: 14px 12px;
     display: flex;
@@ -376,7 +376,7 @@
     left: 0;
     right: 0;
     height: 22px;
-    background: linear-gradient(180deg, rgba(35, 131, 226, 0) 0%, rgba(35, 131, 226, 0.55) 50%, rgba(35, 131, 226, 0) 100%);
+    background: linear-gradient(180deg, rgba(216, 49, 91, 0) 0%, rgba(216, 49, 91, 0.6) 50%, rgba(216, 49, 91, 0) 100%);
     border-radius: 4px;
     animation: scan-move 1.8s ease-in-out infinite;
     filter: blur(1px);
@@ -390,7 +390,8 @@
   }
 
   .overlay-title {
-    font-size: 20px;
+    font-family: var(--font-serif);
+    font-size: 22px;
     font-weight: 700;
     color: #ffffff;
     letter-spacing: -0.3px;
@@ -410,17 +411,17 @@
 
   .overlay-progress {
     width: 260px;
-    height: 5px;
-    background: rgba(255, 255, 255, 0.12);
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 999px;
     overflow: hidden;
   }
 
   .overlay-progress-bar {
     height: 100%;
-    width: 40%;
+    width: 45%;
     border-radius: 999px;
-    background: linear-gradient(90deg, #2383e2, #60a5fa);
+    background: linear-gradient(90deg, var(--color-magenta-bloom), #f43f5e);
     animation: indeterminate 1.4s ease-in-out infinite;
   }
 
@@ -439,20 +440,20 @@
 
   .overlay-elapsed {
     font-size: 13px;
-    font-weight: 600;
-    color: #93c5fd;
+    font-weight: 700;
+    color: #38bdf8;
     font-variant-numeric: tabular-nums;
   }
 
   .overlay-hint {
     font-size: 12px;
-    color: #64748b;
+    color: #94a3b8;
   }
 
   .gallery-backdrop {
     position: fixed;
     inset: 0;
-    background-color: #f8fafc;
+    background-color: var(--surface-2);
     overflow-y: auto;
     display: flex;
     align-items: flex-start;
@@ -472,19 +473,19 @@
   }
 
   .gallery-title {
+    font-family: var(--font-serif);
     font-size: 28px;
     font-weight: 700;
-    color: #0f172a;
-    letter-spacing: -0.5px;
+    color: var(--color-imperial-blue);
+    letter-spacing: -0.02em;
     margin: 0 0 8px;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   }
 
   .gallery-subtitle {
+    font-family: var(--font-sans);
     font-size: 14px;
-    color: #64748b;
+    color: var(--notion-text-muted);
     margin: 0;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   }
 
   /* Template grid */
@@ -499,9 +500,9 @@
   }
 
   .template-card {
-    background: #ffffff;
-    border: 1.5px solid rgba(55, 53, 47, 0.1);
-    border-radius: 12px;
+    background: var(--color-ghost-white);
+    border: 1px solid var(--outline-subtle);
+    border-radius: var(--radius-lg);
     padding: 16px 16px 20px;
     cursor: pointer;
     text-align: left;
@@ -509,17 +510,17 @@
     flex-direction: column;
     gap: 14px;
     transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .template-card:hover {
-    border-color: #2383e2;
-    box-shadow: 0 4px 20px rgba(35, 131, 226, 0.12);
+    border-color: rgba(62, 146, 204, 0.4);
+    box-shadow: var(--shadow-ambient);
     transform: translateY(-2px);
   }
 
   .template-card:focus-visible {
-    outline: 2px solid #2383e2;
+    outline: 2px solid var(--color-imperial-blue);
     outline-offset: 2px;
   }
 
@@ -528,9 +529,9 @@
     width: 100%;
     aspect-ratio: 210 / 297;
     overflow: hidden;
-    border-radius: 4px;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    border-radius: var(--radius-default);
+    border: 1px solid var(--outline-subtle);
+    box-shadow: 0 1px 4px rgba(10, 36, 99, 0.03);
     position: relative;
   }
 
@@ -553,39 +554,44 @@
   }
 
   .card-name {
-    font-size: 15px;
+    font-family: var(--font-serif);
+    font-size: 16px;
     font-weight: 700;
-    color: #0f172a;
-    line-height: 1.2;
+    color: var(--color-imperial-blue);
+    line-height: 1.25;
   }
 
   .card-tagline {
-    font-size: 12px;
-    font-weight: 600;
-    color: #2383e2;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--color-magenta-bloom);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     line-height: 1.3;
   }
 
   .card-desc {
     font-size: 11px;
-    color: #64748b;
+    color: var(--notion-text-muted);
     line-height: 1.4;
     margin-top: 2px;
   }
 
   .card-cta {
     font-size: 12px;
-    font-weight: 600;
-    color: #2383e2;
+    font-weight: 700;
+    color: var(--color-imperial-blue);
     padding: 6px 12px;
-    border-radius: 6px;
-    background-color: rgba(35, 131, 226, 0.08);
+    border-radius: var(--radius-default);
+    background-color: rgba(10, 36, 99, 0.05);
     text-align: center;
-    transition: background-color 0.15s;
+    transition: background-color 0.15s, color 0.15s;
+    font-family: var(--font-sans);
   }
 
   .template-card:hover .card-cta {
-    background-color: rgba(35, 131, 226, 0.15);
+    background-color: rgba(10, 36, 99, 0.1);
   }
 
   /* Import divider */
@@ -594,50 +600,52 @@
     align-items: center;
     gap: 16px;
     margin: 40px 0 24px;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .import-divider-line {
     flex: 1;
     height: 1px;
-    background-color: rgba(55, 53, 47, 0.1);
+    background-color: var(--outline-subtle);
   }
 
   .import-divider-label {
-    font-size: 12px;
-    color: #94a3b8;
+    font-size: 11px;
+    color: var(--notion-text-muted);
     white-space: nowrap;
-    font-weight: 500;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   /* Drop zone */
   .drop-zone {
-    border: 2px dashed rgba(55, 53, 47, 0.15);
-    border-radius: 12px;
+    border: 2px dashed rgba(62, 146, 204, 0.3);
+    border-radius: var(--radius-lg);
     padding: 32px 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    background: #ffffff;
+    background: var(--color-ghost-white);
     transition: border-color 0.15s, background-color 0.15s;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
     min-height: 110px;
   }
 
   .drop-zone:hover:not(.loading) {
-    border-color: #2383e2;
-    background-color: rgba(35, 131, 226, 0.03);
+    border-color: var(--color-imperial-blue);
+    background-color: rgba(62, 146, 204, 0.03);
   }
 
   .drop-zone.drag-over {
-    border-color: #2383e2;
-    background-color: rgba(35, 131, 226, 0.06);
+    border-color: var(--color-imperial-blue);
+    background-color: rgba(62, 146, 204, 0.06);
   }
 
   .drop-zone.loading {
     cursor: default;
-    border-color: rgba(55, 53, 47, 0.1);
+    border-color: var(--outline-subtle);
   }
 
   .dz-idle {
@@ -649,6 +657,7 @@
   .dz-icon {
     font-size: 28px;
     flex-shrink: 0;
+    opacity: 0.85;
   }
 
   .dz-text {
@@ -658,14 +667,15 @@
   }
 
   .dz-primary {
+    font-family: var(--font-serif);
     font-size: 14px;
-    font-weight: 600;
-    color: #1e293b;
+    font-weight: 700;
+    color: var(--color-imperial-blue);
   }
 
   .dz-secondary {
     font-size: 12px;
-    color: #94a3b8;
+    color: var(--notion-text-muted);
   }
 
   .dz-loading {
@@ -677,8 +687,8 @@
   .dz-spinner {
     width: 18px;
     height: 18px;
-    border: 2px solid rgba(35, 131, 226, 0.2);
-    border-top-color: #2383e2;
+    border: 2px solid rgba(10, 36, 99, 0.15);
+    border-top-color: var(--color-imperial-blue);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     flex-shrink: 0;
@@ -691,35 +701,37 @@
   .dz-step {
     font-size: 14px;
     font-weight: 500;
-    color: #475569;
+    color: var(--color-carbon-black);
   }
 
   .import-error {
     margin-top: 12px;
     font-size: 13px;
-    color: #ef4444;
+    color: var(--error);
     text-align: center;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .btn-back-dashboard {
     background: transparent;
     border: none;
-    color: #2383e2;
-    font-size: 13px;
-    font-weight: 600;
+    color: var(--color-imperial-blue);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     cursor: pointer;
     margin-bottom: 16px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-default);
     transition: background-color 0.15s;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .btn-back-dashboard:hover {
-    background-color: rgba(35, 131, 226, 0.08);
+    background-color: rgba(10, 36, 99, 0.05);
   }
 </style>

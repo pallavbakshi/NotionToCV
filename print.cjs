@@ -57,7 +57,8 @@ async function main() {
         pageTitle: resumeData.pageTitle || 'Untitled',
         paddingMm: resumeData.paddingMm || 15,
         templateName: resumeData.templateName || 'clean',
-        customTemplates: resumeData.customTemplates || {}
+        customTemplates: resumeData.customTemplates || {},
+        themeColors: resumeData.themeColors || null
       }));
       return;
     }

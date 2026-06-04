@@ -22,6 +22,14 @@
 
   let resumes = $state(initialResumes);
 
+  // Default font mapping for each template
+  const templateDefaultFonts = {
+    clean: { h1: 'Inter', h2: 'Inter', h3: 'Inter', text: 'Inter' },
+    modern: { h1: 'Space Grotesk', h2: 'Space Grotesk', h3: 'Space Grotesk', text: 'Space Grotesk' },
+    elegant: { h1: 'Playfair Display', h2: 'Playfair Display', h3: 'Playfair Display', text: 'Lora' },
+    compact: { h1: 'Outfit', h2: 'Outfit', h3: 'Outfit', text: 'Outfit' }
+  };
+
   // Router state
   let currentPath = $state('/dashboard');
   let activeResumeId = $state(null);
@@ -32,6 +40,17 @@
   let paddingMm = $state(15);
   let activeTemplate = $state('clean');
   let customTemplates = $state({}); // { [id]: cssString }
+  let themeColors = $state({
+    h1Color: '#0a2463',
+    h2Color: '#0a2463',
+    h3Color: '#1e1b18',
+    textColor: '#1e1b18',
+    backgroundColor: '#ffffff',
+    h1Font: 'Inter',
+    h2Font: 'Inter',
+    h3Font: 'Inter',
+    textFont: 'Inter'
+  });
 
   // Shared UI states
   let paneWidth = $state(480);
@@ -63,6 +82,69 @@
     styleEl.textContent = allCss;
   });
 
+  // Inject theme-color-overrides CSS variables
+  $effect(() => {
+    let styleEl = document.getElementById('theme-color-overrides');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'theme-color-overrides';
+      document.head.appendChild(styleEl);
+    }
+    // Helper function to format font stack
+    function getFontStack(f) {
+      const serif = ['Noto Serif', 'Lora', 'Playfair Display'];
+      const mono = ['Fira Code'];
+      const generic = serif.includes(f) ? 'serif' : mono.includes(f) ? 'monospace' : 'sans-serif';
+      return `'${f}', ${generic}`;
+    }
+
+    styleEl.textContent = `
+      .tmpl-${activeTemplate}, [class*="tmpl-"], .polished-container {
+        --cv-h1-color: ${themeColors.h1Color};
+        --cv-h2-color: ${themeColors.h2Color};
+        --cv-h3-color: ${themeColors.h3Color};
+        --cv-text-color: ${themeColors.textColor};
+        --cv-bg-color: ${themeColors.backgroundColor};
+        --cv-h1-font: ${getFontStack(themeColors.h1Font ?? 'Inter')};
+        --cv-h2-font: ${getFontStack(themeColors.h2Font ?? 'Inter')};
+        --cv-h3-font: ${getFontStack(themeColors.h3Font ?? 'Inter')};
+        --cv-text-font: ${getFontStack(themeColors.textFont ?? 'Inter')};
+      }
+      
+      .polished-container .cv-page-container,
+      .polished-container .cv-page {
+        color: var(--cv-text-color) !important;
+        background-color: var(--cv-bg-color) !important;
+      }
+      
+      .polished-container .block-type-h1 {
+        color: var(--cv-h1-color) !important;
+        font-family: var(--cv-h1-font);
+        background-color: transparent !important;
+      }
+      .polished-container .block-type-h2 {
+        color: var(--cv-h2-color) !important;
+        border-color: var(--cv-h2-color) !important;
+        font-family: var(--cv-h2-font);
+        background-color: transparent !important;
+      }
+      .polished-container .block-type-h3 {
+        color: var(--cv-h3-color) !important;
+        font-family: var(--cv-h3-font);
+        background-color: transparent !important;
+      }
+      
+      .polished-container .block-type-paragraph,
+      .polished-container .block-type-todo,
+      .polished-container .block-type-bullet,
+      .polished-container .block-type-number {
+        color: var(--cv-text-color) !important;
+        font-family: var(--cv-text-font);
+        background-color: transparent !important;
+      }
+    `;
+  });
+
   // Auto-save currently active CV session
   $effect(() => {
     if (activeResumeId && blocks.length > 0) {
@@ -75,7 +157,8 @@
           currentResume.pageTitle !== pageTitle ||
           currentResume.paddingMm !== paddingMm ||
           currentResume.templateName !== activeTemplate ||
-          JSON.stringify(currentResume.customTemplates) !== JSON.stringify(customTemplates)
+          JSON.stringify(currentResume.customTemplates) !== JSON.stringify(customTemplates) ||
+          JSON.stringify(currentResume.themeColors) !== JSON.stringify(themeColors)
         ) {
           resumes[idx] = {
             ...currentResume,
@@ -84,6 +167,7 @@
             paddingMm,
             templateName: activeTemplate,
             customTemplates,
+            themeColors: { ...themeColors },
             updatedAt: new Date().toISOString()
           };
           localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
@@ -110,6 +194,17 @@
         paddingMm = resume.paddingMm;
         activeTemplate = resume.templateName;
         customTemplates = JSON.parse(JSON.stringify(resume.customTemplates || {}));
+        themeColors = {
+          h1Color: resume.themeColors?.h1Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
+          h2Color: resume.themeColors?.h2Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
+          h3Color: resume.themeColors?.h3Color ?? resume.themeColors?.textColor ?? '#1e1b18',
+          textColor: resume.themeColors?.textColor ?? '#1e1b18',
+          backgroundColor: resume.themeColors?.backgroundColor ?? '#ffffff',
+          h1Font: resume.themeColors?.h1Font ?? templateDefaultFonts[resume.templateName]?.h1 ?? 'Inter',
+          h2Font: resume.themeColors?.h2Font ?? templateDefaultFonts[resume.templateName]?.h2 ?? 'Inter',
+          h3Font: resume.themeColors?.h3Font ?? templateDefaultFonts[resume.templateName]?.h3 ?? 'Inter',
+          textFont: resume.themeColors?.textFont ?? templateDefaultFonts[resume.templateName]?.text ?? 'Inter'
+        };
       }
     } else {
       activeResumeId = null;
@@ -144,6 +239,19 @@
             paddingMm = data.paddingMm ?? 15;
             if (data.templateName) activeTemplate = data.templateName;
             if (data.customTemplates) customTemplates = data.customTemplates;
+            if (data.themeColors) {
+              themeColors = {
+                h1Color: data.themeColors.h1Color ?? data.themeColors.primaryColor ?? '#0a2463',
+                h2Color: data.themeColors.h2Color ?? data.themeColors.primaryColor ?? '#0a2463',
+                h3Color: data.themeColors.h3Color ?? data.themeColors.textColor ?? '#1e1b18',
+                textColor: data.themeColors.textColor ?? '#1e1b18',
+                backgroundColor: data.themeColors.backgroundColor ?? '#ffffff',
+                h1Font: data.themeColors.h1Font ?? templateDefaultFonts[data.templateName]?.h1 ?? 'Inter',
+                h2Font: data.themeColors.h2Font ?? templateDefaultFonts[data.templateName]?.h2 ?? 'Inter',
+                h3Font: data.themeColors.h3Font ?? templateDefaultFonts[data.templateName]?.h3 ?? 'Inter',
+                textFont: data.themeColors.textFont ?? templateDefaultFonts[data.templateName]?.text ?? 'Inter'
+              };
+            }
           }
         }
       } catch (err) {
@@ -214,6 +322,17 @@
       paddingMm: 15,
       templateName: templateId,
       customTemplates: {},
+      themeColors: {
+        h1Color: '#0a2463',
+        h2Color: '#0a2463',
+        h3Color: '#1e1b18',
+        textColor: '#1e1b18',
+        backgroundColor: '#ffffff',
+        h1Font: templateDefaultFonts[templateId]?.h1 ?? 'Inter',
+        h2Font: templateDefaultFonts[templateId]?.h2 ?? 'Inter',
+        h3Font: templateDefaultFonts[templateId]?.h3 ?? 'Inter',
+        textFont: templateDefaultFonts[templateId]?.text ?? 'Inter'
+      },
       updatedAt: new Date().toISOString()
     };
     resumes = [newResume, ...resumes];
@@ -221,7 +340,7 @@
     navigate('/resume/' + newResume.id);
   }
 
-  function handleNewImport({ blocks: importedBlocks, css, templateId }) {
+  function handleNewImport({ blocks: importedBlocks, css, templateId, themeColors: importedColors }) {
     const newResume = {
       id: 'res_' + Math.random().toString(36).substring(2, 9),
       pageTitle: 'Imported CV',
@@ -229,6 +348,17 @@
       paddingMm: 15,
       templateName: templateId,
       customTemplates: { [templateId]: css },
+      themeColors: {
+        h1Color: importedColors?.h1Color ?? '#0a2463',
+        h2Color: importedColors?.h2Color ?? '#0a2463',
+        h3Color: importedColors?.h3Color ?? '#1e1b18',
+        textColor: importedColors?.textColor ?? '#1e1b18',
+        backgroundColor: importedColors?.backgroundColor ?? '#ffffff',
+        h1Font: importedColors?.h1Font ?? 'Inter',
+        h2Font: importedColors?.h2Font ?? 'Inter',
+        h3Font: importedColors?.h3Font ?? 'Inter',
+        textFont: importedColors?.textFont ?? 'Inter'
+      },
       updatedAt: new Date().toISOString()
     };
     resumes = [newResume, ...resumes];
@@ -275,6 +405,7 @@
         pageTitle={pageTitle}
         templateName={activeTemplate ?? 'clean'}
         customTemplates={customTemplates}
+        bind:themeColors={themeColors}
       />
     </div>
   </div>
@@ -302,6 +433,7 @@
             bind:paddingMm={paddingMm}
             bind:activeTemplate={activeTemplate}
             bind:customTemplates={customTemplates}
+            bind:themeColors={themeColors}
           />
         </div>
 
@@ -325,6 +457,7 @@
             pageTitle={pageTitle}
             templateName={activeTemplate ?? 'clean'}
             customTemplates={customTemplates}
+            bind:themeColors={themeColors}
             onGoToDashboard={() => navigate('/dashboard')}
             onChangeTemplate={handleChangeTemplate}
           />

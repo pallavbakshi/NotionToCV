@@ -9,7 +9,8 @@
     draggedBlockId = $bindable(),
     paddingMm = $bindable(15),
     activeTemplate = $bindable('clean'),
-    customTemplates = $bindable({})
+    customTemplates = $bindable({}),
+    themeColors = $bindable()
   } = $props();
 
   let fileInput;
@@ -133,7 +134,8 @@
       blocks,
       paddingMm,
       templateName: activeTemplate,
-      customTemplates
+      customTemplates,
+      themeColors
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -162,6 +164,13 @@
           if (data.paddingMm !== undefined) paddingMm = data.paddingMm;
           if (data.templateName) activeTemplate = data.templateName;
           if (data.customTemplates) customTemplates = data.customTemplates;
+          if (data.themeColors) {
+            themeColors = {
+              primaryColor: data.themeColors.primaryColor ?? '#0a2463',
+              textColor: data.themeColors.textColor ?? '#1e1b18',
+              backgroundColor: data.themeColors.backgroundColor ?? '#ffffff'
+            };
+          }
         } else {
           alert('Invalid JSON file format. It must contain a "blocks" array.');
         }
