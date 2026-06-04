@@ -304,8 +304,7 @@
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Limit to 200KB
-    if (file.size > 200 * 1024) {
+    if (file.size > 200_000) {
       alert('Image must be under 200 KB.');
       return;
     }
