@@ -58,7 +58,7 @@
       </nav>
       <div class="hidden md:flex items-center space-x-4">
         <a class="font-label-md text-label-md text-primary font-medium hover:opacity-80 transition-opacity" href="/dashboard" onclick={(e) => { e.preventDefault(); navigate('/dashboard'); }}>Log in</a>
-        <button onclick={() => navigate('/new')} class="bg-[#D8315B] text-white font-label-md px-6 py-2.5 rounded hover:bg-[#b82a4d] transition-colors ambient-lift">
+        <button onclick={() => navigate('/new')} class="bg-[#E64833] text-white font-label-md px-6 py-2.5 rounded hover:bg-[#c8321e] transition-colors ambient-lift">
           Start free
         </button>
       </div>
@@ -71,7 +71,7 @@
         <a class="block font-label-md text-on-surface-variant hover:text-primary transition-colors py-2" href="#features" onclick={() => mobileMenuOpen = false}>Features</a>
         <a class="block font-label-md text-on-surface-variant hover:text-primary transition-colors py-2" href="#how-it-works" onclick={() => mobileMenuOpen = false}>How it Works</a>
         <a class="block font-label-md text-on-surface-variant hover:text-primary transition-colors py-2" href="#pricing" onclick={() => mobileMenuOpen = false}>Pricing</a>
-        <button onclick={() => { mobileMenuOpen = false; navigate('/new'); }} class="w-full mt-2 bg-[#D8315B] text-white font-label-md px-6 py-2.5 rounded hover:bg-[#b82a4d] transition-colors">
+        <button onclick={() => { mobileMenuOpen = false; navigate('/new'); }} class="w-full mt-2 bg-[#E64833] text-white font-label-md px-6 py-2.5 rounded hover:bg-[#c8321e] transition-colors">
           Start free
         </button>
       </nav>
@@ -87,13 +87,13 @@
           AI-Powered Tailoring
         </div>
         <h1 class="font-headline-xl-mobile md:font-headline-xl text-primary">
-          Stop rewriting your resume <span class="text-[#D8315B] italic">for every damn</span> job application.
+          Stop rewriting your resume <span class="text-[#E64833] italic">for every damn</span> job application.
         </h1>
         <p class="font-body-lg text-on-surface-variant max-w-lg">
           Create one master profile. Paste a job description. Get a perfectly tailored, ATS-beating resume in seconds. Because your time is better spent interviewing.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
-          <button onclick={() => navigate('/new')} class="bg-[#D8315B] text-white font-label-md px-8 py-4 rounded ambient-lift hover:bg-[#b82a4d] transition-colors inline-flex justify-center items-center">
+          <button onclick={() => navigate('/new')} class="bg-[#E64833] text-white font-label-md px-8 py-4 rounded ambient-lift hover:bg-[#c8321e] transition-colors inline-flex justify-center items-center">
             Start for free
           </button>
           <button onclick={() => navigate('/new')} class="bg-surface text-primary-container font-label-md px-8 py-4 rounded border border-primary-container hover:bg-surface-2 transition-colors inline-flex justify-center items-center gap-2">
@@ -122,7 +122,7 @@
 
     <!-- 3. Social Proof -->
     <section class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-12 border-y border-subtle bg-surface-2 text-center">
-      <p class="font-headline-sm text-primary mb-8">Join professionals getting <span class="text-[#D8315B] font-bold">3.4x more interview callbacks</span> at top companies</p>
+      <p class="font-headline-sm text-primary mb-8">Join professionals getting <span class="text-[#E64833] font-bold">3.4x more interview callbacks</span> at top companies</p>
       <div class="flex flex-wrap justify-center items-center gap-8 md:gap-16 opacity-60 grayscale">
         <!-- Placeholder SVG logos -->
         <svg class="h-8" fill="currentColor" viewbox="0 0 100 30"><path d="M10,15 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0 M30,5 h10 v20 h-10 z M50,15 l10,-10 v20 z M75,5 h20 v5 h-15 v2 h10 v5 h-10 v3 h15 v5 h-20 z"></path></svg>
@@ -143,11 +143,11 @@
               <p class="font-label-sm text-secondary-fixed mb-2 uppercase tracking-wide">Generic Bullet</p>
               <p class="font-body-md line-through decoration-red-400/50">Managed team of 5 software engineers to build new features.</p>
             </div>
-            <div class="relative pl-6 border-l-2 border-[#D8315B]">
-              <span class="absolute -left-[13px] top-1/2 -translate-y-1/2 bg-[#D8315B] rounded-full p-1">
+            <div class="relative pl-6 border-l-2 border-[#E64833]">
+              <span class="absolute -left-[13px] top-1/2 -translate-y-1/2 bg-[#E64833] rounded-full p-1">
                 <span class="material-symbols-outlined text-[16px] text-white">auto_fix_high</span>
               </span>
-              <p class="font-label-sm text-[#D8315B] mb-2 uppercase tracking-wide">Tailored to "Senior Lead Engineer"</p>
+              <p class="font-label-sm text-[#E64833] mb-2 uppercase tracking-wide">Tailored to "Senior Lead Engineer"</p>
               <p class="font-body-md text-white">Spearheaded agile development lifecycle with a 5-person cross-functional engineering squad, accelerating feature deployment by 35% and directly supporting Q3 revenue goals.</p>
             </div>
           </div>
@@ -226,7 +226,7 @@
                 <p class="font-label-sm text-green-700 mb-1">Try this:</p>
                 <p class="font-body-md text-sm text-green-900">Conducted 50+ weekly user discovery calls, identifying key market pain points that drove 120% growth in territory adoption.</p>
               </div>
-              <button onclick={() => navigate('/new')} class="mt-3 text-[#D8315B] font-label-sm flex items-center gap-1 hover:underline">
+              <button onclick={() => navigate('/new')} class="mt-3 text-[#E64833] font-label-sm flex items-center gap-1 hover:underline">
                 <span class="material-symbols-outlined text-[16px]">add_circle</span> Apply to resume
               </button>
             </div>
@@ -234,8 +234,8 @@
         </div>
         <div class="p-4 bg-white border-t border-subtle">
           <div class="relative">
-            <input onkeydown={(e) => { if (e.key === 'Enter') navigate('/new'); }} class="w-full bg-surface-2 border border-subtle rounded-full py-3 pl-4 pr-12 focus:ring-2 focus:ring-[#D8315B]/50 focus:border-[#D8315B] outline-none transition-all" placeholder="Ask how to frame your experience..." type="text"/>
-            <button onclick={() => navigate('/new')} class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center hover:bg-[#D8315B] transition-colors">
+            <input onkeydown={(e) => { if (e.key === 'Enter') navigate('/new'); }} class="w-full bg-surface-2 border border-subtle rounded-full py-3 pl-4 pr-12 focus:ring-2 focus:ring-[#E64833]/50 focus:border-[#E64833] outline-none transition-all" placeholder="Ask how to frame your experience..." type="text"/>
+            <button onclick={() => navigate('/new')} class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center hover:bg-[#E64833] transition-colors">
               <span class="material-symbols-outlined text-[18px]">arrow_upward</span>
             </button>
           </div>
@@ -306,7 +306,7 @@
           </div>
           <!-- Step 3 -->
           <div class="relative flex flex-col items-center text-center group font-headline-sm">
-            <div class="w-16 h-16 bg-white border-2 border-[#D8315B] rounded-full flex items-center justify-center font-headline-sm text-[#D8315B] mb-6 group-hover:bg-[#D8315B] group-hover:text-white transition-colors shadow-lg shadow-pink-500/20">3</div>
+            <div class="w-16 h-16 bg-white border-2 border-[#E64833] rounded-full flex items-center justify-center font-headline-sm text-[#E64833] mb-6 group-hover:bg-[#E64833] group-hover:text-white transition-colors shadow-lg shadow-[#E64833]/20">3</div>
             <h4 class="font-headline-sm text-primary mb-2">AI Tailor</h4>
             <p class="font-body-md text-on-surface-variant">Watch it adapt keywords & tone instantly.</p>
           </div>
@@ -377,23 +377,23 @@
             <button onclick={() => navigate('/new')} class="w-full bg-surface text-primary border border-primary font-label-md py-3 rounded hover:bg-surface-2 transition-colors">Start for free</button>
           </div>
           <div class="bg-primary-container p-8 rounded-xl border border-primary-container shadow-xl relative overflow-hidden">
-            <div class="absolute top-4 right-4 bg-[#D8315B] text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Most Popular</div>
+            <div class="absolute top-4 right-4 bg-[#E64833] text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Most Popular</div>
             <h3 class="font-headline-md text-white mb-2">Elite Professional</h3>
             <p class="font-headline-xl text-white mb-4">$19<span class="text-lg text-primary-fixed-dim font-normal">/mo</span></p>
             <ul class="space-y-3 mb-8 font-body-md text-primary-fixed-dim">
-              <li class="flex items-center gap-2"><span class="material-symbols-outlined text-[#D8315B] text-[20px]">check</span> Unlimited Master Profiles</li>
-              <li class="flex items-center gap-2"><span class="material-symbols-outlined text-[#D8315B] text-[20px]">check</span> Unlimited AI Tailoring</li>
-              <li class="flex items-center gap-2"><span class="material-symbols-outlined text-[#D8315B] text-[20px]">check</span> Cover Letter Generator</li>
-              <li class="flex items-center gap-2"><span class="material-symbols-outlined text-[#D8315B] text-[20px]">check</span> Priority Support</li>
+              <li class="flex items-center gap-2"><span class="material-symbols-outlined text-[#E64833] text-[20px]">check</span> Unlimited Master Profiles</li>
+              <li class="flex items-center gap-2"><span class="material-symbols-outlined text-[#E64833] text-[20px]">check</span> Unlimited AI Tailoring</li>
+              <li class="flex items-center gap-2"><span class="material-symbols-outlined text-[#E64833] text-[20px]">check</span> Cover Letter Generator</li>
+              <li class="flex items-center gap-2"><span class="material-symbols-outlined text-[#E64833] text-[20px]">check</span> Priority Support</li>
             </ul>
-            <button onclick={() => navigate('/new')} class="w-full bg-[#D8315B] text-white font-label-md py-3 rounded hover:bg-[#b82a4d] transition-colors ambient-lift">Upgrade Now</button>
+            <button onclick={() => navigate('/new')} class="w-full bg-[#E64833] text-white font-label-md py-3 rounded hover:bg-[#c8321e] transition-colors ambient-lift">Upgrade Now</button>
           </div>
         </div>
       </div>
     </section>
 
     <!-- 6. Coming Soon Section -->
-    <section class="relative bg-gradient-to-br from-[#00103e] to-[#0a2463] py-32 overflow-hidden text-center text-white">
+    <section class="relative bg-gradient-to-br from-[#1c3b46] to-[#244855] py-32 overflow-hidden text-center text-white">
       <!-- Dramatic gradient overlay -->
       <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent opacity-50"></div>
       <div class="relative z-10 max-w-2xl mx-auto px-margin-mobile space-y-8">
@@ -485,14 +485,14 @@
   .material-symbols-outlined {
     font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
-  .bg-surface-2 { background-color: #f7efea; }
-  .border-subtle { border-color: rgba(62, 146, 204, 0.2); }
-  .ambient-lift { box-shadow: 0 8px 24px -4px rgba(10, 36, 99, 0.15); }
+  .bg-surface-2 { background-color: #f2dec2; }
+  .border-subtle { border-color: rgba(144, 174, 173, 0.2); }
+  .ambient-lift { box-shadow: 0 8px 24px -4px rgba(36, 72, 85, 0.15); }
   
   /* Sticky Nav Transition */
   #main-nav { transition: background-color 0.3s, box-shadow 0.3s; }
   #main-nav.scrolled {
-    background-color: rgba(255, 248, 244, 0.95);
+    background-color: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(8px);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
   }

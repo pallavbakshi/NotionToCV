@@ -1,5 +1,37 @@
-/* Import Modern Jurisprudence Typography from Google Fonts */
+/* Import Prometheus Modern from Google Fonts (Note: Noto Serif / Work Sans may be temporary pending the Basis Grotesque loading fix) */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,300..900;1,300..900&family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap');
+
+@font-face {
+  font-family: 'Basis Grotesque';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/BasisGrotesque-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Basis Grotesque';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/BasisGrotesque-Medium.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Basis Grotesque';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/BasisGrotesque-SemiBold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Basis Grotesque';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/BasisGrotesque-Bold.woff2') format('woff2');
+}
 
 /* Reset and Global Styles */
 * {
@@ -9,34 +41,34 @@
 }
 
 :root {
-  /* Modern Jurisprudence Colors */
-  --color-imperial-blue: #0a2463;
-  --color-blue-bell: #3e92cc;
-  --color-magenta-bloom: #d8315b;
-  --color-ghost-white: #fffaff;
-  --color-carbon-black: #1e1b18;
+  /* Prometheus Modern Colors */
+  --color-imperial-blue: #244855;
+  --color-blue-bell: #90AEAD;
+  --color-magenta-bloom: #E64833;
+  --color-ghost-white: #ffffff;
+  --color-carbon-black: #874F41;
 
   /* Surfaces & Elevation */
   --surface-1: var(--color-ghost-white);
-  --surface-2: #faf5fa; /* 2% darkening of ghost white */
-  --outline-subtle: rgba(62, 146, 204, 0.2); /* Blue Bell at 20% */
-  --shadow-ambient: 0 4px 12px rgba(10, 36, 99, 0.15); /* Imperial Blue at 15% */
+  --surface-2: #f9fafb; /* 2% darkening of ghost white */
+  --outline-subtle: rgba(144, 174, 173, 0.2); /* Blue Bell at 20% */
+  --shadow-ambient: 0 4px 12px rgba(36, 72, 85, 0.15); /* Imperial Blue at 15% */
 
   /* Svelte/Notion Mappings */
   --notion-text: var(--color-carbon-black);
-  --notion-text-muted: rgba(30, 27, 24, 0.5);
-  --notion-text-placeholder: rgba(30, 27, 24, 0.3);
+  --notion-text-muted: rgba(135, 79, 65, 0.6);
+  --notion-text-placeholder: rgba(135, 79, 65, 0.4);
   --notion-border: var(--outline-subtle);
   --notion-bg: var(--color-ghost-white);
   --notion-blue: var(--color-imperial-blue);
-  --notion-blue-hover: #081d4f;
-  --notion-blue-bg: rgba(62, 146, 204, 0.15);
-  --notion-hover: rgba(62, 146, 204, 0.1);
-  --notion-selected: rgba(62, 146, 204, 0.15);
+  --notion-blue-hover: #19333c;
+  --notion-blue-bg: rgba(144, 174, 173, 0.2);
+  --notion-hover: rgba(144, 174, 173, 0.12);
+  --notion-selected: rgba(144, 174, 173, 0.2);
 
   /* Fonts */
-  --font-serif: 'Noto Serif', Georgia, 'Times New Roman', serif;
-  --font-sans: 'Work Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: 'Basis Grotesque', 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-sans: 'Basis Grotesque', 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
 
   /* Shapes */
   --radius-sm: 0.125rem; /* 2px */
@@ -64,11 +96,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(10, 36, 99, 0.15); /* Imperial Blue subtle */
+  background: rgba(36, 72, 85, 0.15); /* Deep Slate Blue subtle */
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(10, 36, 99, 0.3);
+  background: rgba(36, 72, 85, 0.3);
 }
 
 /* Split Pane Layout Classes */
@@ -137,12 +169,15 @@ body {
   font-family: var(--font-serif);
 }
 
-/* Give every block node a comfortable click target and vertical rhythm */
-.ProseMirror p,
+/* Paragraph gets minimal padding for click target; headings get none (each is its own editor instance) */
+.ProseMirror p {
+  padding: 2px 0;
+}
+
 .ProseMirror h1,
 .ProseMirror h2,
 .ProseMirror h3 {
-  padding: 4px 0;
+  padding: 0;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
@@ -177,11 +212,11 @@ body {
 .btn-primary {
   background: var(--color-magenta-bloom);
   color: #ffffff;
-  box-shadow: 0 2px 6px rgba(216, 49, 91, 0.2);
+  box-shadow: 0 2px 6px rgba(230, 72, 51, 0.2);
 }
 
 .btn-primary:hover {
-  background: #be284e;
+  background: #c8321e;
   box-shadow: var(--shadow-ambient);
 }
 
@@ -194,7 +229,7 @@ body {
 
 .btn-secondary:hover,
 .btn-outline:hover {
-  background: rgba(10, 36, 99, 0.05);
+  background: rgba(36, 72, 85, 0.05);
 }
 
 /* Global Input / Textarea styling */

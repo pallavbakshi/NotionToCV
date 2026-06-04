@@ -96,9 +96,7 @@
 <style>
   .elements-dock {
     flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: #f9fafb;
     border-top: 1px solid rgba(55, 53, 47, 0.09);
     padding: 10px 20px 12px;
     z-index: 80;

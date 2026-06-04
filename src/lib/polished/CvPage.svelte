@@ -8,10 +8,11 @@
     page,
     blocks,
     paddingMm,
-    selectedBlockId = $bindable(),
+    selectedBlockIds = $bindable([]),
     updateBlockCanvas,
     updateBlockName,
     updateBlockImageData = null,
+    removeCanvasElement = null,
     overlappingBlockIds = new Set(),
     draggedBlockId = $bindable(),
     templateName = 'clean'
@@ -34,7 +35,7 @@
   const PX_PER_MM = 96 / 25.4;
 
   let isDraggingOver = $state(false);
-  let dragOverCoords = $state(null); // { col, row, colSpan, rowSpan, isValid, isGutter? }
+  let dragOverCoords = $state(null); // { col, row, colSpan, rowSpan, isValid, isGutter?, candidates }
 
   let colWidth = $derived((210 - 2 * paddingMm - 12) / 4);
 
@@ -59,12 +60,18 @@
     const pxY = e.clientY - pageRect.top;
 
     const draggedBlock = blocks.find(b => b.id === draggedBlockId);
-    const activeConfig = templatesConfig[templateName] || templatesConfig.clean;
-    const defaultSpans = (draggedBlock && activeConfig.defaultSpans[draggedBlock.type]) || { colSpan: 2, rowSpan: 1 };
+    if (!draggedBlock) return;
 
-    const colSpan = draggedBlock?.canvas?.colSpan ?? defaultSpans.colSpan;
-    const rowSpan = draggedBlock?.canvas?.rowSpan ?? defaultSpans.rowSpan;
+    const activeConfig = templatesConfig[templateName] || templatesConfig.clean;
+    const defaultSpans = activeConfig.defaultSpans[draggedBlock.type] || { colSpan: 2, rowSpan: 1 };
+
+    const colSpan = draggedBlock.canvas?.colSpan ?? defaultSpans.colSpan;
+    const rowSpan = draggedBlock.canvas?.rowSpan ?? defaultSpans.rowSpan;
     const isGutter = colSpan === 0;
+
+    // Calculate snapped target grid position for primary dragged block
+    let targetCol = 0;
+    let targetRow = 0;
 
     if (isGutter) {
       const colWidthVal = (210 - 2 * paddingMm - 12) / 4;
@@ -78,22 +85,91 @@
         const dist = Math.abs(mmX - gutterCenter);
         if (dist < minDist) { minDist = dist; bestGutter = g; }
       }
-
-      const row = Math.max(0, Math.min(53 - rowSpan, Math.round(mmY / 5)));
-      const candidateCanvas = { col: bestGutter, row, colSpan: 0, rowSpan };
-      const collides = anyOverlap(blocks, draggedBlockId, page, candidateCanvas, colWidth, paddingMm);
-
-      dragOverCoords = { col: bestGutter, row, colSpan: 0, rowSpan, isValid: !collides, isGutter: true };
+      targetCol = bestGutter;
+      targetRow = Math.max(0, Math.min(53 - rowSpan, Math.round(mmY / 5)));
     } else {
       const gridPos = pxToGrid(pxX, pxY, paddingMm);
-      let { col, row } = gridPos;
-      if (col + colSpan > 4) col = 4 - colSpan;
-      if (row + rowSpan > 53) row = 53 - rowSpan;
+      targetCol = gridPos.col;
+      targetRow = gridPos.row;
+      if (targetCol + colSpan > 4) targetCol = 4 - colSpan;
+      if (targetRow + rowSpan > 53) targetRow = 53 - rowSpan;
+    }
 
-      const candidateCanvas = { col, row, colSpan, rowSpan };
+    const isDraggedSelected = selectedBlockIds.includes(draggedBlockId);
+
+    if (isDraggedSelected) {
+      // Group drag validation
+      const origCol = draggedBlock.canvas?.col ?? 0;
+      const origRow = draggedBlock.canvas?.row ?? 0;
+      const origPage = draggedBlock.canvas?.page ?? page;
+
+      const deltaCol = targetCol - origCol;
+      const deltaRow = targetRow - origRow;
+      const deltaPage = page - origPage;
+
+      let allValid = true;
+      const candidates = [];
+
+      for (const id of selectedBlockIds) {
+        const b = blocks.find(x => x.id === id);
+        if (!b || !b.canvas) continue;
+
+        const isG = b.type === 'vertical_divider' && b.canvas.colSpan === 0;
+        const cSpan = b.canvas.colSpan;
+        const rSpan = b.canvas.rowSpan;
+
+        let newC = b.canvas.col + deltaCol;
+        let newR = b.canvas.row + deltaRow;
+        let newP = b.canvas.page + deltaPage;
+
+        // Bounds checks
+        if (isG) {
+          if (newC < 0 || newC > 2 || newR < 0 || newR + rSpan > 53) {
+            allValid = false;
+            break;
+          }
+        } else {
+          if (newC < 0 || newC + cSpan > 4 || newR < 0 || newR + rSpan > 53) {
+            allValid = false;
+            break;
+          }
+        }
+
+        // Collision checks (ignore collision with other selected blocks)
+        const tempCanvas = { col: newC, row: newR, colSpan: cSpan, rowSpan: rSpan };
+        const otherBlocks = blocks.filter(x => !selectedBlockIds.includes(x.id));
+        const collides = anyOverlap(otherBlocks, b.id, newP, tempCanvas, colWidth, paddingMm);
+        if (collides) {
+          allValid = false;
+          break;
+        }
+
+        candidates.push({ id: b.id, page: newP, col: newC, row: newR, colSpan: cSpan, rowSpan: rSpan });
+      }
+
+      dragOverCoords = {
+        col: targetCol,
+        row: targetRow,
+        colSpan,
+        rowSpan,
+        isValid: allValid,
+        isGutter,
+        candidates
+      };
+    } else {
+      // Single drag validation
+      const candidateCanvas = { col: targetCol, row: targetRow, colSpan, rowSpan };
       const collides = anyOverlap(blocks, draggedBlockId, page, candidateCanvas, colWidth, paddingMm);
 
-      dragOverCoords = { col, row, colSpan, rowSpan, isValid: !collides, isGutter: false };
+      dragOverCoords = {
+        col: targetCol,
+        row: targetRow,
+        colSpan,
+        rowSpan,
+        isValid: !collides,
+        isGutter,
+        candidates: []
+      };
     }
   }
 
@@ -107,15 +183,30 @@
     isDraggingOver = false;
     if (!draggedBlockId || !dragOverCoords) return;
 
-    const { col, row, colSpan, rowSpan, isValid } = dragOverCoords;
+    const { isValid, candidates } = dragOverCoords;
     if (isValid) {
-      updateBlockCanvas(draggedBlockId, { page, col, row, colSpan, rowSpan });
+      if (candidates && candidates.length > 0) {
+        candidates.forEach(c => {
+          updateBlockCanvas(c.id, { page: c.page, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan });
+        });
+      } else {
+        const { col, row, colSpan, rowSpan } = dragOverCoords;
+        updateBlockCanvas(draggedBlockId, { page, col, row, colSpan, rowSpan });
+      }
     }
     dragOverCoords = null;
   }
 
-  function handleSelectBlock(id) {
-    selectedBlockId = id;
+  function handleSelectBlock(id, isMulti) {
+    if (isMulti) {
+      if (selectedBlockIds.includes(id)) {
+        selectedBlockIds = selectedBlockIds.filter(x => x !== id);
+      } else {
+        selectedBlockIds = [...selectedBlockIds, id];
+      }
+    } else {
+      selectedBlockIds = [id];
+    }
   }
 
   let ghostLeftMm = $derived(
@@ -144,11 +235,28 @@
     <GridOverlay paddingMm={paddingMm} isVisible={true} />
 
     {#if isDraggingOver && dragOverCoords}
-      <div
-        class="snap-ghost"
-        class:invalid={!dragOverCoords.isValid}
-        style="left:{ghostLeftMm}mm;top:{ghostTopMm}mm;width:{ghostWidthMm}mm;height:{ghostHeightMm}mm;"
-      ></div>
+      {#if dragOverCoords.candidates && dragOverCoords.candidates.length > 0}
+        {#each dragOverCoords.candidates as cand}
+          {#if cand.page === page}
+            <div
+              class="snap-ghost"
+              class:invalid={!dragOverCoords.isValid}
+              style="
+                left: {cand.colSpan === 0 ? paddingMm + cand.col * (colWidth + 4) + colWidth : paddingMm + cand.col * (colWidth + 4)}mm;
+                top: {paddingMm + cand.row * 5}mm;
+                width: {cand.colSpan === 0 ? 4 : cand.colSpan * colWidth + (cand.colSpan - 1) * 4}mm;
+                height: {cand.rowSpan * 5}mm;
+              "
+            ></div>
+          {/if}
+        {/each}
+      {:else}
+        <div
+          class="snap-ghost"
+          class:invalid={!dragOverCoords.isValid}
+          style="left:{ghostLeftMm}mm;top:{ghostTopMm}mm;width:{ghostWidthMm}mm;height:{ghostHeightMm}mm;"
+        ></div>
+      {/if}
     {/if}
 
     {#each blocks as block, idx (block.id)}
@@ -157,12 +265,15 @@
           block={blocks[idx]}
           blocks={blocks}
           paddingMm={paddingMm}
-          selected={selectedBlockId === block.id}
+          selected={selectedBlockIds.includes(block.id)}
+          selectedBlockIds={selectedBlockIds}
+          showToolbar={selectedBlockIds[0] === block.id}
           isOverlapping={overlappingBlockIds.has(block.id)}
           onSelect={handleSelectBlock}
           updateBlockCanvas={updateBlockCanvas}
           updateBlockName={updateBlockName}
           updateBlockImageData={updateBlockImageData}
+          removeCanvasElement={removeCanvasElement}
           bind:draggedBlockId={draggedBlockId}
           templateName={templateName}
         />

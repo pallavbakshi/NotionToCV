@@ -1,5 +1,6 @@
 <!-- PolishedPane.svelte -->
 <script>
+  import { onDestroy } from 'svelte';
   import ColorPicker from 'svelte-awesome-color-picker';
   import CvPage from './CvPage.svelte';
   import ElementsDock from './ElementsDock.svelte';
@@ -105,7 +106,8 @@
     }
   ];
 
-  let selectedBlockId = $state(null);
+  let selectedBlockIds = $state([]);
+  let marqueeState = $state(null); // { startX, startY, currentX, currentY }
   let downloading = $state(false);
   let manualPageCount = $state(1);
   let isMenuOpen = $state(false);
@@ -134,6 +136,117 @@
   // Total pages = whichever is higher: user-added pages or blocks-derived pages
   let totalPages = $derived(Math.max(manualPageCount, maxPlacedPage));
 
+  // Handle global keyboard shortcuts for selection.
+  // Guard: only act when focus is NOT inside the Notion pane (contenteditable / inputs).
+  function handleKeyDown(e) {
+    if (selectedBlockIds.length === 0) return;
+
+    const active = document.activeElement;
+    const isEditingText =
+      active &&
+      (active.isContentEditable ||
+        active.tagName === 'INPUT' ||
+        active.tagName === 'TEXTAREA' ||
+        active.tagName === 'SELECT');
+
+    if (isEditingText) return;
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      selectedBlockIds.forEach(id => {
+        const b = blocks.find(x => x.id === id);
+        if (b) {
+          if (b.source === 'canvas' && removeCanvasElement) {
+            removeCanvasElement(b.id);
+          } else {
+            updateBlockCanvas(b.id, null);
+          }
+        }
+      });
+      selectedBlockIds = [];
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      selectedBlockIds = [];
+      e.preventDefault();
+    }
+  }
+
+  // Click outside pages closes hamburger menu
+  function handleContainerClick(e) {
+    if (!e.target.closest('.hamburger-menu-wrap')) {
+      isMenuOpen = false;
+    }
+  }
+
+  function handleContainerPointerDown(e) {
+    // Only left click
+    if (e.button !== 0) return;
+
+    // Check if click is on a block, toolbar, element dock, or dropdown menu
+    if (
+      e.target.closest('.canvas-block') || 
+      e.target.closest('.canvas-toolbar') || 
+      e.target.closest('.elements-dock') || 
+      e.target.closest('.ham-dropdown') ||
+      e.target.closest('.color-picker-wrapper') ||
+      e.target.closest('.btn-delete-page')
+    ) {
+      return;
+    }
+
+    marqueeState = {
+      startX: e.clientX,
+      startY: e.clientY,
+      currentX: e.clientX,
+      currentY: e.clientY
+    };
+
+    // If not holding modifier key (Shift/Ctrl/Cmd), clear selection
+    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      selectedBlockIds = [];
+    }
+
+    window.addEventListener('pointermove', handleMarqueePointerMove);
+    window.addEventListener('pointerup', handleMarqueePointerUp);
+  }
+
+  function handleMarqueePointerMove(e) {
+    if (!marqueeState) return;
+    marqueeState.currentX = e.clientX;
+    marqueeState.currentY = e.clientY;
+
+    const minX = Math.min(marqueeState.startX, marqueeState.currentX);
+    const maxX = Math.max(marqueeState.startX, marqueeState.currentX);
+    const minY = Math.min(marqueeState.startY, marqueeState.currentY);
+    const maxY = Math.max(marqueeState.startY, marqueeState.currentY);
+
+    const blockElements = document.querySelectorAll('.canvas-block');
+    const newSelectedIds = [];
+
+    blockElements.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      const intersects = rect.left < maxX && rect.right > minX && rect.top < maxY && rect.bottom > minY;
+      if (intersects) {
+        const id = el.getAttribute('data-block-id');
+        if (id) {
+          newSelectedIds.push(id);
+        }
+      }
+    });
+
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      const union = new Set([...selectedBlockIds, ...newSelectedIds]);
+      selectedBlockIds = Array.from(union);
+    } else {
+      selectedBlockIds = newSelectedIds;
+    }
+  }
+
+  function handleMarqueePointerUp() {
+    window.removeEventListener('pointermove', handleMarqueePointerMove);
+    window.removeEventListener('pointerup', handleMarqueePointerUp);
+    marqueeState = null;
+  }
+
   function addPage() {
     manualPageCount = totalPages + 1;
   }
@@ -149,41 +262,6 @@
     }
     return pages;
   });
-
-  // Handle global keyboard shortcuts for selection.
-  // Guard: only act when focus is NOT inside the Notion pane (contenteditable / inputs).
-  function handleKeyDown(e) {
-    if (!selectedBlockId) return;
-
-    const active = document.activeElement;
-    const isEditingText =
-      active &&
-      (active.isContentEditable ||
-        active.tagName === 'INPUT' ||
-        active.tagName === 'TEXTAREA' ||
-        active.tagName === 'SELECT');
-
-    if (isEditingText) return;
-
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      updateBlockCanvas(selectedBlockId, null);
-      selectedBlockId = null;
-      e.preventDefault();
-    } else if (e.key === 'Escape') {
-      selectedBlockId = null;
-      e.preventDefault();
-    }
-  }
-
-  // Click outside pages deselects block; also closes hamburger menu
-  function handleContainerClick(e) {
-    if (!e.target.closest('.canvas-block')) {
-      selectedBlockId = null;
-    }
-    if (!e.target.closest('.hamburger-menu-wrap')) {
-      isMenuOpen = false;
-    }
-  }
 
   // Trigger PDF download pipeline via Vite server /api/print endpoint
   async function downloadPdf() {
@@ -225,6 +303,35 @@
       downloading = false;
     }
   }
+
+  function deletePage(pageNum) {
+    if (totalPages <= 1) return;
+
+    // 1. Update/remove blocks on the page being deleted or subsequent pages
+    // Iterate over a snapshot copy to avoid mutation-during-iteration issues
+    const snapshot = [...blocks];
+    snapshot.forEach(block => {
+      if (block.canvas) {
+        if (block.canvas.page === pageNum) {
+          if (block.source === 'canvas' && removeCanvasElement) {
+            removeCanvasElement(block.id);
+          } else {
+            updateBlockCanvas(block.id, null);
+          }
+        } else if (block.canvas.page > pageNum) {
+          updateBlockCanvas(block.id, { page: block.canvas.page - 1 });
+        }
+      }
+    });
+
+    // 2. Decrement manual page count
+    manualPageCount = Math.max(1, totalPages - 1);
+  }
+
+  onDestroy(() => {
+    window.removeEventListener('pointermove', handleMarqueePointerMove);
+    window.removeEventListener('pointerup', handleMarqueePointerUp);
+  });
 </script>
 
 <svelte:window onkeydown={handleKeyDown} />
@@ -235,6 +342,7 @@
   class="polished-container" 
   class:export-mode={isExportMode}
   onclick={handleContainerClick}
+  onpointerdown={handleContainerPointerDown}
 >
   {#if !isExportMode}
     <!-- Toolbar -->
@@ -555,14 +663,31 @@
     <div class="pages-list">
       {#each pagesToRender as pageNum}
         <div class="page-wrapper" class:is-ghost={pageNum > totalPages}>
+          {#if !isExportMode && totalPages > 1 && pageNum <= totalPages}
+            <div class="page-header-actions">
+              <button 
+                type="button" 
+                class="btn-delete-page" 
+                onclick={() => deletePage(pageNum)}
+                title="Delete Page {pageNum}"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Delete Page {pageNum}
+              </button>
+            </div>
+          {/if}
           <CvPage
             page={pageNum}
             blocks={blocks}
             paddingMm={paddingMm}
-            bind:selectedBlockId={selectedBlockId}
+            bind:selectedBlockIds={selectedBlockIds}
             {updateBlockCanvas}
             {updateBlockName}
             {updateBlockImageData}
+            {removeCanvasElement}
             {overlappingBlockIds}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
@@ -582,6 +707,18 @@
       bind:draggedBlockId={draggedBlockId}
       {blocks}
     />
+  {/if}
+
+  {#if marqueeState}
+    <div 
+      class="marquee-selection"
+      style="
+        left: {Math.min(marqueeState.startX, marqueeState.currentX)}px;
+        top: {Math.min(marqueeState.startY, marqueeState.currentY)}px;
+        width: {Math.abs(marqueeState.startX - marqueeState.currentX)}px;
+        height: {Math.abs(marqueeState.startY - marqueeState.currentY)}px;
+      "
+    ></div>
   {/if}
 </div>
 
@@ -611,7 +748,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 20px;
-    background-color: #ffffff;
+    background-color: #f9fafb;
     user-select: none;
     flex-shrink: 0;
     z-index: 100;
@@ -912,6 +1049,48 @@
     color: #64748b;
     pointer-events: none;
     text-shadow: 0 1px 2px #ffffff;
+  }
+
+  .page-header-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+    width: 210mm;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .btn-delete-page {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #ffffff;
+    border: 1px solid var(--notion-border, #e2e8f0);
+    border-radius: var(--radius-default, 4px);
+    color: var(--color-carbon-black, #874F41);
+    font-size: 11px;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 6px 12px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: all 0.15s ease;
+  }
+
+  .btn-delete-page:hover {
+    background-color: #fbf5f3;
+    border-color: var(--color-magenta-bloom, #E64833);
+    color: var(--color-magenta-bloom, #E64833);
+  }
+
+  .marquee-selection {
+    position: fixed;
+    border: 1px solid #3b82f6;
+    background-color: rgba(59, 130, 246, 0.1);
+    pointer-events: none;
+    z-index: 9999;
   }
 
   @media print {

@@ -211,8 +211,10 @@
           currentOffset = splitOffset;
         }
       } else {
-        if (currentOffset < splitOffset) {
+        const nodeLen = 1; // non-text node (like hardBreak) has size 1 in ProseMirror
+        if (currentOffset + nodeLen <= splitOffset) {
           before.push(node);
+          currentOffset += nodeLen;
         } else {
           after.push(node);
         }
@@ -238,7 +240,7 @@
           horizontalRule: false,
           codeBlock: false,
           code: false,
-          hardBreak: false,
+          trailingNode: false,
         }),
         TextStyle,
         Color,
