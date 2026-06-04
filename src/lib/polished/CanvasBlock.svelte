@@ -2,18 +2,25 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import BlockRenderer from './BlockRenderer.svelte';
+  import { anyOverlap } from './canvasUtils.js';
 
   let {
     block,
     blocks,
     paddingMm,
     selected = false,
+    isOverlapping = false,
     onSelect,
     updateBlockCanvas,
     updateBlockName,
+    updateBlockImageData = null,
     draggedBlockId = $bindable(),
     templateName = 'clean'
   } = $props();
+
+  let isCanvasElement = $derived(block?.source === 'canvas');
+  let isGutterElement = $derived(block?.type === 'vertical_divider' && block?.canvas?.colSpan === 0);
+  let isDivider = $derived(block?.type === 'horizontal_divider' || block?.type === 'vertical_divider');
 
   const PX_PER_MM = 96 / 25.4;
 
@@ -21,53 +28,65 @@
   let overflowing = $state(false);
   let resizeObserver;
   let isDraggingThis = $state(false);
-
-  // Live resizing state
   let resizeState = $state(null);
+  let nameError = $state('');
 
   // Column width calculation
   let colWidth = $derived((210 - 2 * paddingMm - 12) / 4);
 
-  // Dimensions based on canvas coordinates
-  let leftMm = $derived(block.canvas ? paddingMm + block.canvas.col * (colWidth + 4) : 0);
-  let topMm = $derived(block.canvas ? paddingMm + block.canvas.row * 5 : 0);
-  let widthMm = $derived(block.canvas ? block.canvas.colSpan * colWidth + (block.canvas.colSpan - 1) * 4 : 0);
+  // Dimensions — gutter elements use col as gutter index, colSpan === 0
+  let leftMm = $derived(
+    block.canvas
+      ? (isGutterElement
+          ? paddingMm + block.canvas.col * (colWidth + 4) + colWidth
+          : paddingMm + block.canvas.col * (colWidth + 4))
+      : 0
+  );
+  let topMm    = $derived(block.canvas ? paddingMm + block.canvas.row * 5 : 0);
+  let widthMm  = $derived(
+    block.canvas
+      ? (isGutterElement ? 4 : block.canvas.colSpan * colWidth + (block.canvas.colSpan - 1) * 4)
+      : 0
+  );
   let heightMm = $derived(block.canvas ? block.canvas.rowSpan * 5 : 0);
 
-  function cellsOccupied(blocksList, candidateId, page, col, row, colSpan, rowSpan) {
-    for (const b of blocksList) {
-      if (!b.canvas || b.id === candidateId) continue;
-      if (b.canvas.page !== page) continue;
-      const c = b.canvas;
-      const colOverlap = col < c.col + c.colSpan && col + colSpan > c.col;
-      const rowOverlap = row < c.row + c.rowSpan && row + rowSpan > c.row;
-      if (colOverlap && rowOverlap) return true;
+  function handleCanvasNameInput(e) {
+    const val = e.target.value;
+    const trimmed = val.trim();
+    if (trimmed === '') {
+      nameError = '';
+      updateBlockName(block.id, null);
+      return;
     }
-    return false;
+    if (!/^[a-zA-Z0-9-_]+$/.test(trimmed)) {
+      nameError = 'Letters, numbers, dash, underscore only';
+      return;
+    }
+    const isDuplicate = blocks.some(b => b.id !== block.id && b.name && b.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      nameError = 'Name must be unique';
+    } else {
+      nameError = '';
+      updateBlockName(block.id, trimmed);
+    }
   }
 
-  // Check content overflow
+  // Check content overflow (skip for canvas elements)
   function checkOverflow() {
-    if (!contentEl || !block.canvas) return;
+    if (!contentEl || !block.canvas || isCanvasElement) return;
     const allocatedHeightPx = block.canvas.rowSpan * 5 * PX_PER_MM;
-    // Add 1px tolerance for rounding
     overflowing = contentEl.scrollHeight > (allocatedHeightPx + 1);
   }
 
   $effect(() => {
     if (contentEl) {
       if (resizeObserver) resizeObserver.disconnect();
-      resizeObserver = new ResizeObserver(() => {
-        checkOverflow();
-      });
+      resizeObserver = new ResizeObserver(() => checkOverflow());
       resizeObserver.observe(contentEl);
     }
-    return () => {
-      if (resizeObserver) resizeObserver.disconnect();
-    };
+    return () => { if (resizeObserver) resizeObserver.disconnect(); };
   });
 
-  // Re-check overflow whenever rowSpan or content changes
   $effect(() => {
     if (block.canvas) {
       block.canvas.rowSpan;
@@ -76,7 +95,6 @@
     }
   });
 
-  // HTML5 Drag-Move Event Handlers
   function handleCanvasDragStart(e) {
     isDraggingThis = true;
     e.dataTransfer.effectAllowed = 'move';
@@ -89,7 +107,6 @@
     draggedBlockId = null;
   }
 
-  // Pointer-based Resizing
   function handleResizeStart(handle, event) {
     event.stopPropagation();
     event.preventDefault();
@@ -119,114 +136,77 @@
       const contentX = mmX - paddingMm;
       const contentY = mmY - paddingMm;
 
-      let newCol = resizeState.original.col;
-      let newRow = resizeState.original.row;
+      let newCol     = resizeState.original.col;
+      let newRow     = resizeState.original.row;
       let newColSpan = resizeState.original.colSpan;
       let newRowSpan = resizeState.original.rowSpan;
 
-      const rightEdge = resizeState.original.col + resizeState.original.colSpan;
+      const rightEdge  = resizeState.original.col + resizeState.original.colSpan;
       const bottomEdge = resizeState.original.row + resizeState.original.rowSpan;
 
-      // High-precision column snapping for resizing
-      if (handle.includes('r')) {
-        let bestCol = 0;
-        let minDiff = Infinity;
-        for (let c = 0; c < 4; c++) {
-          const edge = (c + 1) * colWidthVal + c * 4;
-          const diff = Math.abs(contentX - edge);
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestCol = c;
+      // Skip horizontal resizing for gutter elements (colSpan === 0)
+      if (newColSpan !== 0) {
+        if (handle.includes('r')) {
+          let bestCol = 0, minDiff = Infinity;
+          for (let c = 0; c < 4; c++) {
+            const edge = (c + 1) * colWidthVal + c * 4;
+            const diff = Math.abs(contentX - edge);
+            if (diff < minDiff) { minDiff = diff; bestCol = c; }
           }
+          newColSpan = Math.max(1, bestCol - resizeState.original.col + 1);
+          if (newCol + newColSpan > 4) newColSpan = 4 - newCol;
         }
-        newColSpan = Math.max(1, bestCol - resizeState.original.col + 1);
-        if (newCol + newColSpan > 4) {
-          newColSpan = 4 - newCol;
-        }
-      }
-      if (handle.includes('l')) {
-        let bestCol = 0;
-        let minDiff = Infinity;
-        for (let c = 0; c < 4; c++) {
-          const edge = c * (colWidthVal + 4);
-          const diff = Math.abs(contentX - edge);
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestCol = c;
+        if (handle.includes('l')) {
+          let bestCol = 0, minDiff = Infinity;
+          for (let c = 0; c < 4; c++) {
+            const edge = c * (colWidthVal + 4);
+            const diff = Math.abs(contentX - edge);
+            if (diff < minDiff) { minDiff = diff; bestCol = c; }
           }
+          newCol = Math.max(0, Math.min(rightEdge - 1, bestCol));
+          newColSpan = rightEdge - newCol;
         }
-        newCol = Math.max(0, Math.min(rightEdge - 1, bestCol));
-        newColSpan = rightEdge - newCol;
       }
 
-      // High-precision row snapping for resizing
       if (handle.includes('b')) {
-        let bestRow = 0;
-        let minDiff = Infinity;
+        let bestRow = 0, minDiff = Infinity;
         for (let r = 0; r < 53; r++) {
           const edge = (r + 1) * 5;
           const diff = Math.abs(contentY - edge);
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestRow = r;
-          }
+          if (diff < minDiff) { minDiff = diff; bestRow = r; }
         }
         newRowSpan = Math.max(1, bestRow - resizeState.original.row + 1);
-        if (newRow + newRowSpan > 53) {
-          newRowSpan = 53 - newRow;
-        }
+        if (newRow + newRowSpan > 53) newRowSpan = 53 - newRow;
       }
       if (handle.includes('t')) {
-        let bestRow = 0;
-        let minDiff = Infinity;
+        let bestRow = 0, minDiff = Infinity;
         for (let r = 0; r < 53; r++) {
           const edge = r * 5;
           const diff = Math.abs(contentY - edge);
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestRow = r;
-          }
+          if (diff < minDiff) { minDiff = diff; bestRow = r; }
         }
         newRow = Math.max(0, Math.min(bottomEdge - 1, bestRow));
         newRowSpan = bottomEdge - newRow;
       }
 
-      const collides = cellsOccupied(
-        blocks,
-        block.id,
-        block.canvas.page,
-        newCol,
-        newRow,
-        newColSpan,
-        newRowSpan
-      );
+      const candidateCanvas = { page: block.canvas.page, col: newCol, row: newRow, colSpan: newColSpan, rowSpan: newRowSpan };
+      const collides = anyOverlap(blocks, block.id, block.canvas.page, candidateCanvas, colWidth, paddingMm);
+      const isValid  = !collides &&
+                       (newColSpan === 0 || (newCol + newColSpan <= 4)) &&
+                       (newRow + newRowSpan <= 53);
 
-      const isValid = !collides && 
-                      (newCol + newColSpan <= 4) && 
-                      (newRow + newRowSpan <= 53);
-
-      resizeState.current = {
-        page: block.canvas.page,
-        col: newCol,
-        row: newRow,
-        colSpan: newColSpan,
-        rowSpan: newRowSpan
-      };
+      resizeState.current = candidateCanvas;
       resizeState.isValid = isValid;
-
-      // Realtime visual feedback
       updateBlockCanvas(block.id, resizeState.current);
     }
 
-    function handlePointerUp(e) {
+    function handlePointerUp() {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
-
       if (resizeState) {
         if (resizeState.isValid) {
           updateBlockCanvas(block.id, resizeState.current);
         } else {
-          // Snap back
           updateBlockCanvas(block.id, resizeState.original);
         }
       }
@@ -250,91 +230,164 @@
   function setAlignment(align) {
     updateBlockCanvas(block.id, { align });
   }
+
+  function setBarStyle(style) {
+    updateBlockCanvas(block.id, { barStyle: style });
+  }
+
+  function setBarColor(e) {
+    updateBlockCanvas(block.id, { barColor: e.target.value });
+  }
+
+  // Headshot image upload
+  let imageInput = $state(null);
+  function handleUploadClick(e) {
+    e.stopPropagation();
+    imageInput?.click();
+  }
+  function handleImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 200_000) {
+      alert('Image must be under 200 KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => { if (updateBlockImageData) updateBlockImageData(block.id, ev.target.result); };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
 </script>
 
 <!-- Outer Block Wrapper -->
-<div 
+<div
   class="canvas-block"
   class:selected={selected}
   class:overflowing={overflowing}
   class:is-dragging={isDraggingThis}
   class:resize-invalid={resizeState && !resizeState.isValid}
-  style="
-    left: {leftMm}mm;
-    top: {topMm}mm;
-    width: {widthMm}mm;
-    height: {heightMm}mm;
-  "
+  class:gutter-element={isGutterElement}
+  class:is-overlapping={isOverlapping}
+  style="left:{leftMm}mm;top:{topMm}mm;width:{widthMm}mm;height:{heightMm}mm;"
   onclick={handleBlockClick}
   role="button"
   tabindex="0"
 >
-  <!-- Floating Action Toolbar (Only for selected blocks) -->
+  <!-- Floating Action Toolbar -->
   {#if selected}
     <div class="floating-toolbar" contenteditable="false" onclick={(e) => e.stopPropagation()}>
-      <div 
-        class="toolbar-drag-handle" 
-        draggable="true" 
-        ondragstart={handleCanvasDragStart} 
+      <div
+        class="toolbar-drag-handle"
+        draggable="true"
+        ondragstart={handleCanvasDragStart}
         ondragend={handleCanvasDragEnd}
       >
         <span class="icon">⠿</span> Move
       </div>
       <div class="toolbar-divider"></div>
-      
-      <button 
-        type="button" 
-        class="toolbar-align-btn" 
-        class:active={(block.canvas?.align || 'left') === 'left'}
-        onclick={() => setAlignment('left')}
-        title="Align Left"
-      >
-        <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
-        </svg>
-      </button>
-      <button 
-        type="button" 
-        class="toolbar-align-btn" 
-        class:active={block.canvas?.align === 'center'}
-        onclick={() => setAlignment('center')}
-        title="Align Center"
-      >
-        <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1zm-2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1z"/>
-        </svg>
-      </button>
-      <button 
-        type="button" 
-        class="toolbar-align-btn" 
-        class:active={block.canvas?.align === 'right'}
-        onclick={() => setAlignment('right')}
-        title="Align Right"
-      >
-        <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1zm-4 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1z"/>
-        </svg>
-      </button>
-      <button 
-        type="button" 
-        class="toolbar-align-btn" 
-        class:active={block.canvas?.align === 'justify'}
-        onclick={() => setAlignment('justify')}
-        title="Justify"
-      >
-        <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
-        </svg>
-      </button>
-      
+
+      {#if isDivider}
+        <!-- Divider style controls -->
+        {#each [
+          { value: 'solid',  label: '—',   title: 'Solid' },
+          { value: 'dashed', label: '╌',   title: 'Dashed' },
+          { value: 'dotted', label: '·····', title: 'Dotted' },
+          { value: 'double', label: '═',   title: 'Double' }
+        ] as s}
+          <button
+            type="button"
+            class="toolbar-bar-style-btn"
+            class:active={(block.canvas?.barStyle ?? 'solid') === s.value}
+            onclick={() => setBarStyle(s.value)}
+            title={s.title}
+          >{s.label}</button>
+        {/each}
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-color-wrap" title="Line color">
+          <input
+            type="color"
+            class="toolbar-bar-color"
+            value={block.canvas?.barColor ?? '#1e293b'}
+            oninput={setBarColor}
+            onchange={setBarColor}
+          />
+          <span class="toolbar-color-indicator" style="background:{block.canvas?.barColor ?? '#1e293b'};"></span>
+        </div>
+      {/if}
+
+      {#if isCanvasElement && block.elementType === 'headshot'}
+        <button type="button" class="toolbar-upload-btn" onclick={handleUploadClick}>
+          📷 {block.imageData ? 'Replace' : 'Upload'}
+        </button>
+        <input type="file" accept="image/*" style="display:none;" bind:this={imageInput} onchange={handleImageChange} />
+      {/if}
+
+      {#if !isCanvasElement}
+        <button
+          type="button"
+          class="toolbar-align-btn"
+          class:active={(block.canvas?.align || 'left') === 'left'}
+          onclick={() => setAlignment('left')}
+          title="Align Left"
+        >
+          <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="toolbar-align-btn"
+          class:active={block.canvas?.align === 'center'}
+          onclick={() => setAlignment('center')}
+          title="Align Center"
+        >
+          <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1zm-2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1z"/>
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="toolbar-align-btn"
+          class:active={block.canvas?.align === 'right'}
+          onclick={() => setAlignment('right')}
+          title="Align Right"
+        >
+          <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1zm-4 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1z"/>
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="toolbar-align-btn"
+          class:active={block.canvas?.align === 'justify'}
+          onclick={() => setAlignment('justify')}
+          title="Justify"
+        >
+          <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
+          </svg>
+        </button>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-name-group">
+          <span class="toolbar-name-symbol">@</span>
+          <input
+            type="text"
+            class="toolbar-name-input"
+            class:invalid={nameError}
+            placeholder="Name..."
+            value={block.name || ''}
+            oninput={handleCanvasNameInput}
+            title={nameError || 'Assign unique block name'}
+          />
+        </div>
+      {/if}
+
       <div class="toolbar-divider"></div>
-      <button type="button" class="toolbar-delete-btn" onclick={handleDeleteClick}>
-        Delete
-      </button>
+      <button type="button" class="toolbar-delete-btn" onclick={handleDeleteClick}>Delete</button>
     </div>
   {/if}
 
-  <!-- Hover drag handle in the top-left corner (Section 5.2) -->
+  <!-- Hover drag handle -->
   {#if !selected}
     <div
       class="hover-drag-handle"
@@ -346,30 +399,34 @@
       tabindex="-1"
       aria-label="Drag to move block"
       title="Drag to move"
-    >
-      ⠿
-    </div>
+    >⠿</div>
   {/if}
 
-  <!-- Actual content container -->
-  <div 
-    class="block-content-container tmpl-{templateName} block-type-{block.type}" 
+  <!-- Content -->
+  <div
+    class="block-content-container tmpl-{templateName} block-type-{block.type}"
+    class:canvas-element={isCanvasElement}
     bind:this={contentEl}
     style="text-align: {block.canvas?.align || 'left'};"
   >
-    <BlockRenderer content={block.content} />
+    <BlockRenderer content={block.content} block={block} />
   </div>
 
-  <!-- Resize handles (Section 5.3) -->
+  <!-- Resize handles — gutter elements: vertical only; canvas elements: no horizontal -->
   {#if selected}
-    <div class="resize-handle tl" role="presentation" onpointerdown={(e) => handleResizeStart('tl', e)}></div>
-    <div class="resize-handle t"  role="presentation" onpointerdown={(e) => handleResizeStart('t', e)}></div>
-    <div class="resize-handle tr" role="presentation" onpointerdown={(e) => handleResizeStart('tr', e)}></div>
-    <div class="resize-handle r"  role="presentation" onpointerdown={(e) => handleResizeStart('r', e)}></div>
-    <div class="resize-handle br" role="presentation" onpointerdown={(e) => handleResizeStart('br', e)}></div>
-    <div class="resize-handle b"  role="presentation" onpointerdown={(e) => handleResizeStart('b', e)}></div>
-    <div class="resize-handle bl" role="presentation" onpointerdown={(e) => handleResizeStart('bl', e)}></div>
-    <div class="resize-handle l"  role="presentation" onpointerdown={(e) => handleResizeStart('l', e)}></div>
+    {#if isGutterElement}
+      <div class="resize-handle t" role="presentation" onpointerdown={(e) => handleResizeStart('t', e)}></div>
+      <div class="resize-handle b" role="presentation" onpointerdown={(e) => handleResizeStart('b', e)}></div>
+    {:else}
+      <div class="resize-handle tl" role="presentation" onpointerdown={(e) => handleResizeStart('tl', e)}></div>
+      <div class="resize-handle t"  role="presentation" onpointerdown={(e) => handleResizeStart('t', e)}></div>
+      <div class="resize-handle tr" role="presentation" onpointerdown={(e) => handleResizeStart('tr', e)}></div>
+      <div class="resize-handle r"  role="presentation" onpointerdown={(e) => handleResizeStart('r', e)}></div>
+      <div class="resize-handle br" role="presentation" onpointerdown={(e) => handleResizeStart('br', e)}></div>
+      <div class="resize-handle b"  role="presentation" onpointerdown={(e) => handleResizeStart('b', e)}></div>
+      <div class="resize-handle bl" role="presentation" onpointerdown={(e) => handleResizeStart('bl', e)}></div>
+      <div class="resize-handle l"  role="presentation" onpointerdown={(e) => handleResizeStart('l', e)}></div>
+    {/if}
   {/if}
 </div>
 
@@ -385,20 +442,13 @@
     z-index: 5;
   }
 
-  /* Lift selected block above all siblings so toolbar is never obscured */
-  .canvas-block.selected {
-    z-index: 200;
-  }
-
-  .canvas-block.is-dragging {
-    opacity: 0.4;
-  }
+  .canvas-block.selected { z-index: 200; }
+  .canvas-block.is-dragging { opacity: 0.4; }
 
   .canvas-block.selected {
     outline: 1.5px solid var(--color-imperial-blue);
   }
 
-  /* Overflow warning always beats selection blue */
   .canvas-block.overflowing,
   .canvas-block.selected.overflowing {
     outline: 1.5px solid var(--color-magenta-bloom);
@@ -409,12 +459,33 @@
     background-color: rgba(216, 49, 91, 0.05);
   }
 
-  /* Text Container */
+  /* Gutter elements sit in the 4mm gap — no background */
+  .canvas-block.gutter-element {
+    background-color: transparent;
+  }
+
+  /* Overlap warning — pulsing red */
+  .canvas-block.is-overlapping {
+    outline: 2px solid #ef4444;
+    animation: overlap-pulse 1.5s ease-in-out infinite;
+  }
+  .canvas-block.is-overlapping.gutter-element {
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+  }
+  @keyframes overlap-pulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3); }
+    50%       { box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+  }
+
   .block-content-container {
     width: 100%;
     height: 100%;
     overflow: visible;
     word-break: break-word;
+  }
+
+  .block-content-container.canvas-element {
+    overflow: hidden;
   }
 
   /* Hover Drag Handle */
@@ -439,9 +510,7 @@
     z-index: 50;
   }
 
-  .canvas-block:hover .hover-drag-handle {
-    opacity: 1;
-  }
+  .canvas-block:hover .hover-drag-handle { opacity: 1; }
 
   /* Resize Handles */
   .resize-handle {
@@ -455,13 +524,13 @@
   }
 
   .tl { top: -3px; left: -3px; cursor: nwse-resize; }
-  .t { top: -3px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+  .t  { top: -3px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
   .tr { top: -3px; right: -3px; cursor: nesw-resize; }
-  .r { top: 50%; right: -3px; transform: translateY(-50%); cursor: ew-resize; }
+  .r  { top: 50%; right: -3px; transform: translateY(-50%); cursor: ew-resize; }
   .br { bottom: -3px; right: -3px; cursor: nwse-resize; }
-  .b { bottom: -3px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+  .b  { bottom: -3px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
   .bl { bottom: -3px; left: -3px; cursor: nesw-resize; }
-  .l { top: 50%; left: -3px; transform: translateY(-50%); cursor: ew-resize; }
+  .l  { top: 50%; left: -3px; transform: translateY(-50%); cursor: ew-resize; }
 
   /* Floating Action Toolbar */
   .floating-toolbar {
@@ -480,6 +549,7 @@
     font-family: var(--font-sans);
     font-size: 12px;
     pointer-events: auto;
+    white-space: nowrap;
   }
 
   .toolbar-drag-handle {
@@ -493,14 +563,12 @@
     font-weight: 600;
   }
 
-  .toolbar-drag-handle:hover {
-    background-color: rgba(255, 255, 255, 0.15);
-  }
+  .toolbar-drag-handle:hover { background-color: rgba(255,255,255,0.15); }
 
   .toolbar-divider {
     width: 1px;
     height: 14px;
-    background-color: rgba(255, 255, 255, 0.25);
+    background-color: rgba(255,255,255,0.25);
     margin: 0 6px;
   }
 
@@ -515,23 +583,99 @@
     font-family: var(--font-sans);
   }
 
-  .toolbar-delete-btn:hover {
-    background-color: rgba(239, 68, 68, 0.2);
-    color: #fee2e2;
+  .toolbar-delete-btn:hover { background-color: rgba(239,68,68,0.2); color: #fee2e2; }
+
+  /* Divider style buttons */
+  .toolbar-bar-style-btn {
+    border: none;
+    background: transparent;
+    color: #cbd5e1;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    line-height: 1;
+    transition: background-color 0.12s, color 0.12s;
+    min-width: 22px;
+    text-align: center;
+  }
+  .toolbar-bar-style-btn:hover { background-color: rgba(255,255,255,0.15); color: #ffffff; }
+  .toolbar-bar-style-btn.active { background-color: rgba(255,255,255,0.25); color: #ffffff; }
+
+  /* Color picker swatch */
+  .toolbar-color-wrap {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .toolbar-color-wrap:hover { background-color: rgba(255,255,255,0.15); }
+  .toolbar-bar-color {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .toolbar-color-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.5);
+    flex-shrink: 0;
+    pointer-events: none;
   }
 
-  /* Printing tweaks */
-  @media print {
-    .canvas-block {
-      outline: none !important;
-      background-color: transparent !important;
-    }
-    .resize-handle,
-    .floating-toolbar,
-    .hover-drag-handle {
-      display: none !important;
-    }
+  .toolbar-upload-btn {
+    border: none;
+    background: transparent;
+    color: #a78bfa;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    white-space: nowrap;
   }
+  .toolbar-upload-btn:hover { background-color: rgba(167,139,250,0.15); }
+
+  /* Inline @name input */
+  .toolbar-name-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background-color: rgba(255,255,255,0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .toolbar-name-symbol {
+    color: #10b981;
+    font-weight: 700;
+    font-size: 11px;
+  }
+  .toolbar-name-input {
+    border: none;
+    background: transparent;
+    color: #ffffff;
+    font-size: 11px;
+    outline: none;
+    width: 60px;
+    font-family: inherit;
+    padding: 0;
+  }
+  .toolbar-name-input::placeholder { color: rgba(255,255,255,0.4); }
+  .toolbar-name-input.invalid { color: #ff5c5c; }
+  .toolbar-name-group:has(.toolbar-name-input.invalid) { border-color: #ff5c5c; }
 
   .toolbar-align-btn {
     border: none;
@@ -547,18 +691,13 @@
     transition: background-color 0.15s, color 0.15s;
   }
 
-  .toolbar-align-btn:hover {
-    background-color: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
-  }
+  .toolbar-align-btn:hover { background-color: rgba(255,255,255,0.15); color: #ffffff; }
+  .toolbar-align-btn.active { background-color: rgba(255,255,255,0.25); color: var(--color-magenta-bloom); }
 
-  .toolbar-align-btn.active {
-    background-color: rgba(255, 255, 255, 0.25);
-    color: var(--color-magenta-bloom);
-  }
+  .align-icon { width: 14px; height: 14px; }
 
-  .align-icon {
-    width: 14px;
-    height: 14px;
+  @media print {
+    .canvas-block { outline: none !important; background-color: transparent !important; }
+    .resize-handle, .floating-toolbar, .hover-drag-handle { display: none !important; }
   }
 </style>

@@ -305,12 +305,31 @@
 
   // Update name inside active session
   function updateBlockName(id, name) {
-    blocks = blocks.map(b => {
-      if (b.id === id) {
-        return { ...b, name };
-      }
-      return b;
-    });
+    blocks = blocks.map(b => b.id === id ? { ...b, name } : b);
+  }
+
+  // Canvas-only decorative elements (horizontal_divider, vertical_divider, headshot)
+  function addCanvasElement(elementType) {
+    const id = 'ce_' + Math.random().toString(36).substring(2, 9);
+    blocks = [...blocks, {
+      id,
+      type: elementType,
+      content: [],
+      canvas: null,
+      name: null,
+      source: 'canvas',
+      elementType,
+      imageData: null
+    }];
+    return id;
+  }
+
+  function removeCanvasElement(id) {
+    blocks = blocks.filter(b => b.id !== id);
+  }
+
+  function updateBlockImageData(id, dataUrl) {
+    blocks = blocks.map(b => b.id === id ? { ...b, imageData: dataUrl } : b);
   }
 
   // callbacks in /new route
@@ -453,6 +472,9 @@
             bind:draggedBlockId={draggedBlockId}
             {updateBlockCanvas}
             {updateBlockName}
+            {addCanvasElement}
+            {removeCanvasElement}
+            {updateBlockImageData}
             isExportMode={false}
             pageTitle={pageTitle}
             templateName={activeTemplate ?? 'clean'}

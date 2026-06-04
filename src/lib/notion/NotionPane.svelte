@@ -15,7 +15,10 @@
 
   let fileInput;
   let focusTarget = $state({ index: null, position: 'end', timestamp: 0 });
-  
+
+  // Canvas-sourced elements (hr, vbar, headshot) are managed on the canvas side only
+  let notionBlocks = $derived(blocks.filter(b => b.source !== 'canvas'));
+
   // Drag and drop states
   let dragFromIndex = $state(null);
   let dropTargetIndex = $state(null);
@@ -36,7 +39,8 @@
       id: 'b_' + Math.random().toString(36).substring(2, 9),
       type: 'paragraph',
       content: afterCursorContent,
-      canvas: null
+      canvas: null,
+      name: null
     };
     blocks.splice(index + 1, 0, newBlock);
     blocks = [...blocks];
@@ -50,7 +54,8 @@
         id: 'b_' + Math.random().toString(36).substring(2, 9),
         type: 'paragraph',
         content: [],
-        canvas: null
+        canvas: null,
+        name: null
       }];
       focusBlock(0);
     } else {
@@ -68,7 +73,8 @@
       id: 'b_' + Math.random().toString(36).substring(2, 9),
       type: original.type,
       content: JSON.parse(JSON.stringify(original.content)),
-      canvas: null
+      canvas: null,
+      name: null
     };
     blocks.splice(index + 1, 0, newBlock);
     blocks = [...blocks];
@@ -240,7 +246,11 @@
   function handleDrop(index, e) {
     e.preventDefault();
     if (dragFromIndex !== null && dropTargetIndex !== null) {
-      moveBlock(dragFromIndex, dropTargetIndex);
+      // Translate notionBlocks indices to real blocks indices
+      const fromReal = blocks.findIndex(b => b.id === notionBlocks[dragFromIndex]?.id);
+      const toNotion = notionBlocks[dropTargetIndex];
+      const toReal   = toNotion ? blocks.findIndex(b => b.id === toNotion.id) : blocks.length;
+      if (fromReal !== -1) moveBlock(fromReal, toReal);
     }
     handleDragEnd();
   }
@@ -278,20 +288,22 @@
       />
     </div>
 
-    <!-- Drag drop list container -->
+    <!-- Drag drop list container (canvas-sourced elements are hidden here) -->
     <div class="blocks-container">
-      {#each blocks as block, idx (block.id)}
-        <div 
+      {#each notionBlocks as block, idx (block.id)}
+        {@const realIdx = blocks.findIndex(b => b.id === block.id)}
+        <div
           class="block-row-wrapper"
           ondragover={(e) => handleDragOver(idx, e)}
           ondrop={(e) => handleDrop(idx, e)}
           role="listitem"
         >
-          <BlockEditor 
-            bind:block={blocks[idx]}
-            index={idx}
+          <BlockEditor
+            bind:block={blocks[realIdx]}
+            blocks={blocks}
+            index={realIdx}
             isFirst={idx === 0}
-            isLast={idx === blocks.length - 1}
+            isLast={idx === notionBlocks.length - 1}
             {focusTarget}
             {addBlockAfter}
             {deleteBlock}
