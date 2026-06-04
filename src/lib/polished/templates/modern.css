@@ -1,0 +1,58 @@
+/* modern.css — Space Grotesk, navy blue accents */
+.tmpl-modern {
+  font-family: 'Space Grotesk', sans-serif;
+  color: #1e293b;
+  background-color: #ffffff;
+}
+
+.tmpl-modern.block-type-h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15mm;
+  font-weight: 700;
+  color: #1e3a8a;
+  letter-spacing: -0.3pt;
+  line-height: 18mm;
+  margin: 0;
+  display: block;
+}
+
+.tmpl-modern.block-type-h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 6mm;
+  font-weight: 700;
+  color: #1e3a8a;
+  text-transform: uppercase;
+  letter-spacing: 2pt;
+  border-left: 2mm solid #1e3a8a;
+  padding-left: 3mm;
+  line-height: 12mm;
+  margin: 0;
+  display: block;
+  box-sizing: border-box;
+}
+
+.tmpl-modern.block-type-h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 6mm;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 9mm;
+  margin: 0;
+  display: block;
+}
+
+.tmpl-modern.block-type-paragraph {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 3.8mm;
+  font-weight: 400;
+  color: #475569;
+  line-height: 5mm;
+  margin: 0;
+  white-space: pre-wrap;
+  display: block;
+}
+
+.tmpl-modern strong, .tmpl-modern b { font-weight: 700; }
+.tmpl-modern em, .tmpl-modern i { font-style: italic; }
+.tmpl-modern u { text-decoration: underline; }
+.tmpl-modern s, .tmpl-modern strike { text-decoration: line-through; }

@@ -7,9 +7,13 @@
     paddingMm = $bindable(15),
     draggedBlockId = $bindable(),
     updateBlockCanvas,
+    updateBlockName,
     isExportMode = false,
     pageTitle = '',
-    templateName = 'clean'
+    templateName = 'clean',
+    customTemplates = {},
+    onGoToDashboard,
+    onChangeTemplate
   } = $props();
 
   let selectedBlockId = $state(null);
@@ -77,7 +81,9 @@
         body: JSON.stringify({
           blocks,
           pageTitle,
-          paddingMm
+          paddingMm,
+          templateName,
+          customTemplates
         })
       });
 
@@ -115,22 +121,35 @@
   {#if !isExportMode}
     <!-- Toolbar (Section 7.3) -->
     <div class="canvas-toolbar">
-      <div class="toolbar-label">Polished View</div>
+      <div class="toolbar-left">
+        {#if onGoToDashboard}
+          <button type="button" class="btn-goto-dashboard" onclick={onGoToDashboard}>
+            ← Dashboard
+          </button>
+          <div class="toolbar-divider-v"></div>
+        {/if}
+        <div class="toolbar-label">Polished View</div>
+        {#if onChangeTemplate}
+          <button type="button" class="btn-change-template" onclick={onChangeTemplate}>
+            ⊞ {templateName.charAt(0).toUpperCase() + templateName.slice(1)}
+          </button>
+        {/if}
+      </div>
       <div class="toolbar-controls">
         <div class="slider-group">
           <span class="slider-label">Page Padding: {paddingMm}mm</span>
-          <input 
-            type="range" 
-            min="10" 
-            max="25" 
+          <input
+            type="range"
+            min="10"
+            max="25"
             step="1"
-            bind:value={paddingMm} 
-            class="padding-slider" 
+            bind:value={paddingMm}
+            class="padding-slider"
           />
         </div>
-        <button 
-          type="button" 
-          class="btn-download" 
+        <button
+          type="button"
+          class="btn-download"
           onclick={downloadPdf}
           disabled={downloading}
         >
@@ -164,6 +183,7 @@
             paddingMm={paddingMm}
             bind:selectedBlockId={selectedBlockId}
             {updateBlockCanvas}
+            {updateBlockName}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
           />
@@ -208,12 +228,37 @@
     z-index: 100;
   }
 
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
   .toolbar-label {
     font-size: 11px;
     font-weight: 600;
     color: #878682;
     letter-spacing: 0.8px;
     text-transform: uppercase;
+  }
+
+  .btn-change-template {
+    font-size: 11px;
+    font-weight: 500;
+    color: #4b5563;
+    background: rgba(55, 53, 47, 0.06);
+    border: 1px solid rgba(55, 53, 47, 0.12);
+    border-radius: 5px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-change-template:hover {
+    background-color: rgba(35, 131, 226, 0.1);
+    color: #2383e2;
+    border-color: rgba(35, 131, 226, 0.25);
   }
 
   .toolbar-controls {
@@ -402,5 +447,32 @@
     .page-wrapper.is-ghost {
       display: none !important;
     }
+  }
+
+  .btn-goto-dashboard {
+    font-size: 11px;
+    font-weight: 600;
+    color: #2383e2;
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .btn-goto-dashboard:hover {
+    background-color: rgba(35, 131, 226, 0.08);
+  }
+
+  .toolbar-divider-v {
+    width: 1px;
+    height: 16px;
+    background-color: rgba(55, 53, 47, 0.12);
+    margin: 0 4px;
   }
 </style>
