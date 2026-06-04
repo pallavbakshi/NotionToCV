@@ -1,6 +1,6 @@
 <script>
-  import NotionPane from './lib/NotionPane.svelte';
-  import PolishedPane from './lib/PolishedPane.svelte';
+  import NotionPane from './lib/notion/NotionPane.svelte';
+  import PolishedPane from './lib/polished/PolishedPane.svelte';
 
   // Restore state from localStorage
   let initialBlocks = [{ id: 'b_initial', type: 'paragraph', content: [], canvas: null }];
