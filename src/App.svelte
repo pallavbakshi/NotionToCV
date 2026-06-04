@@ -92,7 +92,7 @@
     }
     // Helper function to format font stack
     function getFontStack(f) {
-      const serif = ['Lora', 'Playfair Display'];
+      const serif = ['Noto Serif', 'Lora', 'Playfair Display'];
       const mono = ['Fira Code'];
       const generic = serif.includes(f) ? 'serif' : mono.includes(f) ? 'monospace' : 'sans-serif';
       return `'${f}', ${generic}`;

@@ -595,6 +595,7 @@
 <div 
   class="block-editor-row type-{block.type}"
   class:is-first-block={isFirst}
+  class:is-placed={block.canvas !== null}
   bind:this={rowElement}
 >
   <!-- Gutter Controls: Visible on hover -->
@@ -808,6 +809,23 @@
     padding: 4px 0;
     width: 100%;
     align-items: flex-start;
+  }
+
+  /* Left-edge accent bar: indicates the block is placed on the canvas */
+  .block-editor-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+  }
+
+  .block-editor-row.is-placed::before {
+    background-color: #10b981; /* emerald-500 */
   }
 
   /* Gutter setup */

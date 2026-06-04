@@ -385,6 +385,11 @@
     z-index: 5;
   }
 
+  /* Lift selected block above all siblings so toolbar is never obscured */
+  .canvas-block.selected {
+    z-index: 200;
+  }
+
   .canvas-block.is-dragging {
     opacity: 0.4;
   }

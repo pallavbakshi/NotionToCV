@@ -6,6 +6,7 @@
   let { navigate } = $props();
 
   let isScrolled = $state(false);
+  let mobileMenuOpen = $state(false);
   let email = $state('');
   let submitted = $state(false);
 
@@ -30,6 +31,12 @@
   function handleWaitlistSubmit(e) {
     e.preventDefault();
     if (email.trim()) {
+      // TODO: replace with real backend once /api/waitlist exists
+      fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      }).catch(() => {});
       submitted = true;
     }
   }
@@ -55,10 +62,20 @@
           Start free
         </button>
       </div>
-      <button class="md:hidden text-primary" onclick={() => navigate('/new')}>
-        <span class="material-symbols-outlined text-[24px]">menu</span>
+      <button class="md:hidden text-primary" onclick={() => mobileMenuOpen = !mobileMenuOpen} aria-label="Toggle navigation">
+        <span class="material-symbols-outlined text-[24px]">{mobileMenuOpen ? 'close' : 'menu'}</span>
       </button>
     </div>
+    {#if mobileMenuOpen}
+      <nav class="md:hidden bg-surface border-t border-subtle px-margin-mobile py-4 space-y-3">
+        <a class="block font-label-md text-on-surface-variant hover:text-primary transition-colors py-2" href="#features" onclick={() => mobileMenuOpen = false}>Features</a>
+        <a class="block font-label-md text-on-surface-variant hover:text-primary transition-colors py-2" href="#how-it-works" onclick={() => mobileMenuOpen = false}>How it Works</a>
+        <a class="block font-label-md text-on-surface-variant hover:text-primary transition-colors py-2" href="#pricing" onclick={() => mobileMenuOpen = false}>Pricing</a>
+        <button onclick={() => { mobileMenuOpen = false; navigate('/new'); }} class="w-full mt-2 bg-[#D8315B] text-white font-label-md px-6 py-2.5 rounded hover:bg-[#b82a4d] transition-colors">
+          Start free
+        </button>
+      </nav>
+    {/if}
   </header>
 
   <main class="flex-grow pt-20">
@@ -81,7 +98,7 @@
           </button>
           <button onclick={() => navigate('/new')} class="bg-surface text-primary-container font-label-md px-8 py-4 rounded border border-primary-container hover:bg-surface-2 transition-colors inline-flex justify-center items-center gap-2">
             <span class="material-symbols-outlined">play_circle</span>
-            View demo
+            Try it now
           </button>
         </div>
       </div>
@@ -307,31 +324,37 @@
     <section class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop pb-24">
       <h2 class="font-headline-lg text-primary text-center mb-16">Success Stories</h2>
       <div class="grid md:grid-cols-3 gap-8">
-        <!-- Story 1 -->
+        <!-- Story 1 — placeholder testimonial, replace with real user quote + photo before launch -->
         <div class="flex flex-col items-center text-center bg-white p-8 rounded-xl border border-subtle shadow-sm">
-          <img alt="Declan M." class="w-24 h-24 rounded-full object-cover mb-4 border-2 border-subtle p-1" src="https://lh3.googleusercontent.com/aida/AP1WRLv_-gLnB3lvZ2OByv1VvkKmuaJ3Vookh802_0jwV0vmiFW2VimWwXTl1qEE0_wjLPHTS3LCaAZECJgomKyh9lKcNt62T59K7-MYbMTbdzv-4h4SwS4FsFTvmp-u3_hbZNLcweI8gaQDf-G2EX6A7OoPL8aNdGzzOf7poC3uW8j1wdBXm9zbCd_PEJVYTs4BbbGL9ORqDWLUhpjzYT7OgMs9Yg7kuuJ75xdJ7n2qLuT5BveUpYMyf-5zxFWr"/>
-          <h4 class="font-headline-sm text-primary mb-1">Declan M.</h4>
-          <span class="font-label-sm text-[#006496] bg-[#3E92CC]/10 px-3 py-1 rounded-full mb-4">Senior Counsel</span>
+          <div class="w-24 h-24 rounded-full mb-4 border-2 border-subtle flex items-center justify-center bg-primary-fixed/30">
+            <span class="font-headline-lg text-primary">PM</span>
+          </div>
+          <h4 class="font-headline-sm text-primary mb-1">Priya M.</h4>
+          <span class="font-label-sm text-[#006496] bg-[#3E92CC]/10 px-3 py-1 rounded-full mb-4">Product Designer</span>
           <p class="font-body-md text-on-surface-variant italic font-serif">
-            "The precision is unmatched. ResumeElite translated my complex litigation history into a compelling, undeniable asset document."
+            "Imported my old PDF, tailored it to a JD, and had a recruiter-ready résumé in under five minutes. Two interviews that week."
           </p>
         </div>
-        <!-- Story 2 -->
+        <!-- Story 2 — placeholder testimonial -->
         <div class="flex flex-col items-center text-center bg-white p-8 rounded-xl border border-subtle shadow-sm">
-          <img alt="Paul S." class="w-24 h-24 rounded-full object-cover mb-4 border-2 border-subtle p-1" src="https://lh3.googleusercontent.com/aida/AP1WRLs2Q7c80yWzj80sZx51NQziq1A0Pbs5q0-aJDZolgJirslueB3kY6ErN_suLVosq_9U-ynXEidFYFCBGWLx4b3Jz7k30HpIIZ_NWs4e46EkRKcpQqDLrQTLyyQRt5xYMQnqXulexT6ox-Xp5XF1Oi7m41by9ZCFFa315GAWqlJG3SCYiuRCTSTTJIbReUzTzfY-VRhHHDJNoA89IFL8nt6Ybu1-2mMLibgjZm9qQh80x2Ku9dNduTDAY3tb"/>
-          <h4 class="font-headline-sm text-primary mb-1">Paul S.</h4>
-          <span class="font-label-sm text-[#006496] bg-[#3E92CC]/10 px-3 py-1 rounded-full mb-4">VP of Finance</span>
+          <div class="w-24 h-24 rounded-full mb-4 border-2 border-subtle flex items-center justify-center bg-primary-fixed/30">
+            <span class="font-headline-lg text-primary">DK</span>
+          </div>
+          <h4 class="font-headline-sm text-primary mb-1">Daniel K.</h4>
+          <span class="font-label-sm text-[#006496] bg-[#3E92CC]/10 px-3 py-1 rounded-full mb-4">Backend Engineer</span>
           <p class="font-body-md text-on-surface-variant italic font-serif">
-            "A sophisticated platform for serious professionals. It perfectly captured the quantitative impact of my tenure."
+            "The chat caught a gap I would've fumbled in the interview. Genuinely changed how I prep."
           </p>
         </div>
-        <!-- Story 3 -->
+        <!-- Story 3 — placeholder testimonial -->
         <div class="flex flex-col items-center text-center bg-white p-8 rounded-xl border border-subtle shadow-sm">
-          <img alt="Erin H." class="w-24 h-24 rounded-full object-cover mb-4 border-2 border-subtle p-1" src="https://lh3.googleusercontent.com/aida/AP1WRLsoh9qa42ehXfN4-nIS8YczyY2-FG4pMVmZeeuEi6U7jkVYjxZ4BaqieWOP2CW8ofuTWhIzm_I2rL8H3DYtVaSo1gicMiAV-E2BiwlzDhkd-SFdf4F92KaBeNao-gGBhNRorlWmj0j-O2Yu8uVjd_V3lTF0gJ76YimvD4Adiq_8Zr6ISGNsQE7G2mA83g0nHDzjTqQvRqJkadhpEPRwmrBPC5JGAgN2XLaQIqmMZcrMyJY05VOs6Gzvs-V_"/>
-          <h4 class="font-headline-sm text-primary mb-1">Erin H.</h4>
-          <span class="font-label-sm text-[#006496] bg-[#3E92CC]/10 px-3 py-1 rounded-full mb-4">Academic Director</span>
+          <div class="w-24 h-24 rounded-full mb-4 border-2 border-subtle flex items-center justify-center bg-primary-fixed/30">
+            <span class="font-headline-lg text-primary">SR</span>
+          </div>
+          <h4 class="font-headline-sm text-primary mb-1">Sam R.</h4>
+          <span class="font-label-sm text-[#006496] bg-[#3E92CC]/10 px-3 py-1 rounded-full mb-4">Marketing Lead</span>
           <p class="font-body-md text-on-surface-variant italic font-serif">
-            "Finally, a service that understands the nuances of academic publishing and administrative leadership. Flawlessly executed."
+            "I've already told it what I'm looking for. The second the auto-apply agent launches, I'm gone."
           </p>
         </div>
       </div>
@@ -420,17 +443,17 @@
         <div>
           <h4 class="font-label-md font-bold text-primary mb-4">Resources</h4>
           <ul class="space-y-3">
-            <li><a class="font-label-sm text-on-surface-variant hover:text-primary transition-colors" href="/dashboard" onclick={(e) => { e.preventDefault(); navigate('/dashboard'); }}>Career Blog</a></li>
-            <li><a class="font-label-sm text-on-surface-variant hover:text-primary transition-colors" href="/dashboard" onclick={(e) => { e.preventDefault(); navigate('/dashboard'); }}>Resume Examples</a></li>
-            <li><a class="font-label-sm text-on-surface-variant hover:text-primary transition-colors" href="/dashboard" onclick={(e) => { e.preventDefault(); navigate('/dashboard'); }}>Help Center</a></li>
+            <li><span class="font-label-sm text-on-surface-variant/50 cursor-default">Career Blog (coming soon)</span></li>
+            <li><span class="font-label-sm text-on-surface-variant/50 cursor-default">Resume Examples (coming soon)</span></li>
+            <li><span class="font-label-sm text-on-surface-variant/50 cursor-default">Help Center (coming soon)</span></li>
           </ul>
         </div>
         <div>
           <h4 class="font-label-md font-bold text-primary mb-4">Company</h4>
           <ul class="space-y-3">
-            <li><a class="font-label-sm text-on-surface-variant hover:text-primary transition-colors" href="/dashboard" onclick={(e) => { e.preventDefault(); navigate('/dashboard'); }}>About Us</a></li>
-            <li><a class="font-label-sm text-on-surface-variant hover:text-primary transition-colors" href="/dashboard" onclick={(e) => { e.preventDefault(); navigate('/dashboard'); }}>Contact</a></li>
-            <li><a class="font-label-sm text-on-surface-variant hover:text-primary transition-colors" href="/dashboard" onclick={(e) => { e.preventDefault(); navigate('/dashboard'); }}>Privacy Policy</a></li>
+            <li><span class="font-label-sm text-on-surface-variant/50 cursor-default">About Us (coming soon)</span></li>
+            <li><span class="font-label-sm text-on-surface-variant/50 cursor-default">Contact (coming soon)</span></li>
+            <li><span class="font-label-sm text-on-surface-variant/50 cursor-default">Privacy Policy (coming soon)</span></li>
           </ul>
         </div>
       </div>

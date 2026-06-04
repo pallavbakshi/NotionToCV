@@ -102,6 +102,8 @@
 
   let selectedBlockId = $state(null);
   let downloading = $state(false);
+  let manualPageCount = $state(1); // tracks user-added pages
+  let isMenuOpen = $state(false);  // hamburger dropdown
 
   // Count unplaced blocks
   let unplacedCount = $derived(
@@ -119,21 +121,39 @@
     return max;
   });
 
-  // Pages to render: 1 to maxPlacedPage, plus one extra blank page if dragging is active
+  // Total pages = whichever is higher: user-added pages or blocks-derived pages
+  let totalPages = $derived(Math.max(manualPageCount, maxPlacedPage));
+
+  function addPage() {
+    manualPageCount = totalPages + 1;
+  }
+
+  // Pages to render: 1 to totalPages, plus one extra blank page if dragging is active
   let pagesToRender = $derived.by(() => {
     let pages = [];
-    for (let p = 1; p <= maxPlacedPage; p++) {
+    for (let p = 1; p <= totalPages; p++) {
       pages.push(p);
     }
     if (draggedBlockId) {
-      pages.push(maxPlacedPage + 1);
+      pages.push(totalPages + 1);
     }
     return pages;
   });
 
-  // Handle global keyboard shortcuts for selection
+  // Handle global keyboard shortcuts for selection.
+  // Guard: only act when focus is NOT inside the Notion pane (contenteditable / inputs).
   function handleKeyDown(e) {
     if (!selectedBlockId) return;
+
+    const active = document.activeElement;
+    const isEditingText =
+      active &&
+      (active.isContentEditable ||
+        active.tagName === 'INPUT' ||
+        active.tagName === 'TEXTAREA' ||
+        active.tagName === 'SELECT');
+
+    if (isEditingText) return;
 
     if (e.key === 'Delete' || e.key === 'Backspace') {
       updateBlockCanvas(selectedBlockId, null);
@@ -145,10 +165,13 @@
     }
   }
 
-  // Click outside pages deselects block
+  // Click outside pages deselects block; also closes hamburger menu
   function handleContainerClick(e) {
     if (!e.target.closest('.canvas-block')) {
       selectedBlockId = null;
+    }
+    if (!e.target.closest('.hamburger-menu-wrap')) {
+      isMenuOpen = false;
     }
   }
 
@@ -204,8 +227,9 @@
   onclick={handleContainerClick}
 >
   {#if !isExportMode}
-    <!-- Toolbar (Section 7.3) -->
+    <!-- Toolbar -->
     <div class="canvas-toolbar">
+      <!-- Left cluster: nav + view label + template -->
       <div class="toolbar-left">
         {#if onGoToDashboard}
           <button type="button" class="btn-goto-dashboard" onclick={onGoToDashboard}>
@@ -220,44 +244,82 @@
           </button>
         {/if}
       </div>
-      <div class="toolbar-controls">
+
+      <!-- Right: hamburger menu -->
+      <div class="hamburger-menu-wrap">
         <button
           type="button"
-          class="btn-theme-toggle"
-          class:active={isDrawerOpen}
-          onclick={() => {
-            if (isDrawerOpen) {
-              saveStyle();
-            } else {
-              openStyleDrawer();
-            }
-          }}
+          class="btn-hamburger"
+          class:open={isMenuOpen}
+          onclick={(e) => { e.stopPropagation(); isMenuOpen = !isMenuOpen; }}
+          aria-label="Canvas options"
         >
-          🎨 Style
+          <span class="ham-line"></span>
+          <span class="ham-line"></span>
+          <span class="ham-line"></span>
         </button>
-        <div class="slider-group">
-          <span class="slider-label">Page Padding: {paddingMm}mm</span>
-          <input
-            type="range"
-            min="10"
-            max="25"
-            step="1"
-            bind:value={paddingMm}
-            class="padding-slider"
-          />
-        </div>
-        <button
-          type="button"
-          class="btn-download"
-          onclick={downloadPdf}
-          disabled={downloading}
-        >
-          {#if downloading}
-            <span class="spinner"></span> Generating PDF...
-          {:else}
-            Download PDF
-          {/if}
-        </button>
+
+        {#if isMenuOpen}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="ham-dropdown" onclick={(e) => e.stopPropagation()}>
+
+            <!-- Add Page -->
+            <div class="ham-section">
+              <button type="button" class="ham-btn" onclick={() => { addPage(); isMenuOpen = false; }}>
+                + Add Page
+              </button>
+            </div>
+
+            <div class="ham-divider"></div>
+
+            <!-- 🎨 Style -->
+            <div class="ham-section">
+              <span class="ham-section-label">Theme</span>
+              <button
+                type="button"
+                class="ham-btn"
+                class:active={isDrawerOpen}
+                onclick={() => { if (isDrawerOpen) { saveStyle(); } else { openStyleDrawer(); } isMenuOpen = false; }}
+              >
+                🎨 {isDrawerOpen ? 'Close Style' : 'Style Settings'}
+              </button>
+            </div>
+
+            <div class="ham-divider"></div>
+
+            <!-- Padding slider -->
+            <div class="ham-section">
+              <span class="ham-section-label">Page Padding: {paddingMm}mm</span>
+              <input
+                type="range"
+                min="10"
+                max="25"
+                step="1"
+                bind:value={paddingMm}
+                class="ham-slider"
+              />
+            </div>
+
+            <div class="ham-divider"></div>
+
+            <!-- Download PDF -->
+            <div class="ham-section">
+              <button
+                type="button"
+                class="ham-btn ham-btn-primary"
+                onclick={() => { downloadPdf(); isMenuOpen = false; }}
+                disabled={downloading}
+              >
+                {#if downloading}
+                  <span class="spinner"></span> Generating...
+                {:else}
+                  ↓ Download PDF
+                {/if}
+              </button>
+            </div>
+
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -473,17 +535,9 @@
   <!-- Scroll area for A4 pages -->
   <div class="pages-scroll-area" class:export-scroll={isExportMode}>
     
-    {#if !isExportMode && unplacedCount > 0}
-      <!-- Unplaced Blocks Indicator (Section 8) -->
-      <div class="unplaced-banner">
-        <span class="banner-icon">💡</span>
-        <span class="banner-text">{unplacedCount} block{unplacedCount > 1 ? 's' : ''} not yet placed on the CV. Drag them onto the page!</span>
-      </div>
-    {/if}
-
     <div class="pages-list">
       {#each pagesToRender as pageNum}
-        <div class="page-wrapper" class:is-ghost={pageNum > maxPlacedPage}>
+        <div class="page-wrapper" class:is-ghost={pageNum > totalPages}>
           <CvPage
             page={pageNum}
             blocks={blocks}
@@ -494,7 +548,7 @@
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
           />
-          {#if !isExportMode && pageNum > maxPlacedPage}
+          {#if !isExportMode && pageNum > totalPages}
             <div class="ghost-page-label">Page {pageNum} (Drop block to add page)</div>
           {/if}
         </div>
@@ -568,27 +622,136 @@
     border-color: rgba(35, 131, 226, 0.25);
   }
 
-  .toolbar-controls {
-    display: flex;
-    align-items: center;
-    gap: 24px;
+  /* Hamburger menu */
+  .hamburger-menu-wrap {
+    position: relative;
   }
 
-  .slider-group {
+  .btn-hamburger {
     display: flex;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    gap: 12px;
+    gap: 4px;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: 1px solid rgba(55, 53, 47, 0.14);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0;
+    transition: background-color 0.15s, border-color 0.15s;
   }
 
-  .slider-label {
-    font-size: 12px;
+  .btn-hamburger:hover,
+  .btn-hamburger.open {
+    background-color: rgba(55, 53, 47, 0.06);
+    border-color: rgba(55, 53, 47, 0.22);
+  }
+
+  .ham-line {
+    display: block;
+    width: 14px;
+    height: 1.5px;
+    background-color: #374151;
+    border-radius: 1px;
+    transition: background-color 0.15s;
+  }
+
+  .btn-hamburger.open .ham-line {
+    background-color: #2383e2;
+  }
+
+  /* Dropdown panel */
+  .ham-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 230px;
+    background: #ffffff;
+    border: 1px solid rgba(55, 53, 47, 0.12);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(10, 36, 99, 0.12), 0 2px 6px rgba(0,0,0,0.06);
+    z-index: 500;
+    overflow: hidden;
+    animation: ham-in 0.12s ease-out;
+  }
+
+  @keyframes ham-in {
+    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+  }
+
+  .ham-section {
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ham-section-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  .ham-divider {
+    height: 1px;
+    background-color: rgba(55, 53, 47, 0.07);
+    margin: 0;
+  }
+
+  .ham-btn {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid rgba(55, 53, 47, 0.12);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 13px;
     font-weight: 500;
-    color: #4b5563;
-    min-width: 115px;
+    color: #374151;
+    cursor: pointer;
+    transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
-  .padding-slider {
-    width: 100px;
+  .ham-btn:hover {
+    background-color: rgba(35, 131, 226, 0.07);
+    border-color: rgba(35, 131, 226, 0.25);
+    color: #2383e2;
+  }
+
+  .ham-btn.active {
+    background-color: rgba(35, 131, 226, 0.1);
+    border-color: rgba(35, 131, 226, 0.3);
+    color: #2383e2;
+  }
+
+  .ham-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .ham-btn-primary {
+    background-color: #2383e2;
+    border-color: #2383e2;
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .ham-btn-primary:hover {
+    background-color: #1a6fc2;
+    border-color: #1a6fc2;
+    color: #ffffff;
+  }
+
+  .ham-slider {
+    width: 100%;
     height: 4px;
     -webkit-appearance: none;
     appearance: none;
@@ -598,7 +761,7 @@
     cursor: pointer;
   }
 
-  .padding-slider::-webkit-slider-thumb {
+  .ham-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 14px;
@@ -610,41 +773,19 @@
     transition: transform 0.1s ease;
   }
 
-  .padding-slider::-webkit-slider-thumb:hover {
+  .ham-slider::-webkit-slider-thumb:hover {
     transform: scale(1.15);
-  }
-
-  .btn-download {
-    background-color: #2383e2;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 5px 12px;
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .btn-download:hover:not(:disabled) {
-    background-color: #1a6fc2;
-  }
-
-  .btn-download:disabled {
-    background-color: #94a3b8;
-    cursor: not-allowed;
   }
 
   .spinner {
     width: 12px;
     height: 12px;
-    border: 2px solid #ffffff;
+    border: 2px solid rgba(255,255,255,0.6);
     border-top-color: transparent;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
+    display: inline-block;
+    flex-shrink: 0;
   }
 
   @keyframes spin {
@@ -1080,31 +1221,6 @@
     border-color: #ef4444;
   }
 
-  .btn-theme-toggle {
-    background-color: transparent;
-    color: #4b5563;
-    border: 1px solid rgba(55, 53, 47, 0.12);
-    border-radius: 6px;
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .btn-theme-toggle:hover {
-    background-color: rgba(55, 53, 47, 0.05);
-    color: #1e1b18;
-  }
-
-  .btn-theme-toggle.active {
-    background-color: rgba(35, 131, 226, 0.1);
-    color: #2383e2;
-    border-color: rgba(35, 131, 226, 0.25);
-  }
 
   @media print {
     .theme-drawer {

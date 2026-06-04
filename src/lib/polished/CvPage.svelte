@@ -196,7 +196,7 @@
     width: 210mm;
     height: 297mm;
     position: relative;
-    overflow: hidden;
+    overflow: visible;
     background: #ffffff;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), 0 1px 4px rgba(0, 0, 0, 0.02);
     box-sizing: border-box;
