@@ -67,7 +67,26 @@
   text-decoration: underline;
 }
 
-.tmpl-clean s, 
+.tmpl-clean s,
 .tmpl-clean strike {
   text-decoration: line-through;
+}
+
+/* Canvas Element Types */
+.tmpl-clean.block-type-horizontal_divider {
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+.tmpl-clean.block-type-vertical_divider {
+  display: flex;
+  justify-content: center;
+  padding: 0;
+}
+
+.tmpl-clean.block-type-headshot {
+  padding: 0;
+  border-radius: 0;
+  overflow: hidden;
 }

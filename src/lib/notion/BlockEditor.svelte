@@ -11,6 +11,7 @@
   // Svelte 5 props
   let {
     block = $bindable(),
+    blocks = [],
     index,
     isFirst,
     isLast,
@@ -21,7 +22,7 @@
     moveBlock,
     focusBlock,
     mergeWithPrevious,
-    duplicateBlock, // We will pass this from NotionPane
+    duplicateBlock,
     onDragStart,
     onDragEnd
   } = $props();
@@ -29,8 +30,8 @@
   let editorElement;
   let rowElement;
   let editor = $state();
-  
-  let current = $derived({ index, block });
+
+  let current = $derived({ index, block, blocks });
   
   // Custom bubble menu element bindings
   let showBubbleMenu = $state(false);
@@ -51,11 +52,81 @@
   let highlightedIndex = $state(0);
   let slashMenuCoords = $state({ left: 0, top: 0 });
 
+  // @ name-trigger menu state
+  let showAtMenu = $state(false);
+  let atText = $state('');
+  let atMenuCoords = $state({ left: 0, top: 0 });
+
+  function closeAtMenu() {
+    showAtMenu = false;
+    atText = '';
+  }
+
+  function applyAtMention() {
+    if (!editor) return;
+    const { from } = editor.state.selection;
+    const resolvedPos = editor.state.doc.resolve(from);
+    const textBefore = resolvedPos.parent.textContent.substring(0, resolvedPos.parentOffset);
+    const match = textBefore.match(/@([a-zA-Z0-9-_]*)$/);
+    if (match) {
+      editor.commands.deleteRange({ from: from - match[0].length, to: from });
+    }
+    modalNameVal = atText || current.block.name || '';
+    showNameModal = true;
+    validateModalName(modalNameVal);
+    closeAtMenu();
+  }
+
   // Action Menu state
   let showActionMenu = $state(false);
   let dragStartFired = false;
   let clickStartX = 0;
   let clickStartY = 0;
+
+  // Name modal state
+  let showNameModal = $state(false);
+  let modalNameVal = $state('');
+  let modalNameError = $state('');
+  let modalInputEl = $state();
+
+  function validateModalName(val) {
+    const trimmed = val.trim();
+    if (trimmed === '') { modalNameError = ''; return; }
+    if (!/^[a-zA-Z0-9-_]+$/.test(trimmed)) {
+      modalNameError = 'Letters, numbers, dashes and underscores only';
+      return;
+    }
+    const isDuplicate = current.blocks.some(
+      (b, i) => i !== current.index && b.name && b.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    modalNameError = isDuplicate ? 'Name must be unique across all blocks' : '';
+  }
+
+  function handleModalNameInput(e) {
+    modalNameVal = e.target.value;
+    validateModalName(modalNameVal);
+  }
+
+  function saveModalName() {
+    validateModalName(modalNameVal);
+    if (modalNameError) return;
+    const trimmed = modalNameVal.trim();
+    updateBlock(current.index, { name: trimmed || null });
+    showNameModal = false;
+    editor?.commands.focus();
+  }
+
+  function closeModal() {
+    showNameModal = false;
+    editor?.commands.focus();
+  }
+
+  $effect(() => {
+    if (showNameModal && modalInputEl) {
+      modalInputEl.focus();
+      modalInputEl.select();
+    }
+  });
 
   // Track programmatic focus
   let lastHandledFocusTime = 0;
@@ -91,10 +162,11 @@
 
   // Available Slash Command Items
   const slashItems = [
-    { type: 'paragraph', label: 'Text', desc: 'Plain paragraph', keywords: ['text', 'paragraph'], icon: '¶' },
-    { type: 'h1', label: 'Heading 1', desc: 'Large section title', keywords: ['h1', 'heading1'], icon: 'H1' },
-    { type: 'h2', label: 'Heading 2', desc: 'Medium heading', keywords: ['h2', 'heading2'], icon: 'H2' },
-    { type: 'h3', label: 'Heading 3', desc: 'Small heading', keywords: ['h3', 'heading3'], icon: 'H3' }
+    { type: 'paragraph', label: 'Text',        desc: 'Plain paragraph',                   keywords: ['text', 'paragraph'],    icon: '¶'  },
+    { type: 'h1',       label: 'Heading 1',    desc: 'Large section title',               keywords: ['h1', 'heading1'],       icon: 'H1' },
+    { type: 'h2',       label: 'Heading 2',    desc: 'Medium heading',                    keywords: ['h2', 'heading2'],       icon: 'H2' },
+    { type: 'h3',       label: 'Heading 3',    desc: 'Small heading',                     keywords: ['h3', 'heading3'],       icon: 'H3' },
+    { type: 'name',     label: 'Name Block',   desc: 'Assign a unique @name to this block', keywords: ['name', 'rename', 'label'], icon: '@' }
   ];
 
   // Derived filtered items for Slash Menu
@@ -217,6 +289,36 @@
             }
           }
 
+          // 1.5 @ name-trigger menu key handling
+          if (showAtMenu) {
+            if (event.key === 'Enter' || event.key === 'Tab') {
+              applyAtMention();
+              event.preventDefault();
+              return true;
+            }
+            if (event.key === 'Escape') {
+              closeAtMenu();
+              event.preventDefault();
+              return true;
+            }
+          }
+
+          // 1.6 Intercept Enter for /name [value] command
+          if (event.key === 'Enter' && !event.shiftKey) {
+            const rawText = view.state.doc.textContent;
+            const match = rawText.match(/^\/name(?:\s+([^\s]+))?(?:\s|$)/);
+            if (match) {
+              const namePart = match[1] ? match[1].trim() : '';
+              modalNameVal = namePart || current.block.name || '';
+              showNameModal = true;
+              validateModalName(modalNameVal);
+              view.dispatch(view.state.tr.delete(1, match[0].length + 1));
+              closeSlashMenu();
+              event.preventDefault();
+              return true;
+            }
+          }
+
           // 2. Custom Enter Block Splitting
           if (event.key === 'Enter' && !event.shiftKey) {
             const { selection } = editor.state;
@@ -321,8 +423,8 @@
           showSlashMenu = true;
           filterText = slashMatch[1];
           highlightedIndex = 0;
-          
-          // Position slash menu relative to cursor coordinates
+          showAtMenu = false;
+
           const { selection } = editor.state;
           const coords = editor.view.coordsAtPos(selection.from);
           const editorRect = editorElement.getBoundingClientRect();
@@ -332,6 +434,28 @@
           };
         } else {
           showSlashMenu = false;
+        }
+
+        // Check if @ name-trigger should show
+        if (!showSlashMenu) {
+          const { from } = editor.state.selection;
+          const resolvedPos = editor.state.doc.resolve(from);
+          const textBefore = resolvedPos.parent.textContent.substring(0, resolvedPos.parentOffset);
+          const atMatch = textBefore.match(/@([a-zA-Z0-9-_]*)$/);
+
+          if (atMatch) {
+            atText = atMatch[1];
+            showAtMenu = true;
+            const coords = editor.view.coordsAtPos(from);
+            const editorRect = editorElement.getBoundingClientRect();
+            atMenuCoords = {
+              left: coords.left - editorRect.left,
+              top: coords.bottom - editorRect.top + 4
+            };
+          } else {
+            showAtMenu = false;
+            atText = '';
+          }
         }
 
         // Keep bubble menu values updated
@@ -368,6 +492,9 @@
           if (!document.activeElement?.closest('.bubble-menu-card')) {
             showBubbleMenu = false;
             showTurnIntoPanel = false;
+          }
+          if (!document.activeElement?.closest('.at-menu-card')) {
+            closeAtMenu();
           }
         }, 150);
       }
@@ -453,7 +580,17 @@
   // Apply slash menu selection
   function applySlashItem(item) {
     if (!editor) return;
-    
+
+    if (item.type === 'name') {
+      modalNameVal = current.block.name || '';
+      showNameModal = true;
+      validateModalName(modalNameVal);
+      editor.commands.setContent('');
+      closeSlashMenu();
+      editor.commands.focus();
+      return;
+    }
+
     // Clear editor slash text
     editor.commands.setContent('');
     
@@ -573,6 +710,13 @@
     showActionMenu = false;
   }
 
+  function handleActionRename() {
+    modalNameVal = block.name || '';
+    showNameModal = true;
+    validateModalName(modalNameVal);
+    showActionMenu = false;
+  }
+
   // Click outside listener for Action Menu
   function handleWindowClick(e) {
     if (showActionMenu && !e.target.closest('.action-menu-card')) {
@@ -596,6 +740,7 @@
   class="block-editor-row type-{block.type}"
   class:is-first-block={isFirst}
   class:is-placed={block.canvas !== null}
+  class:has-name={block.name}
   bind:this={rowElement}
 >
   <!-- Gutter Controls: Visible on hover -->
@@ -626,6 +771,14 @@
       ⠿
     </div>
   </div>
+
+  <!-- Green @name badge -->
+  {#if block.name}
+    <div class="block-name-badge" contenteditable="false">
+      <span class="badge-text">@{block.name}</span>
+      <button type="button" class="block-name-clear-btn" onclick={() => updateBlock(current.index, { name: null })} title="Remove name">×</button>
+    </div>
+  {/if}
 
   <!-- Tiptap Editor Wrapper -->
   <div 
@@ -764,6 +917,23 @@
     </div>
   {/if}
 
+  <!-- @ Name-trigger Dropdown -->
+  {#if showAtMenu}
+    <div
+      class="at-menu-card"
+      style="left:{atMenuCoords.left}px;top:{atMenuCoords.top}px;"
+    >
+      <button type="button" class="at-menu-item" onclick={applyAtMention}>
+        <div class="at-menu-icon">@</div>
+        <div class="at-menu-content">
+          <div class="at-menu-label">Name this block</div>
+          <div class="at-menu-desc">{atText ? `Set name to "@${atText}"` : 'Keep typing a name…'}</div>
+        </div>
+        <kbd class="at-menu-hint">↵</kbd>
+      </button>
+    </div>
+  {/if}
+
   <!-- Action Menu (Click Handle Context Menu) -->
   {#if showActionMenu}
     <div 
@@ -784,6 +954,13 @@
       </button>
       
       <div class="action-menu-divider"></div>
+      <button type="button" class="action-menu-btn" onclick={handleActionRename}>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a2 2 0 012-2z" />
+        </svg>
+        {block.name ? `Rename (@${block.name})` : 'Name block'}
+      </button>
+
       <div class="action-menu-section-header">Turn into</div>
       
       <button type="button" class="action-menu-btn" onclick={() => handleActionTurnInto('paragraph')}>
@@ -801,6 +978,48 @@
     </div>
   {/if}
 </div>
+
+{#if showNameModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="name-modal-backdrop" onclick={closeModal} role="presentation">
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="name-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div class="name-modal-header">
+        <h3 class="name-modal-title">Name Block</h3>
+        <button type="button" class="name-modal-close-icon" onclick={closeModal}>×</button>
+      </div>
+      <div class="name-modal-body">
+        <label for="block-name-input-{index}" class="name-modal-label">Assign an @name to reference this block</label>
+        <div class="name-modal-input-wrapper">
+          <span class="name-modal-at">@</span>
+          <input
+            id="block-name-input-{index}"
+            type="text"
+            class="name-modal-input"
+            class:is-invalid={modalNameError}
+            placeholder="e.g. contact-section"
+            value={modalNameVal}
+            oninput={handleModalNameInput}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); saveModalName(); }
+              else if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+            }}
+            bind:this={modalInputEl}
+          />
+        </div>
+        {#if modalNameError}
+          <div class="name-modal-error-msg">{modalNameError}</div>
+        {:else if modalNameVal.trim()}
+          <div class="name-modal-success-msg">✓ Name is valid and unique</div>
+        {/if}
+      </div>
+      <div class="name-modal-footer">
+        <button type="button" class="name-modal-btn cancel-btn" onclick={closeModal}>Cancel</button>
+        <button type="button" class="name-modal-btn save-btn" onclick={saveModalName} disabled={!!modalNameError}>Save</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .block-editor-row {
@@ -1228,4 +1447,207 @@
     width: 14px;
     text-align: center;
   }
+
+  /* @ name-trigger dropdown */
+  .at-menu-card {
+    position: absolute;
+    background: #ffffff;
+    border: 1px solid rgba(55, 53, 47, 0.12);
+    border-radius: 8px;
+    box-shadow: var(--notion-menu-shadow);
+    padding: 4px;
+    min-width: 220px;
+    z-index: 1002;
+  }
+
+  .at-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    background: transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .at-menu-item:hover {
+    background-color: var(--notion-hover);
+  }
+
+  .at-menu-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    color: #059669;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .at-menu-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .at-menu-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--notion-text);
+    line-height: 1.2;
+  }
+
+  .at-menu-desc {
+    font-size: 11px;
+    color: var(--notion-text-muted);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .at-menu-hint {
+    font-size: 10px;
+    font-family: var(--font-sans);
+    color: var(--notion-text-muted);
+    background: rgba(55, 53, 47, 0.06);
+    border: 1px solid rgba(55, 53, 47, 0.15);
+    border-radius: 3px;
+    padding: 1px 5px;
+    flex-shrink: 0;
+  }
+
+  /* @name badge */
+  .block-name-badge {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    background-color: #10b981;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    user-select: none;
+    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: none;
+  }
+
+  .block-name-clear-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.7);
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    border-radius: 2px;
+    transition: color 0.15s, background-color 0.15s;
+    pointer-events: auto;
+  }
+
+  .block-name-clear-btn:hover { color: #ffffff; background-color: rgba(0,0,0,0.2); }
+
+  .block-editor-row.has-name .editor-wrapper { padding-right: 90px; }
+
+  /* Name modal */
+  .name-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15,23,42,0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+
+  .name-modal-card {
+    background: var(--notion-bg, #ffffff);
+    border-radius: 12px;
+    border: 1px solid var(--notion-border, #e2e8f0);
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+    width: 380px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: modalFadeIn 0.18s ease-out;
+  }
+
+  @keyframes modalFadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  .name-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--notion-border, #f1f5f9);
+  }
+
+  .name-modal-title { font-size: 15px; font-weight: 600; color: var(--notion-text, #1e293b); margin: 0; }
+
+  .name-modal-close-icon {
+    background: transparent; border: none; font-size: 20px; color: #94a3b8;
+    cursor: pointer; line-height: 1; padding: 0; transition: color 0.15s;
+  }
+  .name-modal-close-icon:hover { color: #475569; }
+
+  .name-modal-body { padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+
+  .name-modal-label { font-size: 12px; font-weight: 500; color: #64748b; }
+
+  .name-modal-input-wrapper {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--notion-border, #cbd5e1);
+    border-radius: 6px;
+    padding: 0 10px;
+    background: #f8fafc;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .name-modal-input-wrapper:focus-within { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,0.15); }
+
+  .name-modal-at { color: #10b981; font-weight: bold; font-size: 14px; margin-right: 4px; user-select: none; }
+
+  .name-modal-input {
+    flex: 1; border: none; background: transparent;
+    padding: 8px 0; font-size: 13.5px; color: var(--notion-text, #1e293b); outline: none;
+  }
+  .name-modal-input.is-invalid { color: #eb5757; }
+  .name-modal-input-wrapper:has(.name-modal-input.is-invalid) { border-color: #eb5757; }
+  .name-modal-input-wrapper:has(.name-modal-input.is-invalid):focus-within { box-shadow: 0 0 0 3px rgba(235,87,87,0.15); }
+
+  .name-modal-error-msg   { font-size: 11px; color: #eb5757; margin-top: 2px; }
+  .name-modal-success-msg { font-size: 11px; color: #10b981; margin-top: 2px; }
+
+  .name-modal-footer {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 12px 20px; background: #f8fafc; border-top: 1px solid var(--notion-border, #f1f5f9);
+  }
+
+  .name-modal-btn {
+    padding: 6px 14px; font-size: 12.5px; font-weight: 500; border-radius: 6px; cursor: pointer; transition: all 0.15s;
+  }
+  .name-modal-btn.cancel-btn { background: transparent; border: 1px solid var(--notion-border, #e2e8f0); color: #64748b; }
+  .name-modal-btn.cancel-btn:hover { background: #f1f5f9; color: #334155; }
+  .name-modal-btn.save-btn { background: #10b981; border: 1px solid #059669; color: white; }
+  .name-modal-btn.save-btn:hover:not(:disabled) { background: #059669; }
+  .name-modal-btn.save-btn:disabled { background: #cbd5e1; border-color: #cbd5e1; color: #94a3b8; cursor: not-allowed; }
 </style>

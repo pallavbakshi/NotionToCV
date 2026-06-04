@@ -2,6 +2,8 @@
 <script>
   import ColorPicker from 'svelte-awesome-color-picker';
   import CvPage from './CvPage.svelte';
+  import ElementsDock from './ElementsDock.svelte';
+  import { findOverlappingIds } from './canvasUtils.js';
 
   let {
     blocks,
@@ -9,6 +11,9 @@
     draggedBlockId = $bindable(),
     updateBlockCanvas,
     updateBlockName,
+    addCanvasElement = null,
+    removeCanvasElement = null,
+    updateBlockImageData = null,
     isExportMode = false,
     pageTitle = '',
     templateName = 'clean',
@@ -102,12 +107,17 @@
 
   let selectedBlockId = $state(null);
   let downloading = $state(false);
-  let manualPageCount = $state(1); // tracks user-added pages
-  let isMenuOpen = $state(false);  // hamburger dropdown
+  let manualPageCount = $state(1);
+  let isMenuOpen = $state(false);
 
-  // Count unplaced blocks
+  // Overlap detection (mm-based, covers all block types including gutter)
+  let colWidth = $derived((210 - 2 * paddingMm - 12) / 4);
+  let overlappingBlockIds = $derived(findOverlappingIds(blocks, colWidth, paddingMm));
+  let overlapCount = $derived(overlappingBlockIds.size);
+
+  // Count unplaced notion blocks (exclude canvas-sourced elements)
   let unplacedCount = $derived(
-    blocks.filter(b => b.canvas === null).length
+    blocks.filter(b => b.source !== 'canvas' && b.canvas === null).length
   );
 
   // Find the maximum page containing at least one placed block
@@ -534,7 +544,14 @@
 
   <!-- Scroll area for A4 pages -->
   <div class="pages-scroll-area" class:export-scroll={isExportMode}>
-    
+
+    {#if !isExportMode && overlapCount > 0}
+      <div class="overlap-banner">
+        <span class="banner-icon">⚠️</span>
+        <span class="banner-text">{overlapCount} block{overlapCount > 1 ? 's' : ''} overlapping — move or resize the highlighted blocks to fix.</span>
+      </div>
+    {/if}
+
     <div class="pages-list">
       {#each pagesToRender as pageNum}
         <div class="page-wrapper" class:is-ghost={pageNum > totalPages}>
@@ -545,6 +562,8 @@
             bind:selectedBlockId={selectedBlockId}
             {updateBlockCanvas}
             {updateBlockName}
+            {updateBlockImageData}
+            {overlappingBlockIds}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
           />
@@ -555,6 +574,15 @@
       {/each}
     </div>
   </div>
+
+  {#if !isExportMode && addCanvasElement}
+    <ElementsDock
+      {addCanvasElement}
+      {removeCanvasElement}
+      bind:draggedBlockId={draggedBlockId}
+      {blocks}
+    />
+  {/if}
 </div>
 
 <style>
@@ -810,6 +838,21 @@
     background-color: #ffffff;
   }
 
+  /* Overlap Warning Banner */
+  .overlap-banner {
+    width: 210mm;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #991b1b;
+    box-sizing: border-box;
+  }
+
   /* Unplaced Blocks Banner */
   .unplaced-banner {
     width: 210mm;
@@ -889,6 +932,7 @@
       gap: 0 !important;
     }
     .unplaced-banner,
+    .overlap-banner,
     .ghost-page-label {
       display: none !important;
     }
