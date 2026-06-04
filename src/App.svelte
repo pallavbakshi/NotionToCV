@@ -109,7 +109,7 @@
         pageTitle = resume.pageTitle;
         paddingMm = resume.paddingMm;
         activeTemplate = resume.templateName;
-        customTemplates = resume.customTemplates;
+        customTemplates = JSON.parse(JSON.stringify(resume.customTemplates || {}));
       }
     } else {
       activeResumeId = null;

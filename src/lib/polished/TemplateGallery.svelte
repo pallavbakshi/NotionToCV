@@ -169,8 +169,8 @@
       const result = await response.json();
       const { blocks, css, templateId } = result;
 
-      if (!blocks?.length) throw new Error(result.error || 'No content could be extracted — check the Vite server console for details.');
-      if (!css) throw new Error('No design could be extracted — check the Vite server console for details.');
+      if (!blocks?.length) throw new Error(result.error || 'No content could be extracted from the PDF. The file may be empty or unsupported.');
+      if (!css) throw new Error('No design could be extracted from the PDF. The file may use unsupported formatting.');
 
       onImport?.({ blocks, css, templateId });
     } catch (err) {
@@ -268,13 +268,14 @@
     </div>
 
     <!-- ── Drop zone ──────────────────────────────────────────────── -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="drop-zone"
       class:drag-over={isDragOver}
       class:loading={importing}
       onclick={handleDropZoneClick}
+      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDropZoneClick(); } }}
+      role="button"
+      tabindex="0"
       ondrop={handleDrop}
       ondragover={handleDragOver}
       ondragleave={handleDragLeave}
