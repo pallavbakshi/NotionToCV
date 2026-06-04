@@ -247,34 +247,18 @@ Respond with valid JSON only. You may wrap it in \`\`\`json fences.`;
 
               // Font sizes & line-heights are LOCKED to the canvas grid (1 row = 5mm:
               // paragraph 1 row, h3 2 rows, h2 3 rows, h1 4 rows) so we do NOT let the
-              // model choose them. We only extract constrained design tokens and build
-              // the CSS ourselves. Fonts are restricted to the 6 we load in index.html.
-              const ALLOWED_FONTS = ['Inter', 'Lora', 'Playfair Display', 'Space Grotesk', 'Fira Code', 'Outfit'];
-
               const themePrompt =
-                `Analyze the typography and visual design of this CV/resume and return a JSON object describing its style as design tokens.
-
-You MUST pick fonts ONLY from this list (choose the closest match to what you see):
-${ALLOWED_FONTS.map(f => `  - ${f}`).join('\n')}
+                `Analyze the color scheme of this CV/resume and return a JSON object containing its color tokens.
 
 Schema (return exactly this shape):
 {
-  "bodyFont": "<one font from the list — for body/paragraph text>",
-  "headingFont": "<one font from the list — for h1/h2/h3>",
-  "textColor": "<hex, e.g. #333333 — body text color>",
-  "headingColor": "<hex — h1 & h3 color>",
-  "accentColor": "<hex — used for h2 section headings & dividers>",
-  "h1Weight": <300-900 number>,
-  "h2Weight": <300-900 number>,
-  "h3Weight": <300-900 number>,
-  "bodyWeight": <300-900 number>,
-  "h2Transform": "uppercase" | "none",
-  "h2Italic": true | false,
-  "h2Divider": "underline" | "left-border" | "none",
-  "h2LetterSpacing": "<e.g. 1.5pt or 0>"
+  "textColor": "<hex, e.g. #333333 — body/paragraph text color>",
+  "h1Color": "<hex, e.g. #111111 — primary main title/name color (h1)>",
+  "h2Color": "<hex, e.g. #0a2463 — section headings & dividers color (h2)>",
+  "h3Color": "<hex, e.g. #1e293b — sub-section/role title color (h3)>",
+  "backgroundColor": "<hex, e.g. #ffffff — paper background color>"
 }
 
-Match the original's serif vs sans-serif feel, font weights, whether section headings are UPPERCASE, italic, and whether they use an underline or left bar.
 Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
 
               console.log(`[extract] Firing ${pageCount} content call(s) + 1 theme call in parallel...`);
@@ -316,19 +300,12 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
               // Sizes/line-heights are GRID-LOCKED here, never from the model.
               const templateId = `custom-${Date.now().toString(36)}`;
 
-              function validFont(f) {
-                return ALLOWED_FONTS.includes(f) ? f : 'Inter';
-              }
               function validHex(c, fallback) {
                 return (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c.trim())) ? c.trim() : fallback;
               }
-              function validWeight(w, fallback) {
-                const n = parseInt(w);
-                return (Number.isFinite(n) && n >= 300 && n <= 900) ? n : fallback;
-              }
               // Generic fallback family so text still renders if a webfont is slow
               function fontStack(f) {
-                const serif = ['Lora', 'Playfair Display'];
+                const serif = ['Noto Serif', 'Lora', 'Playfair Display'];
                 const mono = ['Fira Code'];
                 const generic = serif.includes(f) ? 'serif' : mono.includes(f) ? 'monospace' : 'sans-serif';
                 return `'${f}', ${generic}`;
@@ -342,38 +319,34 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                 console.error('[extract] Theme raw:', stripFences(themeRaw).slice(0, 300));
               }
 
-              const bodyFont = validFont(t.bodyFont);
-              const headingFont = validFont(t.headingFont);
-              const textColor = validHex(t.textColor, '#333333');
-              const headingColor = validHex(t.headingColor, '#111111');
-              const accentColor = validHex(t.accentColor, headingColor);
-              const h1Weight = validWeight(t.h1Weight, 800);
-              const h2Weight = validWeight(t.h2Weight, 700);
-              const h3Weight = validWeight(t.h3Weight, 600);
-              const bodyWeight = validWeight(t.bodyWeight, 400);
-              const h2Transform = t.h2Transform === 'uppercase' ? 'uppercase' : 'none';
-              const h2Italic = t.h2Italic === true;
-              const h2Divider = ['underline', 'left-border', 'none'].includes(t.h2Divider) ? t.h2Divider : 'none';
-              const h2LetterSpacing = (typeof t.h2LetterSpacing === 'string' && /^[\d.]+(pt|mm|px)$/.test(t.h2LetterSpacing.trim()))
-                ? t.h2LetterSpacing.trim() : '0';
+              const bodyFont = 'Inter';
+              const headingFont = 'Inter';
+              const textColor = validHex(t.textColor, '#1e1b18');
+              const h1Color = validHex(t.h1Color, '#0a2463');
+              const h2Color = validHex(t.h2Color, '#0a2463');
+              const h3Color = validHex(t.h3Color, '#1e1b18');
+              const backgroundColor = validHex(t.backgroundColor, '#ffffff');
 
-              // h2 divider style → border rule
-              let h2Border = '';
-              if (h2Divider === 'underline') h2Border = `border-bottom: 0.75pt solid ${accentColor};`;
-              else if (h2Divider === 'left-border') h2Border = `border-left: 2mm solid ${accentColor}; padding-left: 3mm;`;
+              const h1Weight = 800;
+              const h2Weight = 700;
+              const h3Weight = 600;
+              const bodyWeight = 400;
+              const h2Transform = 'uppercase';
+              const h2LetterSpacing = '1.5pt';
+              const h2Border = `border-bottom: 0.75pt solid ${h2Color};`;
 
               // LOCKED grid sizes: line-height = rows × 5mm (h1=4, h2=3, h3=2, p=1)
               const css = `
 .tmpl-${templateId} {
   font-family: ${fontStack(bodyFont)};
   color: ${textColor};
-  background-color: #ffffff;
+  background-color: ${backgroundColor};
 }
 .tmpl-${templateId}.block-type-h1 {
   font-family: ${fontStack(headingFont)};
   font-size: 16mm; line-height: 20mm;
   font-weight: ${h1Weight};
-  color: ${headingColor};
+  color: ${h1Color};
   letter-spacing: -0.5pt;
   margin: 0; display: block;
 }
@@ -381,9 +354,8 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
   font-family: ${fontStack(headingFont)};
   font-size: 12mm; line-height: 15mm;
   font-weight: ${h2Weight};
-  color: ${accentColor};
+  color: ${h2Color};
   text-transform: ${h2Transform};
-  ${h2Italic ? 'font-style: italic;' : ''}
   letter-spacing: ${h2LetterSpacing};
   ${h2Border}
   margin: 0; display: block; width: 100%; box-sizing: border-box;
@@ -392,7 +364,7 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
   font-family: ${fontStack(headingFont)};
   font-size: 8mm; line-height: 10mm;
   font-weight: ${h3Weight};
-  color: ${headingColor};
+  color: ${h3Color};
   margin: 0; display: block;
 }
 .tmpl-${templateId}.block-type-paragraph {
@@ -407,10 +379,22 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
 .tmpl-${templateId} u { text-decoration: underline; }
 .tmpl-${templateId} s, .tmpl-${templateId} strike { text-decoration: line-through; }`.trim();
 
-              console.log(`[extract] Built CSS from tokens — body:${bodyFont} heading:${headingFont} accent:${accentColor} divider:${h2Divider}`);
+              console.log(`[extract] Built CSS from colors — body:${bodyFont} heading:${headingFont} text:${textColor} h1:${h1Color} h2:${h2Color} h3:${h3Color} bg:${backgroundColor}`);
 
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ blocks, css, templateId, pageCount }));
+              res.end(JSON.stringify({
+                blocks,
+                css,
+                templateId,
+                pageCount,
+                themeColors: {
+                  h1Color: h1Color,
+                  h2Color: h2Color,
+                  h3Color: h3Color,
+                  textColor: textColor,
+                  backgroundColor: backgroundColor
+                }
+              }));
 
             } catch (err) {
               console.error('CV extraction error:', err);

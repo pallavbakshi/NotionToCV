@@ -32,6 +32,13 @@
   let paddingMm = $state(15);
   let activeTemplate = $state('clean');
   let customTemplates = $state({}); // { [id]: cssString }
+  let themeColors = $state({
+    h1Color: '#0a2463',
+    h2Color: '#0a2463',
+    h3Color: '#1e1b18',
+    textColor: '#1e1b18',
+    backgroundColor: '#ffffff'
+  });
 
   // Shared UI states
   let paneWidth = $state(480);
@@ -63,6 +70,53 @@
     styleEl.textContent = allCss;
   });
 
+  // Inject theme-color-overrides CSS variables
+  $effect(() => {
+    let styleEl = document.getElementById('theme-color-overrides');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'theme-color-overrides';
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = `
+      .tmpl-${activeTemplate}, [class*="tmpl-"], .polished-container {
+        --cv-h1-color: ${themeColors.h1Color};
+        --cv-h2-color: ${themeColors.h2Color};
+        --cv-h3-color: ${themeColors.h3Color};
+        --cv-text-color: ${themeColors.textColor};
+        --cv-bg-color: ${themeColors.backgroundColor};
+      }
+      
+      .polished-container .cv-page-container,
+      .polished-container .cv-page {
+        color: var(--cv-text-color) !important;
+        background-color: var(--cv-bg-color) !important;
+      }
+      
+      .polished-container .block-type-h1 {
+        color: var(--cv-h1-color) !important;
+        background-color: transparent !important;
+      }
+      .polished-container .block-type-h2 {
+        color: var(--cv-h2-color) !important;
+        border-color: var(--cv-h2-color) !important;
+        background-color: transparent !important;
+      }
+      .polished-container .block-type-h3 {
+        color: var(--cv-h3-color) !important;
+        background-color: transparent !important;
+      }
+      
+      .polished-container .block-type-paragraph,
+      .polished-container .block-type-todo,
+      .polished-container .block-type-bullet,
+      .polished-container .block-type-number {
+        color: var(--cv-text-color) !important;
+        background-color: transparent !important;
+      }
+    `;
+  });
+
   // Auto-save currently active CV session
   $effect(() => {
     if (activeResumeId && blocks.length > 0) {
@@ -75,7 +129,8 @@
           currentResume.pageTitle !== pageTitle ||
           currentResume.paddingMm !== paddingMm ||
           currentResume.templateName !== activeTemplate ||
-          JSON.stringify(currentResume.customTemplates) !== JSON.stringify(customTemplates)
+          JSON.stringify(currentResume.customTemplates) !== JSON.stringify(customTemplates) ||
+          JSON.stringify(currentResume.themeColors) !== JSON.stringify(themeColors)
         ) {
           resumes[idx] = {
             ...currentResume,
@@ -84,6 +139,7 @@
             paddingMm,
             templateName: activeTemplate,
             customTemplates,
+            themeColors: { ...themeColors },
             updatedAt: new Date().toISOString()
           };
           localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
@@ -110,6 +166,13 @@
         paddingMm = resume.paddingMm;
         activeTemplate = resume.templateName;
         customTemplates = JSON.parse(JSON.stringify(resume.customTemplates || {}));
+        themeColors = {
+          h1Color: resume.themeColors?.h1Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
+          h2Color: resume.themeColors?.h2Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
+          h3Color: resume.themeColors?.h3Color ?? resume.themeColors?.textColor ?? '#1e1b18',
+          textColor: resume.themeColors?.textColor ?? '#1e1b18',
+          backgroundColor: resume.themeColors?.backgroundColor ?? '#ffffff'
+        };
       }
     } else {
       activeResumeId = null;
@@ -144,6 +207,15 @@
             paddingMm = data.paddingMm ?? 15;
             if (data.templateName) activeTemplate = data.templateName;
             if (data.customTemplates) customTemplates = data.customTemplates;
+            if (data.themeColors) {
+              themeColors = {
+                h1Color: data.themeColors.h1Color ?? data.themeColors.primaryColor ?? '#0a2463',
+                h2Color: data.themeColors.h2Color ?? data.themeColors.primaryColor ?? '#0a2463',
+                h3Color: data.themeColors.h3Color ?? data.themeColors.textColor ?? '#1e1b18',
+                textColor: data.themeColors.textColor ?? '#1e1b18',
+                backgroundColor: data.themeColors.backgroundColor ?? '#ffffff'
+              };
+            }
           }
         }
       } catch (err) {
@@ -214,6 +286,13 @@
       paddingMm: 15,
       templateName: templateId,
       customTemplates: {},
+      themeColors: {
+        h1Color: '#0a2463',
+        h2Color: '#0a2463',
+        h3Color: '#1e1b18',
+        textColor: '#1e1b18',
+        backgroundColor: '#ffffff'
+      },
       updatedAt: new Date().toISOString()
     };
     resumes = [newResume, ...resumes];
@@ -221,7 +300,7 @@
     navigate('/resume/' + newResume.id);
   }
 
-  function handleNewImport({ blocks: importedBlocks, css, templateId }) {
+  function handleNewImport({ blocks: importedBlocks, css, templateId, themeColors: importedColors }) {
     const newResume = {
       id: 'res_' + Math.random().toString(36).substring(2, 9),
       pageTitle: 'Imported CV',
@@ -229,6 +308,13 @@
       paddingMm: 15,
       templateName: templateId,
       customTemplates: { [templateId]: css },
+      themeColors: importedColors || {
+        h1Color: '#0a2463',
+        h2Color: '#0a2463',
+        h3Color: '#1e1b18',
+        textColor: '#1e1b18',
+        backgroundColor: '#ffffff'
+      },
       updatedAt: new Date().toISOString()
     };
     resumes = [newResume, ...resumes];
@@ -275,6 +361,7 @@
         pageTitle={pageTitle}
         templateName={activeTemplate ?? 'clean'}
         customTemplates={customTemplates}
+        bind:themeColors={themeColors}
       />
     </div>
   </div>
@@ -302,6 +389,7 @@
             bind:paddingMm={paddingMm}
             bind:activeTemplate={activeTemplate}
             bind:customTemplates={customTemplates}
+            bind:themeColors={themeColors}
           />
         </div>
 
@@ -325,6 +413,7 @@
             pageTitle={pageTitle}
             templateName={activeTemplate ?? 'clean'}
             customTemplates={customTemplates}
+            bind:themeColors={themeColors}
             onGoToDashboard={() => navigate('/dashboard')}
             onChangeTemplate={handleChangeTemplate}
           />

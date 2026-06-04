@@ -381,7 +381,7 @@
     cursor: pointer;
     user-select: none;
     transition: opacity 0.15s ease-out;
-    background-color: var(--color-ghost-white);
+    background-color: var(--cv-bg-color, #ffffff);
     z-index: 5;
   }
 

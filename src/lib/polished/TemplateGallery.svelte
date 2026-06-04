@@ -167,12 +167,12 @@
 
       importStep = 'Extracting content & design…';
       const result = await response.json();
-      const { blocks, css, templateId } = result;
+      const { blocks, css, templateId, themeColors } = result;
 
       if (!blocks?.length) throw new Error(result.error || 'No content could be extracted from the PDF. The file may be empty or unsupported.');
       if (!css) throw new Error('No design could be extracted from the PDF. The file may use unsupported formatting.');
 
-      onImport?.({ blocks, css, templateId });
+      onImport?.({ blocks, css, templateId, themeColors });
     } catch (err) {
       importError = err.message;
     } finally {
