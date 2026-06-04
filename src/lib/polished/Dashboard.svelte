@@ -39,7 +39,7 @@
     <!-- Header -->
     <header class="dashboard-header">
       <div class="header-left">
-        <span class="app-logo">📄✨</span>
+        <span class="app-logo">🏛️</span>
         <h1 class="dashboard-title">NotionToCV</h1>
       </div>
       <button type="button" class="btn-create-new" onclick={onCreateNew}>
@@ -51,9 +51,9 @@
     {#if resumes.length === 0}
       <!-- Empty State -->
       <div class="empty-state">
-        <div class="empty-icon">📂</div>
-        <h2 class="empty-title">No CVs yet</h2>
-        <p class="empty-subtitle">Create a CV from templates or import a PDF to get started.</p>
+        <div class="empty-icon">📜</div>
+        <h2 class="empty-title">No Resumes Found</h2>
+        <p class="empty-subtitle">Begin your new document using a premium template or transcribe an existing PDF.</p>
         <button type="button" class="btn-create-new large" onclick={onCreateNew}>
           Create Your First CV
         </button>
@@ -66,7 +66,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="cv-card" onclick={() => onEdit?.(cv.id)}>
             <div class="card-body">
-              <h3 class="cv-title">{cv.pageTitle?.trim() || 'Untitled CV'}</h3>
+              <h3 class="cv-title">{cv.pageTitle.trim() || 'Untitled CV'}</h3>
               <div class="cv-meta">
                 <span class="meta-item">
                   <span class="meta-icon">🎨</span>
@@ -82,7 +82,7 @@
             
             <div class="card-actions">
               <button type="button" class="btn-action edit" onclick={() => onEdit?.(cv.id)}>
-                Edit
+                Edit CV
               </button>
               <button type="button" class="btn-action delete" onclick={(e) => handleDelete(cv.id, cv.pageTitle, e)}>
                 Delete
@@ -99,12 +99,14 @@
 <style>
   .dashboard-backdrop {
     min-height: 100vh;
-    background: linear-gradient(135deg, #0f172a 0%, #1e1e38 100%);
+    background-color: var(--surface-2);
+    background-image: radial-gradient(circle at 100% 100%, rgba(62, 146, 204, 0.05) 0%, transparent 40%),
+                      radial-gradient(circle at 0% 0%, rgba(10, 36, 99, 0.03) 0%, transparent 30%);
     display: flex;
     justify-content: center;
     padding: 60px 24px 100px;
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: #f8fafc;
+    font-family: var(--font-serif);
+    color: var(--color-carbon-black);
     box-sizing: border-box;
   }
 
@@ -121,7 +123,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--outline-subtle);
     padding-bottom: 24px;
   }
 
@@ -132,39 +134,42 @@
   }
 
   .app-logo {
-    font-size: 32px;
+    font-size: 28px;
+    color: var(--color-imperial-blue);
   }
 
   .dashboard-title {
-    font-size: 28px;
+    font-family: var(--font-serif);
+    font-size: 26px;
     font-weight: 800;
-    letter-spacing: -0.8px;
-    background: linear-gradient(to right, #60a5fa, #a78bfa);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
+    color: var(--color-imperial-blue);
     margin: 0;
   }
 
   .btn-create-new {
-    background-color: #2563eb;
+    background-color: var(--color-magenta-bloom);
     color: #ffffff;
-    font-size: 14px;
-    font-weight: 600;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     padding: 10px 20px;
-    border-radius: 8px;
+    border-radius: var(--radius-default);
     border: none;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    transition: background-color 0.15s, transform 0.1s;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    transition: background-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    box-shadow: 0 2px 8px rgba(216, 49, 91, 0.2);
   }
 
   .btn-create-new:hover {
-    background-color: #1d4ed8;
+    background-color: #be284e;
     transform: translateY(-1px);
+    box-shadow: var(--shadow-ambient);
   }
 
   .btn-create-new:active {
@@ -172,13 +177,13 @@
   }
 
   .btn-create-new.large {
-    font-size: 15px;
+    font-size: 14px;
     padding: 12px 28px;
     margin-top: 10px;
   }
 
   .plus-icon {
-    font-size: 18px;
+    font-size: 16px;
     line-height: 1;
   }
 
@@ -190,29 +195,32 @@
     justify-content: center;
     text-align: center;
     padding: 80px 40px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1.5px dashed rgba(255, 255, 255, 0.12);
-    border-radius: 16px;
-    backdrop-filter: blur(10px);
+    background: var(--color-ghost-white);
+    border: 1px solid var(--outline-subtle);
+    border-radius: var(--radius-lg);
     gap: 16px;
+    box-shadow: 0 2px 8px rgba(10, 36, 99, 0.02);
   }
 
   .empty-icon {
-    font-size: 64px;
+    font-size: 48px;
     margin-bottom: 8px;
+    opacity: 0.85;
   }
 
   .empty-title {
-    font-size: 20px;
+    font-family: var(--font-serif);
+    font-size: 22px;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--color-imperial-blue);
     margin: 0;
   }
 
   .empty-subtitle {
+    font-family: var(--font-sans);
     font-size: 14px;
-    color: #94a3b8;
-    max-width: 320px;
+    color: var(--notion-text-muted);
+    max-width: 340px;
     margin: 0 0 8px;
     line-height: 1.5;
   }
@@ -225,34 +233,51 @@
   }
 
   .cv-card {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
+    background: var(--color-ghost-white);
+    border: 1px solid var(--outline-subtle);
+    border-radius: var(--radius-lg);
     padding: 24px;
     cursor: pointer;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 170px;
+    min-height: 180px;
     gap: 20px;
-    transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
-    backdrop-filter: blur(5px);
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  }
+
+  /* Sliding Imperial Blue left-border accent line */
+  .cv-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 3px;
+    background-color: var(--color-imperial-blue);
+    transform: scaleY(0);
+    transition: transform 0.2s ease;
   }
 
   .cv-card:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(96, 165, 250, 0.35);
+    border-color: rgba(62, 146, 204, 0.4);
     transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-ambient);
+  }
+
+  .cv-card:hover::before {
+    transform: scaleY(1);
   }
 
   .cv-title {
+    font-family: var(--font-serif);
     font-size: 18px;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--color-imperial-blue);
     margin: 0 0 12px;
-    line-height: 1.3;
-    /* Truncate text after 2 lines */
+    line-height: 1.35;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -263,7 +288,8 @@
     display: flex;
     gap: 16px;
     font-size: 13px;
-    color: #94a3b8;
+    color: var(--notion-text-muted);
+    font-family: var(--font-sans);
   }
 
   .meta-item {
@@ -273,51 +299,57 @@
   }
 
   .meta-icon {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .cv-date {
+    font-family: var(--font-sans);
     font-size: 11px;
-    color: #64748b;
+    color: var(--notion-text-muted);
+    opacity: 0.8;
     margin: 0;
   }
 
   .card-actions {
     display: flex;
     gap: 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--outline-subtle);
     padding-top: 16px;
   }
 
   .btn-action {
     flex: 1;
     border: none;
-    font-size: 13px;
-    font-weight: 600;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     padding: 8px 0;
-    border-radius: 6px;
+    border-radius: var(--radius-default);
     cursor: pointer;
-    transition: background-color 0.15s;
+    transition: background-color 0.15s, color 0.15s;
     text-align: center;
   }
 
   .btn-action.edit {
-    background-color: rgba(255, 255, 255, 0.06);
-    color: #e2e8f0;
+    background-color: transparent;
+    border: 1px solid var(--color-imperial-blue);
+    color: var(--color-imperial-blue);
   }
 
   .btn-action.edit:hover {
-    background-color: rgba(255, 255, 255, 0.12);
-    color: #ffffff;
+    background-color: rgba(10, 36, 99, 0.05);
   }
 
   .btn-action.delete {
-    background-color: rgba(239, 68, 68, 0.1);
-    color: #fca5a5;
+    background-color: rgba(186, 26, 26, 0.03);
+    border: 1px solid rgba(186, 26, 26, 0.15);
+    color: var(--error);
   }
 
   .btn-action.delete:hover {
-    background-color: rgba(239, 68, 68, 0.2);
-    color: #fee2e2;
+    background-color: rgba(186, 26, 26, 0.08);
+    color: #93000a;
   }
 </style>
