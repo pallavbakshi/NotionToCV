@@ -16,6 +16,7 @@
   let dropTargetIndex = $state(null);
   let dropIndicatorTop = $state(null);
   let scrollContainerEl;
+  let contentWrapperEl;
 
   // Programmatic focus helper
   function focusBlock(index, position = 'end') {
@@ -34,7 +35,7 @@
     };
     blocks.splice(index + 1, 0, newBlock);
     blocks = [...blocks];
-    focusBlock(index + 1, 1);
+    focusBlock(index + 1, 'start');
   }
 
   function deleteBlock(index) {
@@ -188,20 +189,20 @@
 
     dropTargetIndex = targetIdx;
 
-    if (!scrollContainerEl) return;
-    const containerRect = scrollContainerEl.getBoundingClientRect();
+    if (!contentWrapperEl) return;
+    const wrapperRect = contentWrapperEl.getBoundingClientRect();
 
     if (targetIdx < blocks.length) {
       const targetElement = e.currentTarget.parentNode.children[targetIdx];
       if (targetElement) {
         const targetRect = targetElement.getBoundingClientRect();
-        dropIndicatorTop = targetRect.top - containerRect.top + scrollContainerEl.scrollTop;
+        dropIndicatorTop = targetRect.top - wrapperRect.top;
       }
     } else {
       const lastElement = e.currentTarget.parentNode.children[blocks.length - 1];
       if (lastElement) {
         const lastRect = lastElement.getBoundingClientRect();
-        dropIndicatorTop = lastRect.bottom - containerRect.top + scrollContainerEl.scrollTop;
+        dropIndicatorTop = lastRect.bottom - wrapperRect.top;
       }
     }
   }
@@ -242,7 +243,7 @@
   class="notion-editor-scroll" 
   bind:this={scrollContainerEl}
 >
-  <div class="notion-content-wrapper" style="position: relative;">
+  <div class="notion-content-wrapper" style="position: relative;" bind:this={contentWrapperEl}>
     <!-- Page Title -->
     <div class="title-container">
       <input 

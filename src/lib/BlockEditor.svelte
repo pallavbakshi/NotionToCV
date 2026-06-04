@@ -8,7 +8,6 @@
   import { Color } from '@tiptap/extension-color';
   import { FontFamily } from '@tiptap/extension-font-family';
   import { Placeholder } from '@tiptap/extension-placeholder';
-  import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 
   // Svelte 5 props
   let {
@@ -29,6 +28,7 @@
   } = $props();
 
   let editorElement;
+  let rowElement;
   let editor;
   
   // Custom bubble menu element bindings
@@ -61,7 +61,7 @@
 
   // Svelte-native bubble menu positioning
   function updateBubbleMenu() {
-    if (!editor || !editorElement) return;
+    if (!editor || !rowElement) return;
     const { state } = editor;
     const { selection } = state;
     
@@ -69,14 +69,14 @@
       try {
         const coordsStart = editor.view.coordsAtPos(selection.from);
         const coordsEnd = editor.view.coordsAtPos(selection.to);
-        const editorRect = editorElement.getBoundingClientRect();
+        const rowRect = rowElement.getBoundingClientRect();
         
         // Centered horizontally above selection
-        const centerLeft = (coordsStart.left + coordsEnd.left) / 2 - editorRect.left;
+        const centerLeft = (coordsStart.left + coordsEnd.left) / 2 - rowRect.left;
         
         bubbleMenuCoords = {
           left: Math.max(8, centerLeft - 150),
-          top: coordsStart.top - editorRect.top - 46
+          top: coordsStart.top - rowRect.top - 46
         };
         showBubbleMenu = true;
       } catch (err) {
@@ -165,7 +165,12 @@
         Color,
         FontFamily,
         Placeholder.configure({
-          placeholder: () => "Type '/' for commands"
+          placeholder: ({ node }) => {
+            if (node.type.name === 'heading') {
+              return `Heading ${node.attrs.level}`;
+            }
+            return "Type '/' for commands";
+          }
         })
       ],
       content: {
@@ -533,6 +538,7 @@
 <div 
   class="block-editor-row type-{block.type}"
   class:is-first-block={isFirst}
+  bind:this={rowElement}
 >
   <!-- Gutter Controls: Visible on hover -->
   <div class="block-gutter" contenteditable="false">
@@ -839,9 +845,9 @@
   }
 
   /* Placeholders: Section 10 rules */
-  .type-h1 :global(.editor-wrapper p.is-editor-empty:first-child::before) { content: "Heading 1"; }
-  .type-h2 :global(.editor-wrapper p.is-editor-empty:first-child::before) { content: "Heading 2"; }
-  .type-h3 :global(.editor-wrapper p.is-editor-empty:first-child::before) { content: "Heading 3"; }
+  .type-h1 :global(.editor-wrapper h1.is-editor-empty:first-child::before) { content: "Heading 1"; }
+  .type-h2 :global(.editor-wrapper h2.is-editor-empty:first-child::before) { content: "Heading 2"; }
+  .type-h3 :global(.editor-wrapper h3.is-editor-empty:first-child::before) { content: "Heading 3"; }
   
   /* First block paragraph placeholder shown always when empty */
   .is-first-block :global(.editor-wrapper p.is-editor-empty:first-child::before) {
