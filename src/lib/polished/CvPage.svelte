@@ -15,7 +15,8 @@
     removeCanvasElement = null,
     overlappingBlockIds = new Set(),
     draggedBlockId = $bindable(),
-    templateName = 'clean'
+    templateName = 'clean',
+    onAskAI = null
   } = $props();
 
   const templatesConfig = {
@@ -276,6 +277,7 @@
           removeCanvasElement={removeCanvasElement}
           bind:draggedBlockId={draggedBlockId}
           templateName={templateName}
+          onAskAI={onAskAI}
         />
       {/if}
     {/each}

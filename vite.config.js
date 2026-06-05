@@ -405,6 +405,186 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
             }
           });
 
+        } else if (req.url === '/api/chat' && req.method === 'POST') {
+          let body = '';
+          const MAX_BODY_SIZE = 10 * 1024 * 1024;
+          req.on('data', chunk => {
+            body += chunk.toString();
+            if (body.length > MAX_BODY_SIZE) {
+              res.statusCode = 413;
+              res.end(JSON.stringify({ error: 'Payload too large' }));
+              req.destroy();
+            }
+          });
+          req.on('end', async () => {
+            let timeoutId = null;
+            const cleanup = () => {
+              if (timeoutId) clearTimeout(timeoutId);
+            };
+
+            try {
+              const { messages, systemPrompt, model } = JSON.parse(body);
+
+              const OPENROUTER_KEY = env.OPENROUTER_API_KEY;
+              if (!OPENROUTER_KEY) {
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'OPENROUTER_API_KEY not set in .env' }));
+                return;
+              }
+
+              const orHeaders = {
+                'Authorization': `Bearer ${OPENROUTER_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'http://localhost:5173',
+                'X-Title': 'NotionToCV'
+              };
+
+              const controller = new AbortController();
+              timeoutId = setTimeout(() => {
+                console.log('OpenRouter stream generation timeout');
+                controller.abort();
+              }, 120000); // 2 minutes timeout
+
+              req.on('aborted', () => {
+                controller.abort();
+              });
+              res.on('close', () => {
+                if (!res.writableEnded) {
+                  controller.abort();
+                }
+              });
+
+              const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: orHeaders,
+                body: JSON.stringify({
+                  model: model || 'google/gemini-2.5-flash',
+                  messages: [
+                    { role: 'system', content: systemPrompt },
+                    ...messages
+                  ],
+                  stream: true
+                }),
+                signal: controller.signal
+              });
+
+              if (!response.ok) {
+                cleanup();
+                const errText = await response.text();
+                res.statusCode = response.status;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'OpenRouter error: ' + errText }));
+                return;
+              }
+
+              res.setHeader('Content-Type', 'text/event-stream');
+              res.setHeader('Cache-Control', 'no-cache');
+              res.setHeader('Connection', 'keep-alive');
+
+              let reader = null;
+              try {
+                // Read response body as stream and stream to client
+                if (response.body) {
+                  if (typeof response.body.getReader === 'function') {
+                    reader = response.body.getReader();
+                    while (true) {
+                      if (controller.signal.aborted) {
+                        break;
+                      }
+                      const { done, value } = await reader.read();
+                      if (done) break;
+                      if (controller.signal.aborted) {
+                        break;
+                      }
+                      res.write(value);
+                    }
+                  } else {
+                    for await (const chunk of response.body) {
+                      if (controller.signal.aborted) {
+                        break;
+                      }
+                      res.write(chunk);
+                    }
+                  }
+                }
+              } catch (streamErr) {
+                console.log('Stream generation aborted or closed:', streamErr.message);
+              } finally {
+                cleanup();
+                if (reader) {
+                  try {
+                    await reader.cancel();
+                  } catch (e) {}
+                  try {
+                    reader.releaseLock();
+                  } catch (e) {}
+                }
+                res.end();
+              }
+            } catch (err) {
+              cleanup();
+              console.error('Chat API error:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Chat API failed: ' + err.message }));
+            }
+          });
+
+        } else if (req.url === '/api/screenshot' && req.method === 'POST') {
+          let body = '';
+          const MAX_BODY_SIZE = 10 * 1024 * 1024;
+          req.on('data', chunk => {
+            body += chunk.toString();
+            if (body.length > MAX_BODY_SIZE) {
+              res.statusCode = 413;
+              res.end('Payload too large');
+              req.destroy();
+            }
+          });
+          req.on('end', async () => {
+            let browser;
+            const printId = Math.random().toString(36).substring(2, 9);
+            try {
+              const data = JSON.parse(body);
+              printCache.set(printId, data);
+
+              browser = await puppeteer.launch({
+                headless: 'new',
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+              });
+              const page = await browser.newPage();
+
+              const address = server.httpServer.address();
+              const url = `http://127.0.0.1:${address.port}/?export=true&printId=${printId}`;
+
+              await page.goto(url, { waitUntil: 'networkidle0' });
+
+              const pageElements = await page.$$('.cv-page');
+              const screenshots = [];
+              for (const el of pageElements) {
+                const buffer = await el.screenshot({ type: 'jpeg', quality: 80 });
+                screenshots.push(buffer.toString('base64'));
+              }
+
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ screenshots }));
+            } catch (err) {
+              console.error('Error generating screenshots:', err);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: 'Error generating screenshots: ' + err.message }));
+            } finally {
+              printCache.delete(printId);
+              if (browser) {
+                try {
+                  await browser.close();
+                } catch (e) {
+                  console.error('Failed to close browser:', e);
+                }
+              }
+            }
+          });
+
         } else {
           next();
         }

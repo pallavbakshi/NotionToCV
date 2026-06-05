@@ -75,6 +75,21 @@
   --radius-default: 0.25rem; /* 4px */
   --radius-md: 0.375rem; /* 6px */
   --radius-lg: 0.5rem; /* 8px */
+
+  /* AI Chat UI Variables (Black Theme) */
+  --chat-primary: #000000;
+  --chat-primary-hover: #333333;
+  --chat-user-bubble-bg: #0a2463;
+  --chat-user-bubble-text: #ffffff;
+  --chat-assistant-bubble-bg: rgba(255, 255, 255, 0.9);
+  --chat-assistant-bubble-border: rgba(55, 53, 47, 0.08);
+  --chat-assistant-bubble-text: #1f2937;
+  --chat-drawer-bg: rgba(255, 255, 255, 0.85);
+  --chat-drawer-border: rgba(55, 53, 47, 0.12);
+  --chat-input-bg: #ffffff;
+  --chat-input-border: rgba(55, 53, 47, 0.15);
+  --chat-text-main: #000000;
+  --chat-text-muted: #6b7280;
 }
 
 body {
@@ -118,6 +133,7 @@ body {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  position: relative;
   background-color: #ffffff;
   border-right: 1px solid rgba(55, 53, 47, 0.09);
 
@@ -143,6 +159,7 @@ body {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  position: relative;
   flex-grow: 1;
 }
 

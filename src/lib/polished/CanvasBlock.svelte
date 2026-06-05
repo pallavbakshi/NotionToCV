@@ -18,7 +18,8 @@
     updateBlockImageData = null,
     removeCanvasElement = null,
     draggedBlockId = $bindable(),
-    templateName = 'clean'
+    templateName = 'clean',
+    onAskAI = null
   } = $props();
 
   let isCanvasElement = $derived(block?.source === 'canvas');
@@ -406,6 +407,15 @@
       {/if}
 
       <div class="toolbar-divider"></div>
+      <button 
+        type="button" 
+        class="toolbar-chat-btn" 
+        onclick={(e) => { e.stopPropagation(); onAskAI?.(selectedBlockIds); }}
+        title="Chat with AI about selected blocks"
+      >
+        💬 Chat with AI
+      </button>
+      <div class="toolbar-divider"></div>
       <button type="button" class="toolbar-delete-btn" onclick={handleDeleteClick}>Delete</button>
     </div>
   {/if}
@@ -593,6 +603,22 @@
     height: 14px;
     background-color: rgba(255,255,255,0.25);
     margin: 0 6px;
+  }
+
+  .toolbar-chat-btn {
+    border: none;
+    background: transparent;
+    color: #a7f3d0;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+  }
+
+  .toolbar-chat-btn:hover {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #ffffff;
   }
 
   .toolbar-delete-btn {
