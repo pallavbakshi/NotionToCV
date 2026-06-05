@@ -66,7 +66,10 @@ export function renderBlockSVG(laidOutBlock, opts = {}) {
   }
 
   const parts = [];
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}">`);
+  // overflow="visible": an SVG's UA default is overflow:hidden, which would clip a
+  // faux-italic ascender skewed past the right edge — but pdf-lib never clips, so
+  // clipping here would break screen/print parity. Parents are already overflow:visible.
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible">`);
 
   if (embedFonts) {
     // Embed font binaries as base64 data URLs for self-contained SVG
@@ -199,18 +202,24 @@ function renderLineText(parts, line) {
       transform = ` transform="matrix(1 0 ${c.toFixed(6)} 1 ${e.toFixed(4)} 0)"`;
     }
     const fontStyleAttr = isRealItalic ? ' font-style="italic"' : '';
-    // Faux bold: the resolved binary is lighter than requested (no real bold in the
-    // family). Thicken strokes synthetically with a same-color stroke over the fill.
-    const strokeAttr = span.isFauxBold
-      ? ` stroke="${span.color}" stroke-width="${(span.fontSizeMm * 0.03).toFixed(4)}"`
-      : '';
-
-    parts.push(`<text x="${xAttr}" y="${line.baselineYMm.toFixed(3)}" font-family="${span.fontName}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${span.color}"${strokeAttr}${transform}>`);
-
-    // For <text> with x list, the characters are placed at the given x positions
     const chars = span.glyphs.map(g => escapeXml(g.char)).join('');
-    parts.push(chars);
-    parts.push('</text>');
+
+    // Emit the span as a <text> with the given per-glyph x list.
+    const emit = (xs) => {
+      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${span.fontName}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${span.color}"${transform}>`);
+      parts.push(chars);
+      parts.push('</text>');
+    };
+
+    emit(xAttr);
+    // Faux bold: resolved binary is lighter than requested (no real bold in the
+    // family). Synthesize bold by overprinting at +2% em — IDENTICAL to the PDF
+    // renderer, so screen and print thicken the same way (horizontal overprint)
+    // instead of a stroke that would also expand vertically and diverge from print.
+    if (span.isFauxBold) {
+      const offMm = span.fontSizeMm * 0.02;
+      emit(span.xList.map((x) => (parseFloat(x) + offMm).toFixed(3)).join(' '));
+    }
   }
 
   // Underline / strike as drawn lines
@@ -256,7 +265,10 @@ function renderPassthrough(laidOutBlock) {
   const pt = passthrough || {};
 
   const parts = [];
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}">`);
+  // overflow="visible": an SVG's UA default is overflow:hidden, which would clip a
+  // faux-italic ascender skewed past the right edge — but pdf-lib never clips, so
+  // clipping here would break screen/print parity. Parents are already overflow:visible.
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible">`);
 
   if (pt.elementType === 'horizontal_divider' || pt.elementType === 'horizontal divider') {
     const y = blockHeightMm / 2;

@@ -236,6 +236,7 @@ function buildBlock(lines, contentWidthMm, blockHeightMm, blockMeta) {
     blockId: blockMeta?.blockId || '',
     blockType: blockMeta?.blockType || 'paragraph',
     lines,
+    contentLeftMm: 0,
     contentWidthMm,
     blockWidthMm: contentWidthMm,
     blockHeightMm,

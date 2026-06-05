@@ -5,7 +5,7 @@
  * Assembles a complete LaidOutBlock from inline content.
  */
 
-import { effectiveBaseStyle } from './fonts.js';
+import { effectiveBaseStyle, resolveRunStyle } from './fonts.js';
 import { contentToRuns } from './runs.js';
 import { layoutRuns } from './paragraph.js';
 import { ptToMm } from './units.js';
@@ -81,14 +81,7 @@ export function composeBlock(block, blockRect, ctx) {
   for (const segment of segments) {
     if (segment.length === 0) {
       // Empty segment (consecutive hardBreaks) → one empty line
-      allLines.push({
-        glyphs: [],
-        baselineYMm: runningYOffset + baseStyle.lineHeightMm / 2,
-        ascentMm: 0,
-        descentMm: 0,
-        widthMm: 0,
-        lineHeightMm: baseStyle.lineHeightMm,
-      });
+      allLines.push(emptyLine(baseStyle, runningYOffset));
       runningYOffset += baseStyle.lineHeightMm;
       continue;
     }
@@ -149,6 +142,7 @@ export function composeBlock(block, blockRect, ctx) {
     blockId: block.id,
     blockType,
     lines: allLines,
+    contentLeftMm: leftInsetMm,
     contentWidthMm,
     blockWidthMm: blockRect.widthMm,
     blockHeightMm: blockRect.heightMm,
@@ -160,6 +154,29 @@ export function composeBlock(block, blockRect, ctx) {
     kind: 'text',
     placement: 'placed',
     passthrough: undefined,
+  };
+}
+
+/**
+ * Build an empty line (consecutive hardBreaks / empty content) whose baseline matches
+ * a real one-line text run of the same base style — CSS half-leading + ascent, NOT a
+ * naive lineHeight/2 (which would make a caret/first char jump when text is added).
+ * @param {Object} baseStyle
+ * @param {number} runningYOffset
+ * @returns {Object}
+ */
+function emptyLine(baseStyle, runningYOffset) {
+  const run = resolveRunStyle(baseStyle, []);
+  const ascentMm = (run.font.ascent / run.unitsPerEm) * baseStyle.fontSizeMm;
+  const descentMm = Math.abs((run.font.descent / run.unitsPerEm) * baseStyle.fontSizeMm);
+  const leadingAboveMm = (baseStyle.lineHeightMm - (ascentMm + descentMm)) / 2;
+  return {
+    glyphs: [],
+    baselineYMm: runningYOffset + leadingAboveMm + ascentMm,
+    ascentMm,
+    descentMm,
+    widthMm: 0,
+    lineHeightMm: baseStyle.lineHeightMm,
   };
 }
 
@@ -201,6 +218,7 @@ export function passthroughBlock(block, blockRect) {
     blockId: block.id,
     blockType: block.type,
     lines: [],
+    contentLeftMm: 0,
     contentWidthMm: blockRect.widthMm,
     blockWidthMm: blockRect.widthMm,
     blockHeightMm: blockRect.heightMm,
@@ -243,14 +261,7 @@ export function unplacedBlock(block, ctx) {
 
   for (const segment of segments) {
     if (segment.length === 0) {
-      allLines.push({
-        glyphs: [],
-        baselineYMm: runningYOffset + baseStyle.lineHeightMm / 2,
-        ascentMm: 0,
-        descentMm: 0,
-        widthMm: 0,
-        lineHeightMm: baseStyle.lineHeightMm,
-      });
+      allLines.push(emptyLine(baseStyle, runningYOffset));
       runningYOffset += baseStyle.lineHeightMm;
       continue;
     }
@@ -277,6 +288,7 @@ export function unplacedBlock(block, ctx) {
     blockId: block.id,
     blockType,
     lines: allLines,
+    contentLeftMm: 0,
     contentWidthMm: null,
     blockWidthMm: null,
     blockHeightMm: null,
@@ -306,6 +318,7 @@ export function unplacedPassthrough(block) {
     blockId: block.id,
     blockType: block.type,
     lines: [],
+    contentLeftMm: 0,
     contentWidthMm: null,
     blockWidthMm: null,
     blockHeightMm: null,

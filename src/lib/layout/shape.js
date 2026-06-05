@@ -77,6 +77,9 @@ export function shapeRun(text, runStyle) {
       glyphId: glyph.id,
       char,
       advanceMm,
+      // Trailing letter-spacing baked into advanceMm — carried so the line breaker
+      // can trim it at a line end (CSS hangs trailing tracking, like trailing space).
+      letterSpacingMm: runStyle.letterSpacingMm,
       isBreakOpportunityAfter,
       isWhitespace,
     });

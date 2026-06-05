@@ -281,7 +281,26 @@
       return;
     }
     const reader = new FileReader();
-    reader.onload = (ev) => { if (updateBlockImageData) updateBlockImageData(block.id, ev.target.result); };
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      // The PDF exporter (pdf-lib) only embeds PNG/JPEG. Browsers happily produce
+      // webp/avif/etc., which would render on screen but silently drop from the PDF.
+      // Normalize anything that isn't PNG/JPEG to PNG so screen and print stay in sync.
+      if (file.type === 'image/png' || file.type === 'image/jpeg') {
+        if (updateBlockImageData) updateBlockImageData(block.id, dataUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        if (updateBlockImageData) updateBlockImageData(block.id, canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => { if (updateBlockImageData) updateBlockImageData(block.id, dataUrl); };
+      img.src = dataUrl;
+    };
     reader.readAsDataURL(file);
     e.target.value = '';
   }

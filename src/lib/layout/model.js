@@ -69,6 +69,9 @@
  * @property {string} blockId
  * @property {string} blockType
  * @property {LaidOutLine[]} lines
+ * @property {number} contentLeftMm — left origin of the text content box within the
+ *   block (border-left + padding-left inset); glyph xMm are absolute from the block's
+ *   left edge, so a text bounding box is [contentLeftMm, contentLeftMm + contentWidthMm]
  * @property {number|null} contentWidthMm
  * @property {number|null} blockWidthMm
  * @property {number|null} blockHeightMm
@@ -98,6 +101,7 @@ export function emptyBlock(blockId, blockType, rect) {
     blockId,
     blockType,
     lines: [],
+    contentLeftMm: 0,
     contentWidthMm: rect.widthMm,
     blockWidthMm: rect.widthMm,
     blockHeightMm: rect.heightMm,

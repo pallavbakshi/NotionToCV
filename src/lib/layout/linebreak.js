@@ -63,8 +63,13 @@ export function breakLines(glyphs, contentWidthMm) {
       continue;
     }
 
-    // Check if adding this glyph would overflow
-    const wouldOverflow = currentWidth + g.advanceMm > contentWidthMm;
+    // Check if adding this glyph would overflow. Two CSS-parity carve-outs:
+    //  • whitespace never triggers a wrap — trailing spaces hang in the margin, so a
+    //    space must not push the word before it onto the next line.
+    //  • a glyph's trailing letter-spacing is trimmed at a line end, so it doesn't
+    //    count toward the fit decision (only matters for tracked runs, e.g. headings).
+    const fitAdvanceMm = g.advanceMm - (g.letterSpacingMm || 0);
+    const wouldOverflow = !g.isWhitespace && (currentWidth + fitAdvanceMm > contentWidthMm);
 
     if (wouldOverflow) {
       if (lastBreakIdx >= 0) {
