@@ -178,6 +178,34 @@ async function embedImageFromDataUrl(pdfDoc, dataUrl) {
 }
 
 /**
+ * Draw a divider line honoring barStyle — mirrors BlockRenderer.svelte, which uses a
+ * CSS border (1px, or 3px for `double`) with style solid/dashed/dotted/double.
+ * @param {any} page
+ * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+ * @param {string} [barStyle] — 'solid' | 'dashed' | 'dotted' | 'double'
+ * @param {string} [barColor]
+ * @param {boolean} isHorizontal
+ */
+function drawDividerLine(page, x1, y1, x2, y2, barStyle, barColor, isHorizontal) {
+  const style = barStyle || 'solid';
+  const color = hexToRgb(barColor || '#000000');
+  const onePx = mmToPt(25.4 / 96); // 1 CSS px @96dpi ≈ 0.265mm ≈ 0.75pt
+
+  if (style === 'double') {
+    // Two 1px lines separated by a 1px gap (total ~3px), matching the CSS double border.
+    const off = isHorizontal ? { x: 0, y: onePx } : { x: onePx, y: 0 };
+    page.drawLine({ start: { x: x1 - off.x, y: y1 - off.y }, end: { x: x2 - off.x, y: y2 - off.y }, thickness: onePx, color });
+    page.drawLine({ start: { x: x1 + off.x, y: y1 + off.y }, end: { x: x2 + off.x, y: y2 + off.y }, thickness: onePx, color });
+    return;
+  }
+
+  const opts = { start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: onePx, color };
+  if (style === 'dashed') opts.dashArray = [mmToPt(0.9), mmToPt(0.6)];
+  else if (style === 'dotted') opts.dashArray = [onePx, mmToPt(0.5)];
+  page.drawLine(opts);
+}
+
+/**
  * Draw a pass-through block onto a PDF page.
  * @param {any} page — pdf-lib PDFPage
  * @param {LaidOutBlock} lo
@@ -193,24 +221,10 @@ async function renderPassthroughToPDF(page, lo, rect, pdfDoc) {
 
   if (pt.elementType === 'horizontal_divider' || pt.elementType === 'horizontal divider') {
     const y = topPt - heightPt / 2;
-    const color = hexToRgb(pt.barColor || '#000000');
-    const thickness = pt.barStyle === 'thick' ? mmToPt(0.5) : mmToPt(0.25);
-    page.drawLine({
-      start: { x: leftPt, y },
-      end: { x: leftPt + widthPt, y },
-      thickness,
-      color,
-    });
+    drawDividerLine(page, leftPt, y, leftPt + widthPt, y, pt.barStyle, pt.barColor, true);
   } else if (pt.elementType === 'vertical_divider' || pt.elementType === 'vertical divider') {
     const x = leftPt + widthPt / 2;
-    const color = hexToRgb(pt.barColor || '#000000');
-    const thickness = pt.barStyle === 'thick' ? mmToPt(0.5) : mmToPt(0.25);
-    page.drawLine({
-      start: { x, y: topPt },
-      end: { x, y: topPt - heightPt },
-      thickness,
-      color,
-    });
+    drawDividerLine(page, x, topPt, x, topPt - heightPt, pt.barStyle, pt.barColor, false);
   } else if (pt.elementType === 'headshot') {
     if (pt.imageData) {
       try {

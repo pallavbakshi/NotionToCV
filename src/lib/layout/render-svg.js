@@ -112,7 +112,7 @@ export function renderBlockSVG(laidOutBlock, opts = {}) {
   if (decorations && decorations.borderLeft) {
     const { widthMm, color } = decorations.borderLeft;
     const contentHeightMm = lines.reduce((sum, line) => sum + line.lineHeightMm, 0);
-    parts.push(`<rect x="0" y="0" width="${widthMm}" height="${contentHeightMm}" fill="${color}" />`);
+    parts.push(`<rect x="0" y="0" width="${widthMm}" height="${contentHeightMm}" fill="${escapeXml(color)}" />`);
   }
 
   // Render each line
@@ -128,7 +128,7 @@ export function renderBlockSVG(laidOutBlock, opts = {}) {
   if (decorations && decorations.borderBottom) {
     const { widthPt, color, yMm } = decorations.borderBottom;
     const widthMm = (widthPt * 25.4) / 72;
-    parts.push(`<line x1="0" y1="${yMm + widthMm / 2}" x2="${blockWidthMm}" y2="${yMm + widthMm / 2}" stroke="${color}" stroke-width="${widthMm}" />`);
+    parts.push(`<line x1="0" y1="${yMm + widthMm / 2}" x2="${blockWidthMm}" y2="${yMm + widthMm / 2}" stroke="${escapeXml(color)}" stroke-width="${widthMm}" />`);
   }
 
   parts.push('</svg>');
@@ -206,7 +206,7 @@ function renderLineText(parts, line) {
 
     // Emit the span as a <text> with the given per-glyph x list.
     const emit = (xs) => {
-      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${span.fontName}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${span.color}"${transform}>`);
+      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${escapeXml(span.fontName)}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${escapeXml(span.color)}"${transform}>`);
       parts.push(chars);
       parts.push('</text>');
     };
@@ -226,11 +226,11 @@ function renderLineText(parts, line) {
   for (const g of line.glyphs) {
     if (g.underline) {
       const y = line.baselineYMm + (g.fontSizeMm * 0.15);
-      parts.push(`<line x1="${g.xMm.toFixed(3)}" y1="${y.toFixed(3)}" x2="${(g.xMm + g.advanceMm).toFixed(3)}" y2="${y.toFixed(3)}" stroke="${g.color}" stroke-width="${(g.fontSizeMm * 0.05).toFixed(3)}" />`);
+      parts.push(`<line x1="${g.xMm.toFixed(3)}" y1="${y.toFixed(3)}" x2="${(g.xMm + g.advanceMm).toFixed(3)}" y2="${y.toFixed(3)}" stroke="${escapeXml(g.color)}" stroke-width="${(g.fontSizeMm * 0.05).toFixed(3)}" />`);
     }
     if (g.strike) {
       const y = line.baselineYMm - (g.fontSizeMm * 0.25);
-      parts.push(`<line x1="${g.xMm.toFixed(3)}" y1="${y.toFixed(3)}" x2="${(g.xMm + g.advanceMm).toFixed(3)}" y2="${y.toFixed(3)}" stroke="${g.color}" stroke-width="${(g.fontSizeMm * 0.05).toFixed(3)}" />`);
+      parts.push(`<line x1="${g.xMm.toFixed(3)}" y1="${y.toFixed(3)}" x2="${(g.xMm + g.advanceMm).toFixed(3)}" y2="${y.toFixed(3)}" stroke="${escapeXml(g.color)}" stroke-width="${(g.fontSizeMm * 0.05).toFixed(3)}" />`);
     }
   }
 }
@@ -251,7 +251,7 @@ function renderLinePath(parts, line) {
     // so the baseline (y=0 in font space) lands on baselineYMm and ascenders go up.
     const transform = `translate(${g.xMm.toFixed(3)}, ${line.baselineYMm.toFixed(3)}) scale(${scale.toFixed(6)}, ${(-scale).toFixed(6)})`;
 
-    parts.push(`<path d="${svgPath}" transform="${transform}" fill="${g.color}" />`);
+    parts.push(`<path d="${svgPath}" transform="${transform}" fill="${escapeXml(g.color)}" />`);
   }
 }
 
@@ -274,12 +274,12 @@ function renderPassthrough(laidOutBlock) {
     const y = blockHeightMm / 2;
     const color = pt.barColor || '#000000';
     const width = pt.barStyle === 'thick' ? 0.5 : 0.25;
-    parts.push(`<line x1="0" y1="${y}" x2="${blockWidthMm}" y2="${y}" stroke="${color}" stroke-width="${width}" />`);
+    parts.push(`<line x1="0" y1="${y}" x2="${blockWidthMm}" y2="${y}" stroke="${escapeXml(color)}" stroke-width="${width}" />`);
   } else if (pt.elementType === 'vertical_divider' || pt.elementType === 'vertical divider') {
     const x = blockWidthMm / 2;
     const color = pt.barColor || '#000000';
     const width = pt.barStyle === 'thick' ? 0.5 : 0.25;
-    parts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${blockHeightMm}" stroke="${color}" stroke-width="${width}" />`);
+    parts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${blockHeightMm}" stroke="${escapeXml(color)}" stroke-width="${width}" />`);
   } else if (pt.elementType === 'headshot') {
     // Only allow data: image URLs — never an arbitrary (e.g. javascript:) href.
     if (pt.imageData && /^data:image\//i.test(pt.imageData)) {

@@ -807,6 +807,9 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
               const data = JSON.parse(body);
               printCache.set(printId, data);
 
+              // Dynamic import (Node-only, on demand) — keeps puppeteer out of the
+              // module top-level and fixes the missing-import ReferenceError.
+              const puppeteer = (await import('puppeteer')).default;
               browser = await puppeteer.launch({
                 headless: 'new',
                 args: ['--no-sandbox', '--disable-setuid-sandbox']

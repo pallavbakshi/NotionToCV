@@ -275,13 +275,19 @@ export function getFont(family, weight, style) {
     }
   }
 
-  // Missing family entirely → Inter fallback
+  // Missing family entirely → Inter fallback. Guard against infinite recursion:
+  // if the registry is empty (initFonts not called) or Inter itself is missing,
+  // nothing usable exists — fail loudly instead of recursing forever.
+  if (REGISTRY.size === 0) {
+    throw new Error('[layout-engine] Font registry is empty — call initFonts() before getFont().');
+  }
+  if (family === 'Inter') {
+    throw new Error('[layout-engine] Base font "Inter" is not registered — vendored fonts are missing or initFonts() did not complete.');
+  }
   if (!warnedUnknownFamily.has(family)) {
     warnedUnknownFamily.add(family);
     console.warn(`[layout-engine] Unknown font family "${family}" — falling back to Inter. Only vendored families are supported.`);
   }
-
-  // Recurse to Inter
   return getFont('Inter', weight, style);
 }
 
