@@ -8,6 +8,7 @@
   import './lib/polished/templates/modern.css';
   import './lib/polished/templates/elegant.css';
   import './lib/polished/templates/compact.css';
+  import { initFonts } from './lib/layout/index.js';
 
   // Load resumes list from localStorage
   let initialResumes = [];
@@ -481,6 +482,9 @@
   });
 
   onMount(async () => {
+    // Initialize layout engine fonts (cached — no-op after first call)
+    initFonts().catch(e => console.error('Font init error:', e));
+
     const params = new URLSearchParams(window.location.search);
     const hasExport = params.has('export');
     const printId = params.get('printId');

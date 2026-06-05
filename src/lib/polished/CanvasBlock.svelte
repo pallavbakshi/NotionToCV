@@ -3,6 +3,7 @@
   import { onMount, onDestroy } from 'svelte';
   import BlockRenderer from './BlockRenderer.svelte';
   import { anyOverlap } from './canvasUtils.js';
+  import { computeLayout, blockRectMm, renderBlockSVG } from '../layout/index.js';
 
   let {
     block,
@@ -19,6 +20,8 @@
     removeCanvasElement = null,
     draggedBlockId = $bindable(),
     templateName = 'clean',
+    customTemplates = {},
+    themeColors = {},
     onAskAI = null
   } = $props();
 
@@ -29,8 +32,6 @@
   const PX_PER_MM = 96 / 25.4;
 
   let contentEl = $state(null);
-  let overflowing = $state(false);
-  let resizeObserver;
   let isDraggingThis = $state(false);
   let resizeState = $state(null);
   let nameError = $state('');
@@ -54,6 +55,25 @@
   );
   let heightMm = $derived(block.canvas ? block.canvas.rowSpan * 5 : 0);
 
+  // Layout engine: compute deterministic layout for text blocks
+  let blockLayout = $derived(
+    block.canvas && !isCanvasElement
+      ? computeLayout(block, blockRectMm(block.canvas, paddingMm), {
+          templateName,
+          customTemplates,
+          paddingMm,
+          themeColors,
+        })
+      : null
+  );
+  let svgContent = $derived(
+    blockLayout && blockLayout.kind === 'text'
+      ? renderBlockSVG(blockLayout, { glyphMode: 'text' })
+      : null
+  );
+  // Use layout engine overflow (same authority as agent measurement)
+  let overflowing = $derived(blockLayout ? blockLayout.overflow : false);
+
   function handleCanvasNameInput(e) {
     const val = e.target.value;
     const trimmed = val.trim();
@@ -75,29 +95,8 @@
     }
   }
 
-  // Check content overflow (skip for canvas elements)
-  function checkOverflow() {
-    if (!contentEl || !block.canvas || isCanvasElement) return;
-    const allocatedHeightPx = block.canvas.rowSpan * 5 * PX_PER_MM;
-    overflowing = contentEl.scrollHeight > (allocatedHeightPx + 1);
-  }
-
-  $effect(() => {
-    if (contentEl) {
-      if (resizeObserver) resizeObserver.disconnect();
-      resizeObserver = new ResizeObserver(() => checkOverflow());
-      resizeObserver.observe(contentEl);
-    }
-    return () => { if (resizeObserver) resizeObserver.disconnect(); };
-  });
-
-  $effect(() => {
-    if (block.canvas) {
-      block.canvas.rowSpan;
-      block.content;
-      checkOverflow();
-    }
-  });
+  // Overflow is now derived from layout engine (blockLayout.overflow)
+  // No browser ResizeObserver needed — same authority as agent measurement
 
   function handleCanvasDragStart(e) {
     isDraggingThis = true;
@@ -226,6 +225,14 @@
     onSelect(block.id, e.ctrlKey || e.metaKey || e.shiftKey);
   }
 
+  function handleBlockKeydown(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect(block.id, e.ctrlKey || e.metaKey || e.shiftKey);
+    }
+  }
+
   function handleDeleteClick(e) {
     e.stopPropagation();
     if (selected && selectedBlockIds.length > 1) {
@@ -291,16 +298,26 @@
   class:is-overlapping={isOverlapping}
   style="left:{leftMm}mm;top:{topMm}mm;width:{widthMm}mm;height:{heightMm}mm;"
   onclick={handleBlockClick}
+  onkeydown={handleBlockKeydown}
   data-block-id={block.id}
   role="button"
   tabindex="0"
 >
   <!-- Floating Action Toolbar -->
   {#if selected && showToolbar}
-    <div class="floating-toolbar" contenteditable="false" onclick={(e) => e.stopPropagation()}>
+    <div
+      class="floating-toolbar"
+      contenteditable="false"
+      role="toolbar"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       <div
         class="toolbar-drag-handle"
         draggable="true"
+        role="button"
+        tabindex="0"
         ondragstart={handleCanvasDragStart}
         ondragend={handleCanvasDragEnd}
       >
@@ -440,9 +457,14 @@
     class="block-content-container tmpl-{templateName} block-type-{block.type}"
     class:canvas-element={isCanvasElement}
     bind:this={contentEl}
-    style="text-align: {block.canvas?.align || 'left'};"
   >
-    <BlockRenderer content={block.content} block={block} />
+    {#if isCanvasElement}
+      <BlockRenderer content={block.content} block={block} />
+    {:else if svgContent}
+      {@html svgContent}
+    {:else}
+      <BlockRenderer content={block.content} block={block} />
+    {/if}
   </div>
 
   <!-- Resize handles — gutter elements: vertical only; canvas elements: no horizontal -->

@@ -1,0 +1,326 @@
+/**
+ * block.js — Block composition: hardBreak segmentation, vertical stacking,
+ * decoration metrics, and final totals.
+ *
+ * Assembles a complete LaidOutBlock from inline content.
+ */
+
+import { effectiveBaseStyle } from './fonts.js';
+import { contentToRuns } from './runs.js';
+import { layoutRuns } from './paragraph.js';
+import { ptToMm } from './units.js';
+import { EPSILON } from './model.js';
+
+/**
+ * @typedef {Object} LaidOutBlock
+ * @property {string} blockId
+ * @property {string} blockType
+ * @property {LaidOutLine[]} lines
+ * @property {number|null} contentWidthMm
+ * @property {number|null} blockWidthMm
+ * @property {number|null} blockHeightMm
+ * @property {number} usedHeightMm
+ * @property {boolean} overflow
+ * @property {number|null} maxLines
+ * @property {number|null} linesRemaining
+ * @property {Object|null} decorations
+ * @property {string} kind
+ * @property {string} placement
+ * @property {Object} passthrough
+ */
+
+/**
+ * @typedef {Object} LaidOutGlyph
+ * @property {number} glyphId
+ * @property {string} char
+ * @property {number} xMm
+ * @property {number} advanceMm
+ * @property {import('fontkit').Font} font
+ * @property {number} unitsPerEm
+ * @property {number} fontSizeMm
+ * @property {string} color
+ * @property {boolean} underline
+ * @property {boolean} strike
+ * @property {{italic:boolean,bold:boolean}} faux
+ */
+
+/**
+ * @typedef {Object} LaidOutLine
+ * @property {LaidOutGlyph[]} glyphs
+ * @property {number} baselineYMm
+ * @property {number} ascentMm
+ * @property {number} descentMm
+ * @property {number} widthMm
+ * @property {number} lineHeightMm
+ */
+
+/**
+ * Compose a complete block from its content and produce a LaidOutBlock.
+ *
+ * @param {Object} block — the app's block object
+ * @param {{leftMm:number,topMm:number,widthMm:number,heightMm:number}} blockRect
+ * @param {Object} ctx — { templateName, customTemplates, paddingMm, themeColors }
+ * @returns {LaidOutBlock}
+ */
+export function composeBlock(block, blockRect, ctx) {
+  const { templateName, customTemplates, themeColors } = ctx;
+  const blockType = block.type;
+  const baseStyle = effectiveBaseStyle(templateName, blockType, themeColors, customTemplates);
+
+  // Split content by hardBreak nodes
+  const segments = splitByHardBreak(block.content || []);
+
+  // Horizontal insets (border-left + padding-left)
+  const leftInsetMm = (baseStyle.borderLeft?.widthMm || 0) + (baseStyle.paddingLeftMm || 0);
+  const contentWidthMm = blockRect.widthMm - leftInsetMm;
+
+  // Lay out each segment
+  const allLines = [];
+  let runningYOffset = 0;
+
+  for (const segment of segments) {
+    if (segment.length === 0) {
+      // Empty segment (consecutive hardBreaks) → one empty line
+      allLines.push({
+        glyphs: [],
+        baselineYMm: runningYOffset + baseStyle.lineHeightMm / 2,
+        ascentMm: 0,
+        descentMm: 0,
+        widthMm: 0,
+        lineHeightMm: baseStyle.lineHeightMm,
+      });
+      runningYOffset += baseStyle.lineHeightMm;
+      continue;
+    }
+
+    const runs = contentToRuns(segment, baseStyle);
+    const blockHeightMm = blockRect.heightMm;
+    const laidOut = layoutRuns(runs, contentWidthMm, blockHeightMm, {
+      blockId: block.id,
+      blockType,
+    });
+
+    // Re-base each line's baselineYMm against the running vertical cursor
+    for (const line of laidOut.lines) {
+      line.baselineYMm += runningYOffset;
+      allLines.push(line);
+    }
+
+    runningYOffset += laidOut.usedHeightMm;
+  }
+
+  // Offset glyph xMm by left inset so positions are absolute within the block
+  if (leftInsetMm > 0) {
+    for (const line of allLines) {
+      for (const glyph of line.glyphs) {
+        glyph.xMm += leftInsetMm;
+      }
+    }
+  }
+
+  // Decorations
+  const decorations = {};
+  let borderHeightMm = 0;
+  if (baseStyle.borderBottom) {
+    borderHeightMm = ptToMm(baseStyle.borderBottom.widthPt);
+    decorations.borderBottom = {
+      widthPt: baseStyle.borderBottom.widthPt,
+      color: baseStyle.borderBottom.color,
+      yMm: runningYOffset,
+    };
+  }
+  if (baseStyle.borderLeft) {
+    decorations.borderLeft = {
+      widthMm: baseStyle.borderLeft.widthMm,
+      color: baseStyle.borderLeft.color,
+      paddingLeftMm: baseStyle.paddingLeftMm || 0,
+    };
+  }
+  const finalDecorations = Object.keys(decorations).length > 0 ? decorations : null;
+
+  const contentHeightMm = allLines.reduce((sum, line) => sum + line.lineHeightMm, 0);
+  const usedHeightMm = contentHeightMm + borderHeightMm;
+  const baseLineHeight = baseStyle.lineHeightMm;
+  const maxLines = Math.floor(blockRect.heightMm / baseLineHeight);
+  const overflow = usedHeightMm > blockRect.heightMm + EPSILON;
+  const linesRemaining = maxLines - allLines.length;
+
+  return {
+    blockId: block.id,
+    blockType,
+    lines: allLines,
+    contentWidthMm,
+    blockWidthMm: blockRect.widthMm,
+    blockHeightMm: blockRect.heightMm,
+    usedHeightMm,
+    overflow,
+    maxLines,
+    linesRemaining,
+    decorations: finalDecorations,
+    kind: 'text',
+    placement: 'placed',
+    passthrough: undefined,
+  };
+}
+
+/**
+ * Split flat inline nodes into segments at hardBreak boundaries.
+ * @param {Array<any>} inlineNodes
+ * @returns {Array<Array<any>>}
+ */
+function splitByHardBreak(inlineNodes) {
+  const segments = [];
+  let current = [];
+
+  for (const node of inlineNodes) {
+    if (node.type === 'hardBreak') {
+      segments.push(current);
+      current = [];
+    } else {
+      current.push(node);
+    }
+  }
+
+  segments.push(current);
+  return segments;
+}
+
+// ---------------------------------------------------------------------------
+// Pass-through blocks
+// ---------------------------------------------------------------------------
+
+/**
+ * Produce a pass-through LaidOutBlock for non-text canvas elements.
+ *
+ * @param {Object} block
+ * @param {{leftMm:number,topMm:number,widthMm:number,heightMm:number}} blockRect
+ * @returns {LaidOutBlock}
+ */
+export function passthroughBlock(block, blockRect) {
+  return {
+    blockId: block.id,
+    blockType: block.type,
+    lines: [],
+    contentWidthMm: blockRect.widthMm,
+    blockWidthMm: blockRect.widthMm,
+    blockHeightMm: blockRect.heightMm,
+    usedHeightMm: blockRect.heightMm,
+    overflow: false,
+    maxLines: 0,
+    linesRemaining: 0,
+    decorations: null,
+    kind: 'passthrough',
+    placement: 'placed',
+    passthrough: {
+      elementType: block.elementType || block.type,
+      imageData: block.imageData,
+      barStyle: block.barStyle,
+      barColor: block.barColor,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Unplaced blocks
+// ---------------------------------------------------------------------------
+
+/**
+ * Produce an unplaced LaidOutBlock laid out at unconstrained width.
+ *
+ * @param {Object} block
+ * @param {Object} ctx — { templateName, customTemplates, themeColors }
+ * @returns {LaidOutBlock}
+ */
+export function unplacedBlock(block, ctx) {
+  const { templateName, customTemplates, themeColors } = ctx;
+  const blockType = block.type;
+  const baseStyle = effectiveBaseStyle(templateName, blockType, themeColors, customTemplates);
+
+  // Split by hardBreak, lay out each segment at unconstrained width
+  const segments = splitByHardBreak(block.content || []);
+  const allLines = [];
+  let runningYOffset = 0;
+
+  for (const segment of segments) {
+    if (segment.length === 0) {
+      allLines.push({
+        glyphs: [],
+        baselineYMm: runningYOffset + baseStyle.lineHeightMm / 2,
+        ascentMm: 0,
+        descentMm: 0,
+        widthMm: 0,
+        lineHeightMm: baseStyle.lineHeightMm,
+      });
+      runningYOffset += baseStyle.lineHeightMm;
+      continue;
+    }
+
+    const runs = contentToRuns(segment, baseStyle);
+    // Unconstrained width: use a very large number so no wrapping occurs
+    const UNCONSTRAINED = 10000;
+    const laidOut = layoutRuns(runs, UNCONSTRAINED, UNCONSTRAINED, {
+      blockId: block.id,
+      blockType,
+    });
+
+    for (const line of laidOut.lines) {
+      line.baselineYMm += runningYOffset;
+      allLines.push(line);
+    }
+
+    runningYOffset += laidOut.usedHeightMm;
+  }
+
+  const usedHeightMm = allLines.reduce((sum, line) => sum + line.lineHeightMm, 0);
+
+  return {
+    blockId: block.id,
+    blockType,
+    lines: allLines,
+    contentWidthMm: null,
+    blockWidthMm: null,
+    blockHeightMm: null,
+    usedHeightMm,
+    overflow: false,
+    maxLines: null,
+    linesRemaining: null,
+    decorations: null,
+    kind: 'text',
+    placement: 'unplaced',
+    passthrough: undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Unplaced pass-through blocks
+// ---------------------------------------------------------------------------
+
+/**
+ * Produce an unplaced LaidOutBlock for non-text canvas elements.
+ *
+ * @param {Object} block
+ * @returns {LaidOutBlock}
+ */
+export function unplacedPassthrough(block) {
+  return {
+    blockId: block.id,
+    blockType: block.type,
+    lines: [],
+    contentWidthMm: null,
+    blockWidthMm: null,
+    blockHeightMm: null,
+    usedHeightMm: 0,
+    overflow: false,
+    maxLines: null,
+    linesRemaining: null,
+    decorations: null,
+    kind: 'passthrough',
+    placement: 'unplaced',
+    passthrough: {
+      elementType: block.elementType || block.type,
+      imageData: block.imageData,
+      barStyle: block.barStyle,
+      barColor: block.barColor,
+    },
+  };
+}

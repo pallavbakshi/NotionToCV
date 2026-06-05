@@ -6,6 +6,7 @@
   import { TextStyle } from '@tiptap/extension-text-style';
   import { Color } from '@tiptap/extension-color';
   import { FontFamily } from '@tiptap/extension-font-family';
+  import { computeLayout, blockRectMm, initFonts } from '../layout/index.js';
 
   let {
     resumeId,
@@ -123,6 +124,9 @@
   }
 
   onMount(() => {
+    // Initialize layout engine fonts (no-op if already loaded)
+    initFonts().catch(e => console.error('Font init error:', e));
+
     // Load chats from localStorage
     try {
       const stored = localStorage.getItem(`notionToCV_chats_${resumeId}`);
@@ -493,27 +497,6 @@
     return doc.body.innerHTML;
   }
 
-  function measureHtmlHeight(html, blockType, widthMm, templateName) {
-    const tempDiv = document.createElement('div');
-    tempDiv.className = `polished-container tmpl-${templateName} block-type-${blockType}`;
-    tempDiv.style.position = 'absolute';
-    tempDiv.style.visibility = 'hidden';
-    tempDiv.style.top = '-9999px';
-    tempDiv.style.left = '-9999px';
-    tempDiv.style.width = `${widthMm}mm`;
-    tempDiv.style.boxSizing = 'border-box';
-    tempDiv.style.wordBreak = 'break-word';
-    tempDiv.style.whiteSpace = 'pre-wrap';
-    tempDiv.innerHTML = html;
-    
-    const parent = document.querySelector('.polished-container') || document.body;
-    parent.appendChild(tempDiv);
-    const heightPx = tempDiv.scrollHeight;
-    parent.removeChild(tempDiv);
-    
-    return heightPx;
-  }
-
   function canvasToRect(canvas, colWidth, paddingMm) {
     let left, width;
     if (canvas.colSpan === 0) {
@@ -617,35 +600,16 @@
       let heightMm = 0;
 
       if (isPlaced) {
-        widthMm = block.canvas.colSpan === 0 ? 4 : block.canvas.colSpan * cw + (block.canvas.colSpan - 1) * 4;
-        heightMm = block.canvas.rowSpan * 5;
-        
-        let lineHeightMm = 5;
-        if (block.type === 'h1') lineHeightMm = 20;
-        else if (block.type === 'h2') lineHeightMm = 15;
-        else if (block.type === 'h3') lineHeightMm = 10;
-        
-        const maxLines = Math.floor(heightMm / lineHeightMm);
-        
-        let charsPerLine = 20;
-        if (block.type === 'h1') charsPerLine = Math.round(widthMm / 7);
-        else if (block.type === 'h2') charsPerLine = Math.round(widthMm / 5);
-        else if (block.type === 'h3') charsPerLine = Math.round(widthMm / 3.5);
-        else charsPerLine = Math.round(widthMm / 1.8);
-        
-        // Measure current lines using real canvas styling via measureHtmlHeight
-        const blockHtml = contentHtmlEl ? contentHtmlEl.innerHTML : parseTiptapJsonToHtml(block.content);
-        const proposedHeightPx = measureHtmlHeight(blockHtml, block.type, widthMm, templateName);
-        const lineHeightPx = lineHeightMm * PX_PER_MM;
-        const currentLines = Math.max(1, Math.round(proposedHeightPx / lineHeightPx));
-        const isOverflowing = proposedHeightPx > (heightMm * PX_PER_MM + 1);
+        const rect = blockRectMm(block.canvas, paddingMm);
+        const ctx = { templateName, customTemplates, paddingMm, themeColors };
+        const lo = computeLayout(block, rect, ctx);
         
         capacity = {
-          max_lines: maxLines,
-          approx_characters_per_line: charsPerLine,
-          current_lines_used: currentLines,
-          lines_remaining: maxLines - currentLines,
-          is_overflowing: isOverflowing
+          max_lines: lo.maxLines,
+          approx_characters_per_line: null,
+          current_lines_used: lo.lines.length,
+          lines_remaining: lo.linesRemaining,
+          is_overflowing: lo.overflow
         };
       }
       
@@ -695,25 +659,18 @@
       };
       
       if (block.canvas) {
-        const widthMm = block.canvas.colSpan === 0 ? 4 : block.canvas.colSpan * cw + (block.canvas.colSpan - 1) * 4;
-        const heightMm = block.canvas.rowSpan * 5;
+        const rect = blockRectMm(block.canvas, paddingMm);
+        const ctx = { templateName, customTemplates, paddingMm, themeColors };
         
-        let lineHeightMm = 5;
-        if (block.type === 'h1') lineHeightMm = 20;
-        else if (block.type === 'h2') lineHeightMm = 15;
-        else if (block.type === 'h3') lineHeightMm = 10;
-        
-        const maxLines = Math.floor(heightMm / lineHeightMm);
-        const proposedHeightPx = measureHtmlHeight(sanitizedHtml, block.type, widthMm, templateName);
-        const lineHeightPx = lineHeightMm * PX_PER_MM;
-        const currentLines = Math.max(1, Math.round(proposedHeightPx / lineHeightPx));
-        const isOverflowing = proposedHeightPx > (heightMm * PX_PER_MM + 1);
+        // Build a temporary block with proposed content to measure fit
+        const proposedBlock = { ...block, content: proposedContent };
+        const lo = computeLayout(proposedBlock, rect, ctx);
         
         capacity = {
-          max_lines: maxLines,
-          current_lines_used: currentLines,
-          lines_remaining: maxLines - currentLines,
-          is_overflowing: isOverflowing
+          max_lines: lo.maxLines,
+          current_lines_used: lo.lines.length,
+          lines_remaining: lo.linesRemaining,
+          is_overflowing: lo.overflow
         };
       }
       
@@ -1343,11 +1300,16 @@ Guidelines:
   }
 </script>
 
-<div 
-  class="chat-drawer" 
-  style="width: {drawerWidth}px;" 
+<div
+  class="chat-drawer"
+  style="width: {drawerWidth}px;"
+  role="dialog"
+  aria-modal="false"
+  aria-label="Chat drawer"
+  tabindex="-1"
   onclick={(e) => e.stopPropagation()}
   onpointerdown={(e) => e.stopPropagation()}
+  onkeydown={(e) => e.stopPropagation()}
 >
   <!-- Resize handle: positioned absolutely on the left edge of the drawer -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->

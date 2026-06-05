@@ -783,6 +783,8 @@
             {overlappingBlockIds}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
+            customTemplates={customTemplates}
+            themeColors={themeColors}
             onAskAI={handleAskAI}
           />
           {#if !isExportMode && pageNum > totalPages}

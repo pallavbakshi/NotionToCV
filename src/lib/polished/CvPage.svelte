@@ -16,6 +16,8 @@
     overlappingBlockIds = new Set(),
     draggedBlockId = $bindable(),
     templateName = 'clean',
+    customTemplates = {},
+    themeColors = {},
     onAskAI = null
   } = $props();
 
@@ -228,6 +230,8 @@
 
 <div
   class="cv-page-container"
+  role="region"
+  aria-label="CV canvas drop zone"
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}
@@ -277,6 +281,8 @@
           removeCanvasElement={removeCanvasElement}
           bind:draggedBlockId={draggedBlockId}
           templateName={templateName}
+          customTemplates={customTemplates}
+          themeColors={themeColors}
           onAskAI={onAskAI}
         />
       {/if}
