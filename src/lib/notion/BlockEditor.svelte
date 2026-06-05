@@ -24,7 +24,13 @@
     mergeWithPrevious,
     duplicateBlock,
     onDragStart,
-    onDragEnd
+    onDragEnd,
+    selected = false,
+    selectedBlockIds = [],
+    onSelectBlock,
+    onEditorFocus,
+    deleteSelectedBlocks,
+    duplicateSelectedBlocks
   } = $props();
 
   let editorElement;
@@ -488,6 +494,7 @@
       },
       onFocus: () => {
         updateBubbleMenu();
+        if (onEditorFocus) onEditorFocus(block.id);
       },
       onBlur: ({ event }) => {
         setTimeout(() => {
@@ -576,6 +583,13 @@
   $effect(() => {
     if (editor && !editor.isFocused) {
       showTurnIntoPanel = false;
+    }
+  });
+
+  // Blur editor if block is selected
+  $effect(() => {
+    if (selected && editor && editor.isFocused) {
+      editor.commands.blur();
     }
   });
 
@@ -682,7 +696,12 @@
     if (dist < 4) {
       // It's a click! Show/hide the context Action Menu
       e.stopPropagation();
-      showActionMenu = !showActionMenu;
+      if (onSelectBlock) {
+        onSelectBlock(block.id, e.shiftKey);
+      }
+      if (!e.shiftKey) {
+        showActionMenu = !showActionMenu;
+      }
     }
   }
 
@@ -693,16 +712,24 @@
   }
 
   function handleActionDelete() {
-    deleteBlock(index);
+    if (selected && deleteSelectedBlocks) {
+      deleteSelectedBlocks(selectedBlockIds);
+    } else {
+      deleteBlock(index);
+    }
     showActionMenu = false;
   }
 
   function handleActionDuplicate() {
-    if (duplicateBlock) {
-      duplicateBlock(index);
+    if (selected && duplicateSelectedBlocks) {
+      duplicateSelectedBlocks(selectedBlockIds);
     } else {
-      // Fallback local duplicate via parent addBlockAfter
-      addBlockAfter(index, JSON.parse(JSON.stringify(block.content)));
+      if (duplicateBlock) {
+        duplicateBlock(index);
+      } else {
+        // Fallback local duplicate via parent addBlockAfter
+        addBlockAfter(index, JSON.parse(JSON.stringify(block.content)));
+      }
     }
     showActionMenu = false;
   }
@@ -743,6 +770,8 @@
   class:is-first-block={isFirst}
   class:is-placed={block.canvas !== null}
   class:has-name={block.name}
+  class:is-selected={selected}
+  data-block-id={block.id}
   bind:this={rowElement}
 >
   <!-- Gutter Controls: Visible on hover -->
@@ -1030,6 +1059,10 @@
     padding: 4px 0;
     width: 100%;
     align-items: flex-start;
+  }
+
+  .block-editor-row.is-selected {
+    background-color: rgba(35, 131, 226, 0.12) !important;
   }
 
   /* Left-edge accent bar: indicates the block is placed on the canvas */
