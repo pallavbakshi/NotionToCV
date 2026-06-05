@@ -360,8 +360,8 @@
           <div class="toolbar-divider-v"></div>
         {/if}
         <div class="toolbar-label">Polished View</div>
-        <button type="button" class="btn-change-template" onclick={undo} disabled={historyPastLength === 0} style="display: flex; align-items: center; gap: 4px;" title="Undo (Cmd+Z)">↶ Undo</button>
-        <button type="button" class="btn-change-template" onclick={redo} disabled={historyFutureLength === 0} style="display: flex; align-items: center; gap: 4px;" title="Redo (Cmd+Shift+Z)">↷ Redo</button>
+        <button type="button" class="btn-change-template" onclick={() => undo?.()} disabled={historyPastLength === 0} style="display: flex; align-items: center; gap: 4px;" title="Undo (Cmd+Z)">↶ Undo</button>
+        <button type="button" class="btn-change-template" onclick={() => redo?.()} disabled={historyFutureLength === 0} style="display: flex; align-items: center; gap: 4px;" title="Redo (Cmd+Shift+Z)">↷ Redo</button>
         <div class="toolbar-divider-v"></div>
         {#if onChangeTemplate}
           <button type="button" class="btn-change-template" onclick={onChangeTemplate}>

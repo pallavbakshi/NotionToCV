@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import NotionPane from './lib/notion/NotionPane.svelte';
   import PolishedPane from './lib/polished/PolishedPane.svelte';
   import TemplateGallery from './lib/polished/TemplateGallery.svelte';
@@ -393,6 +393,13 @@
     currentPath = path;
     handleRouteChange(path);
   }
+
+  onDestroy(() => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+  });
 
   onMount(async () => {
     const params = new URLSearchParams(window.location.search);
