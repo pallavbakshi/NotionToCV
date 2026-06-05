@@ -422,9 +422,8 @@
   ];
 
   function parseHtmlToTiptapJson(html, blockType) {
-    const nodeType = blockType === 'paragraph' ? 'paragraph' : 'heading';
-    const attrs = blockType !== 'paragraph' ? { level: parseInt(blockType[1]) } : {};
-    const wrapperHtml = blockType === 'paragraph' ? `<p>${html}</p>` : `<h${blockType[1]}>${html}</h${blockType[1]}>`;
+    const isHeading = blockType === 'h1' || blockType === 'h2' || blockType === 'h3';
+    const wrapperHtml = isHeading ? `<h${blockType[1]}>${html}</h${blockType[1]}>` : `<div>${html}</div>`;
     
     const tempEditor = new Editor({
       extensions: [
@@ -452,6 +451,27 @@
     
     const firstChild = json.content?.[0];
     return firstChild?.content ?? [];
+  }
+
+  function parseTiptapJsonToHtml(content) {
+    if (!content || !Array.isArray(content)) return '';
+    return content.map(node => {
+      if (node.type === 'text') {
+        let text = node.text || '';
+        if (node.marks) {
+          for (const mark of node.marks) {
+            if (mark.type === 'bold') text = `<strong>${text}</strong>`;
+            if (mark.type === 'italic') text = `<em>${text}</em>`;
+            if (mark.type === 'underline') text = `<u>${text}</u>`;
+            if (mark.type === 'strike') text = `<s>${text}</s>`;
+          }
+        }
+        return text;
+      } else if (node.type === 'hardBreak') {
+        return '<br/>';
+      }
+      return '';
+    }).join('');
   }
 
   function measureHtmlHeight(html, blockType, widthMm, templateName) {
@@ -593,15 +613,12 @@
         else if (block.type === 'h3') charsPerLine = Math.round(widthMm / 3.5);
         else charsPerLine = Math.round(widthMm / 1.8);
         
-        // Measure current lines
-        let currentLines = 1;
-        let isOverflowing = false;
-        if (contentHtmlEl) {
-          const scrollHeight = contentHtmlEl.scrollHeight;
-          const lineHeightPx = lineHeightMm * PX_PER_MM;
-          currentLines = Math.max(1, Math.round(scrollHeight / lineHeightPx));
-          isOverflowing = scrollHeight > (heightMm * PX_PER_MM + 1);
-        }
+        // Measure current lines using real canvas styling via measureHtmlHeight
+        const blockHtml = contentHtmlEl ? contentHtmlEl.innerHTML : parseTiptapJsonToHtml(block.content);
+        const proposedHeightPx = measureHtmlHeight(blockHtml, block.type, widthMm, templateName);
+        const lineHeightPx = lineHeightMm * PX_PER_MM;
+        const currentLines = Math.max(1, Math.round(proposedHeightPx / lineHeightPx));
+        const isOverflowing = proposedHeightPx > (heightMm * PX_PER_MM + 1);
         
         capacity = {
           max_lines: maxLines,
