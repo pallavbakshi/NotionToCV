@@ -114,6 +114,8 @@
       for (const node of prevBlock.content) {
         if (node.type === 'text' && node.text) {
           prevTextLength += node.text.length;
+        } else if (node.type === 'hardBreak') {
+          prevTextLength += 1;
         }
       }
     }
@@ -337,7 +339,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 20px;
-    background-color: #ffffff;
+    background-color: #f9fafb;
     user-select: none;
     flex-shrink: 0;
   }

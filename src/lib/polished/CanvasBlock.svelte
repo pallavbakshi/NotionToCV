@@ -9,11 +9,14 @@
     blocks,
     paddingMm,
     selected = false,
+    selectedBlockIds = [],
+    showToolbar = true,
     isOverlapping = false,
     onSelect,
     updateBlockCanvas,
     updateBlockName,
     updateBlockImageData = null,
+    removeCanvasElement = null,
     draggedBlockId = $bindable(),
     templateName = 'clean'
   } = $props();
@@ -219,12 +222,29 @@
 
   function handleBlockClick(e) {
     e.stopPropagation();
-    onSelect(block.id);
+    onSelect(block.id, e.ctrlKey || e.metaKey || e.shiftKey);
   }
 
   function handleDeleteClick(e) {
     e.stopPropagation();
-    updateBlockCanvas(block.id, null);
+    if (selected && selectedBlockIds.length > 1) {
+      selectedBlockIds.forEach(id => {
+        const b = blocks.find(x => x.id === id);
+        if (b) {
+          if (b.source === 'canvas' && removeCanvasElement) {
+            removeCanvasElement(b.id);
+          } else {
+            updateBlockCanvas(b.id, null);
+          }
+        }
+      });
+    } else {
+      if (block.source === 'canvas' && removeCanvasElement) {
+        removeCanvasElement(block.id);
+      } else {
+        updateBlockCanvas(block.id, null);
+      }
+    }
   }
 
   function setAlignment(align) {
@@ -270,11 +290,12 @@
   class:is-overlapping={isOverlapping}
   style="left:{leftMm}mm;top:{topMm}mm;width:{widthMm}mm;height:{heightMm}mm;"
   onclick={handleBlockClick}
+  data-block-id={block.id}
   role="button"
   tabindex="0"
 >
   <!-- Floating Action Toolbar -->
-  {#if selected}
+  {#if selected && showToolbar}
     <div class="floating-toolbar" contenteditable="false" onclick={(e) => e.stopPropagation()}>
       <div
         class="toolbar-drag-handle"
@@ -284,102 +305,104 @@
       >
         <span class="icon">⠿</span> Move
       </div>
-      <div class="toolbar-divider"></div>
+      {#if selectedBlockIds.length === 1}
+        <div class="toolbar-divider"></div>
 
-      {#if isDivider}
-        <!-- Divider style controls -->
-        {#each [
-          { value: 'solid',  label: '—',   title: 'Solid' },
-          { value: 'dashed', label: '╌',   title: 'Dashed' },
-          { value: 'dotted', label: '·····', title: 'Dotted' },
-          { value: 'double', label: '═',   title: 'Double' }
-        ] as s}
+        {#if isDivider}
+          <!-- Divider style controls -->
+          {#each [
+            { value: 'solid',  label: '—',   title: 'Solid' },
+            { value: 'dashed', label: '╌',   title: 'Dashed' },
+            { value: 'dotted', label: '·····', title: 'Dotted' },
+            { value: 'double', label: '═',   title: 'Double' }
+          ] as s}
+            <button
+              type="button"
+              class="toolbar-bar-style-btn"
+              class:active={(block.canvas?.barStyle ?? 'solid') === s.value}
+              onclick={() => setBarStyle(s.value)}
+              title={s.title}
+            >{s.label}</button>
+          {/each}
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-color-wrap" title="Line color">
+            <input
+              type="color"
+              class="toolbar-bar-color"
+              value={block.canvas?.barColor ?? '#1e293b'}
+              oninput={setBarColor}
+              onchange={setBarColor}
+            />
+            <span class="toolbar-color-indicator" style="background:{block.canvas?.barColor ?? '#1e293b'};"></span>
+          </div>
+        {/if}
+
+        {#if isCanvasElement && block.elementType === 'headshot'}
+          <button type="button" class="toolbar-upload-btn" onclick={handleUploadClick}>
+            📷 {block.imageData ? 'Replace' : 'Upload'}
+          </button>
+          <input type="file" accept="image/*" style="display:none;" bind:this={imageInput} onchange={handleImageChange} />
+        {/if}
+
+        {#if !isCanvasElement}
           <button
             type="button"
-            class="toolbar-bar-style-btn"
-            class:active={(block.canvas?.barStyle ?? 'solid') === s.value}
-            onclick={() => setBarStyle(s.value)}
-            title={s.title}
-          >{s.label}</button>
-        {/each}
-        <div class="toolbar-divider"></div>
-        <div class="toolbar-color-wrap" title="Line color">
-          <input
-            type="color"
-            class="toolbar-bar-color"
-            value={block.canvas?.barColor ?? '#1e293b'}
-            oninput={setBarColor}
-            onchange={setBarColor}
-          />
-          <span class="toolbar-color-indicator" style="background:{block.canvas?.barColor ?? '#1e293b'};"></span>
-        </div>
-      {/if}
-
-      {#if isCanvasElement && block.elementType === 'headshot'}
-        <button type="button" class="toolbar-upload-btn" onclick={handleUploadClick}>
-          📷 {block.imageData ? 'Replace' : 'Upload'}
-        </button>
-        <input type="file" accept="image/*" style="display:none;" bind:this={imageInput} onchange={handleImageChange} />
-      {/if}
-
-      {#if !isCanvasElement}
-        <button
-          type="button"
-          class="toolbar-align-btn"
-          class:active={(block.canvas?.align || 'left') === 'left'}
-          onclick={() => setAlignment('left')}
-          title="Align Left"
-        >
-          <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="toolbar-align-btn"
-          class:active={block.canvas?.align === 'center'}
-          onclick={() => setAlignment('center')}
-          title="Align Center"
-        >
-          <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1zm-2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1z"/>
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="toolbar-align-btn"
-          class:active={block.canvas?.align === 'right'}
-          onclick={() => setAlignment('right')}
-          title="Align Right"
-        >
-          <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1zm-4 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1z"/>
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="toolbar-align-btn"
-          class:active={block.canvas?.align === 'justify'}
-          onclick={() => setAlignment('justify')}
-          title="Justify"
-        >
-          <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
-          </svg>
-        </button>
-        <div class="toolbar-divider"></div>
-        <div class="toolbar-name-group">
-          <span class="toolbar-name-symbol">@</span>
-          <input
-            type="text"
-            class="toolbar-name-input"
-            class:invalid={nameError}
-            placeholder="Name..."
-            value={block.name || ''}
-            oninput={handleCanvasNameInput}
-            title={nameError || 'Assign unique block name'}
-          />
-        </div>
+            class="toolbar-align-btn"
+            class:active={(block.canvas?.align || 'left') === 'left'}
+            onclick={() => setAlignment('left')}
+            title="Align Left"
+          >
+            <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h8a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="toolbar-align-btn"
+            class:active={block.canvas?.align === 'center'}
+            onclick={() => setAlignment('center')}
+            title="Align Center"
+          >
+            <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1zm-2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm2 3h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1 0-1z"/>
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="toolbar-align-btn"
+            class:active={block.canvas?.align === 'right'}
+            onclick={() => setAlignment('right')}
+            title="Align Right"
+          >
+            <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1zm-4 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm4 3h8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1z"/>
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="toolbar-align-btn"
+            class:active={block.canvas?.align === 'justify'}
+            onclick={() => setAlignment('justify')}
+            title="Justify"
+          >
+            <svg class="align-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1zm0 3h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1 0-1z"/>
+            </svg>
+          </button>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-name-group">
+            <span class="toolbar-name-symbol">@</span>
+            <input
+              type="text"
+              class="toolbar-name-input"
+              class:invalid={nameError}
+              placeholder="Name..."
+              value={block.name || ''}
+              oninput={handleCanvasNameInput}
+              title={nameError || 'Assign unique block name'}
+            />
+          </div>
+        {/if}
       {/if}
 
       <div class="toolbar-divider"></div>
@@ -413,7 +436,7 @@
   </div>
 
   <!-- Resize handles — gutter elements: vertical only; canvas elements: no horizontal -->
-  {#if selected}
+  {#if selected && selectedBlockIds.length === 1}
     {#if isGutterElement}
       <div class="resize-handle t" role="presentation" onpointerdown={(e) => handleResizeStart('t', e)}></div>
       <div class="resize-handle b" role="presentation" onpointerdown={(e) => handleResizeStart('b', e)}></div>

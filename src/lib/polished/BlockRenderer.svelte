@@ -66,6 +66,8 @@
         class:underline={hasMark(node, 'underline')}
         class:strike={hasMark(node, 'strike')}
       >{node.text}</span>
+    {:else if node.type === 'hardBreak'}
+      <br />
     {/if}
   {/each}
 {/if}

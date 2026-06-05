@@ -202,6 +202,8 @@ function mainPlugin(env) {
                     const validTypes = new Set(['bold', 'italic', 'underline', 'strike']);
                     const marks = (node.marks ?? []).filter(m => m && validTypes.has(m.type));
                     out.push(marks.length ? { type: 'text', text, marks } : { type: 'text', text });
+                  } else if (node.type === 'hardBreak') {
+                    out.push({ type: 'hardBreak' });
                   } else if (['paragraph', 'heading', 'doc'].includes(node.type)) {
                     out.push(...normalizeInlineContent(node.content));
                   } else if (typeof node.text === 'string' && node.text) {
