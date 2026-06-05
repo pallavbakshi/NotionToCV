@@ -161,7 +161,10 @@ async function embedImageFromDataUrl(pdfDoc, dataUrl) {
   }
   const format = match[1].toLowerCase();
   const base64 = match[2];
-  const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  // atob is browser-only; this renderer also runs server-side (Node /api/print).
+  const bytes = typeof atob !== 'undefined'
+    ? Uint8Array.from(atob(base64), c => c.charCodeAt(0))
+    : new Uint8Array(Buffer.from(base64, 'base64'));
 
   if (format === 'png') {
     return pdfDoc.embedPng(bytes);
@@ -229,7 +232,7 @@ async function renderPassthroughToPDF(page, lo, rect, pdfDoc) {
  * @returns {any}
  */
 function hexToRgb(hex) {
-  if (!hex || hex.length < 4) return undefined;
+  if (!hex || hex.length < 4) return rgb(0, 0, 0); // default to black on invalid/short hex
   let clean = hex.replace('#', '');
   if (clean.length === 3) {
     clean = clean.split('').map(c => c + c).join('');

@@ -79,7 +79,7 @@
  * @property {Object|null} decorations — { borderBottom?: { widthPt, color, yMm }, borderLeft?: { widthMm, color, paddingLeftMm } }
  * @property {string} kind — 'text' or 'passthrough'
  * @property {string} placement — 'placed' or 'unplaced'
- * @property {Object} passthrough — descriptor for divider/headshot (Phase 3)
+ * @property {Object} [passthrough] — descriptor for divider/headshot (Phase 3); undefined for text blocks
  */
 
 // ---------------------------------------------------------------------------

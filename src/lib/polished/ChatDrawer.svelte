@@ -601,9 +601,11 @@
 
       if (isPlaced) {
         const rect = blockRectMm(block.canvas, paddingMm);
+        widthMm = rect.widthMm;
+        heightMm = rect.heightMm;
         const ctx = { templateName, customTemplates, paddingMm, themeColors };
         const lo = computeLayout(block, rect, ctx);
-        
+
         capacity = {
           max_lines: lo.maxLines,
           approx_characters_per_line: null,

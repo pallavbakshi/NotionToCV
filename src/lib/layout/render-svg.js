@@ -104,6 +104,14 @@ export function renderBlockSVG(laidOutBlock, opts = {}) {
     }
   }
 
+  // Decorations: border-left — drawn BEFORE text so it sits behind it
+  // (SVG paints in document order; later elements are on top).
+  if (decorations && decorations.borderLeft) {
+    const { widthMm, color } = decorations.borderLeft;
+    const contentHeightMm = lines.reduce((sum, line) => sum + line.lineHeightMm, 0);
+    parts.push(`<rect x="0" y="0" width="${widthMm}" height="${contentHeightMm}" fill="${color}" />`);
+  }
+
   // Render each line
   for (const line of lines) {
     if (glyphMode === 'text') {
@@ -111,13 +119,6 @@ export function renderBlockSVG(laidOutBlock, opts = {}) {
     } else {
       renderLinePath(parts, line);
     }
-  }
-
-  // Decorations: border-left (drawn first, behind text)
-  if (decorations && decorations.borderLeft) {
-    const { widthMm, color } = decorations.borderLeft;
-    const contentHeightMm = lines.reduce((sum, line) => sum + line.lineHeightMm, 0);
-    parts.push(`<rect x="0" y="0" width="${widthMm}" height="${contentHeightMm}" fill="${color}" />`);
   }
 
   // Decorations: border-bottom
@@ -237,7 +238,9 @@ function renderLinePath(parts, line) {
 
     const svgPath = fontGlyph.path.toSVG();
     const scale = g.fontSizeMm / g.unitsPerEm;
-    const transform = `translate(${g.xMm.toFixed(3)}, ${line.baselineYMm.toFixed(3)}) scale(${scale.toFixed(6)})`;
+    // fontkit glyph paths are Y-up (typographic); SVG is Y-down. Negate Y to flip,
+    // so the baseline (y=0 in font space) lands on baselineYMm and ascenders go up.
+    const transform = `translate(${g.xMm.toFixed(3)}, ${line.baselineYMm.toFixed(3)}) scale(${scale.toFixed(6)}, ${(-scale).toFixed(6)})`;
 
     parts.push(`<path d="${svgPath}" transform="${transform}" fill="${g.color}" />`);
   }
@@ -266,8 +269,9 @@ function renderPassthrough(laidOutBlock) {
     const width = pt.barStyle === 'thick' ? 0.5 : 0.25;
     parts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${blockHeightMm}" stroke="${color}" stroke-width="${width}" />`);
   } else if (pt.elementType === 'headshot') {
-    if (pt.imageData) {
-      parts.push(`<image href="${pt.imageData}" x="0" y="0" width="${blockWidthMm}" height="${blockHeightMm}" preserveAspectRatio="xMidYMid slice" />`);
+    // Only allow data: image URLs — never an arbitrary (e.g. javascript:) href.
+    if (pt.imageData && /^data:image\//i.test(pt.imageData)) {
+      parts.push(`<image href="${escapeXml(pt.imageData)}" x="0" y="0" width="${blockWidthMm}" height="${blockHeightMm}" preserveAspectRatio="xMidYMid slice" />`);
     }
   }
 

@@ -20,6 +20,20 @@
  */
 
 /**
+ * Visible width of a line: sum of advances excluding ALL trailing whitespace
+ * (CSS collapses trailing spaces at a soft wrap, regardless of how many).
+ * @param {ShapedGlyph[]} lineGlyphs
+ * @returns {number}
+ */
+function visibleLineWidth(lineGlyphs) {
+  let last = lineGlyphs.length - 1;
+  while (last >= 0 && lineGlyphs[last].isWhitespace) last--;
+  let w = 0;
+  for (let j = 0; j <= last; j++) w += lineGlyphs[j].advanceMm;
+  return w;
+}
+
+/**
  * Break a shaped glyph stream into lines for a fixed content width.
  *
  * @param {ShapedGlyph[]} glyphs
@@ -58,15 +72,7 @@ export function breakLines(glyphs, contentWidthMm) {
         const breakAfter = lastBreakIdx;
         const lineGlyphs = currentGlyphs.slice(0, breakAfter + 1);
 
-        // Compute visible width (exclude trailing whitespace advances)
-        let visibleWidth = 0;
-        for (let j = 0; j < lineGlyphs.length; j++) {
-          if (!lineGlyphs[j].isWhitespace || j < lineGlyphs.length - 1) {
-            visibleWidth += lineGlyphs[j].advanceMm;
-          }
-        }
-
-        lines.push({ glyphs: lineGlyphs, widthMm: visibleWidth });
+        lines.push({ glyphs: lineGlyphs, widthMm: visibleLineWidth(lineGlyphs) });
 
         // Start new line with remaining glyphs (skip leading whitespace)
         const remaining = currentGlyphs.slice(breakAfter + 1);
@@ -108,14 +114,7 @@ export function breakLines(glyphs, contentWidthMm) {
 
   // Flush final line
   if (currentGlyphs.length > 0) {
-    // Compute visible width (exclude trailing whitespace advances)
-    let visibleWidth = 0;
-    for (let j = 0; j < currentGlyphs.length; j++) {
-      if (!currentGlyphs[j].isWhitespace || j < currentGlyphs.length - 1) {
-        visibleWidth += currentGlyphs[j].advanceMm;
-      }
-    }
-    lines.push({ glyphs: currentGlyphs, widthMm: visibleWidth });
+    lines.push({ glyphs: currentGlyphs, widthMm: visibleLineWidth(currentGlyphs) });
   }
 
   // All-whitespace text: leading-whitespace collapse consumed everything,
