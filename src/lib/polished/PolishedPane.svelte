@@ -29,7 +29,9 @@
     historyFutureLength = 0,
     activeResumeId = null,
     isChatDrawerOpen = $bindable(false),
-    stagedChatBlockIds = $bindable([])
+    stagedChatBlockIds = $bindable([]),
+    stagedChanges = $bindable({}),
+    stagedAttachments = $bindable([])
   } = $props();
 
   let isDrawerOpen = $state(false);
@@ -721,6 +723,8 @@
       {themeColors}
       {selectedBlockIds}
       bind:stagedChatBlockIds={stagedChatBlockIds}
+      bind:stagedChanges={stagedChanges}
+      bind:stagedAttachments={stagedAttachments}
       onClose={() => isChatDrawerOpen = false}
     />
   {/if}

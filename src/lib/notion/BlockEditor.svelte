@@ -7,6 +7,7 @@
   import { Color } from '@tiptap/extension-color';
   import { FontFamily } from '@tiptap/extension-font-family';
   import { Placeholder } from '@tiptap/extension-placeholder';
+  import BlockRenderer from '../polished/BlockRenderer.svelte';
 
   // Svelte 5 props
   let {
@@ -31,7 +32,10 @@
     onEditorFocus,
     deleteSelectedBlocks,
     duplicateSelectedBlocks,
-    onAskAI = null
+    onAskAI = null,
+    stagedChanges = $bindable({}),
+    acceptStagedChange = null,
+    denyStagedChange = null
   } = $props();
 
   let editorElement;
@@ -39,6 +43,8 @@
   let editor = $state();
 
   let current = $derived({ index, block, blocks });
+  let stagedInfo = $derived(stagedChanges[block.id]);
+  let hasStagedChange = $derived(!!stagedInfo);
   
   // Custom bubble menu element bindings
   let showBubbleMenu = $state(false);
@@ -825,8 +831,41 @@
   <!-- Tiptap Editor Wrapper -->
   <div 
     class="editor-wrapper" 
+    class:hidden={hasStagedChange}
     bind:this={editorElement}
   ></div>
+
+  <!-- Agent Mode Stacked Diff View Card -->
+  {#if hasStagedChange}
+    <div class="diff-view-card" contenteditable="false">
+      <div class="diff-header">
+        <span class="diff-badge">AI Proposal</span>
+      </div>
+      
+      <div class="diff-section original">
+        <div class="diff-gutter">-</div>
+        <div class="diff-text">
+          <BlockRenderer content={block.content} {block} />
+        </div>
+      </div>
+      
+      <div class="diff-section proposed">
+        <div class="diff-gutter">+</div>
+        <div class="diff-text">
+          <BlockRenderer content={stagedInfo.proposedContent} {block} />
+        </div>
+      </div>
+      
+      <div class="diff-actions-row">
+        <button type="button" class="btn-diff-action accept-btn" onclick={() => acceptStagedChange?.(block.id)}>
+          Accept
+        </button>
+        <button type="button" class="btn-diff-action deny-btn" onclick={() => denyStagedChange?.(block.id)}>
+          Deny
+        </button>
+      </div>
+    </div>
+  {/if}
 
   <!-- Bubble Menu Dropdown -->
   {#if showBubbleMenu}
@@ -1703,4 +1742,132 @@
   .name-modal-btn.save-btn { background: #10b981; border: 1px solid #059669; color: white; }
   .name-modal-btn.save-btn:hover:not(:disabled) { background: #059669; }
   .name-modal-btn.save-btn:disabled { background: #cbd5e1; border-color: #cbd5e1; color: #94a3b8; cursor: not-allowed; }
+
+  .editor-wrapper.hidden {
+    display: none !important;
+  }
+
+  .diff-view-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    margin: 4px 0;
+    width: 100%;
+  }
+
+  .diff-header {
+    background-color: #f8fafc;
+    padding: 6px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+  }
+
+  .diff-badge {
+    background-color: #dbeafe;
+    color: #1e40af;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .diff-section {
+    display: flex;
+    font-family: var(--font-sans), ui-sans-serif, -apple-system, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.5;
+    padding: 8px 0;
+  }
+
+  .diff-section.original {
+    background-color: #fff5f5;
+    border-bottom: 1px solid #fee2e2;
+  }
+
+  .diff-section.proposed {
+    background-color: #f0fdf4;
+  }
+
+  .diff-gutter {
+    width: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    font-weight: 700;
+    user-select: none;
+    font-size: 14px;
+  }
+
+  .original .diff-gutter {
+    color: #ef4444;
+  }
+
+  .proposed .diff-gutter {
+    color: #22c55e;
+  }
+
+  .diff-text {
+    flex: 1;
+    padding-right: 12px;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .original .diff-text {
+    color: #991b1b;
+    text-decoration: line-through;
+    opacity: 0.85;
+  }
+
+  .proposed .diff-text {
+    color: #166534;
+    font-weight: 500;
+  }
+
+  .diff-actions-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .btn-diff-action {
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.12s, border-color 0.12s;
+  }
+
+  .btn-diff-action.accept-btn {
+    background-color: #22c55e;
+    border: 1px solid #16a34a;
+    color: #ffffff;
+  }
+
+  .btn-diff-action.accept-btn:hover {
+    background-color: #16a34a;
+  }
+
+  .btn-diff-action.deny-btn {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #64748b;
+  }
+
+  .btn-diff-action.deny-btn:hover {
+    background-color: #f1f5f9;
+    color: #334155;
+  }
 </style>

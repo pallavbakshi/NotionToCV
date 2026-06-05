@@ -61,10 +61,76 @@
   // Phase 3 AI Chat Drawer states
   let isChatDrawerOpen = $state(false);
   let stagedChatBlockIds = $state([]);
+  let stagedChanges = $state({});
+  let stagedAttachments = $state([]);
 
   function handleAskAI(blockIds) {
     isChatDrawerOpen = true;
     stagedChatBlockIds = blockIds;
+  }
+
+  // Agent Mode Action Helpers
+  function acceptStagedChange(blockId) {
+    const change = stagedChanges[blockId];
+    if (!change) return;
+    blocks = blocks.map(b => b.id === blockId ? { ...b, content: change.proposedContent } : b);
+    const updated = { ...stagedChanges };
+    delete updated[blockId];
+    stagedChanges = updated;
+  }
+
+  function denyStagedChange(blockId) {
+    const change = stagedChanges[blockId];
+    if (!change) return;
+    const updated = { ...stagedChanges };
+    delete updated[blockId];
+    stagedChanges = updated;
+    const block = blocks.find(b => b.id === blockId);
+    if (block) {
+      const nameOrType = block.name ? `@${block.name}` : block.type;
+      const label = `Block: ${nameOrType} — Denied`;
+      const exists = stagedAttachments.some(a => a.type === 'denied' && a.blockId === blockId);
+      if (!exists) {
+        stagedAttachments = [
+          ...stagedAttachments,
+          {
+            type: 'denied',
+            blockId,
+            label
+          }
+        ];
+      }
+    }
+  }
+
+  function acceptAllStagedChanges() {
+    blocks = blocks.map(b => {
+      const change = stagedChanges[b.id];
+      return change ? { ...b, content: change.proposedContent } : b;
+    });
+    stagedChanges = {};
+  }
+
+  function denyAllStagedChanges() {
+    Object.keys(stagedChanges).forEach(blockId => {
+      const block = blocks.find(b => b.id === blockId);
+      if (block) {
+        const nameOrType = block.name ? `@${block.name}` : block.type;
+        const label = `Block: ${nameOrType} — Denied`;
+        const exists = stagedAttachments.some(a => a.type === 'denied' && a.blockId === blockId);
+        if (!exists) {
+          stagedAttachments = [
+            ...stagedAttachments,
+            {
+              type: 'denied',
+              blockId,
+              label
+            }
+          ];
+        }
+      }
+    });
+    stagedChanges = {};
   }
 
   // Central Undo/Redo History states
@@ -651,6 +717,11 @@
             historyPastLength={historyPast.length}
             historyFutureLength={historyFuture.length}
             onAskAI={handleAskAI}
+            bind:stagedChanges={stagedChanges}
+            {acceptStagedChange}
+            {denyStagedChange}
+            {acceptAllStagedChanges}
+            {denyAllStagedChanges}
           />
         </div>
 
@@ -687,6 +758,8 @@
             activeResumeId={activeResumeId}
             bind:isChatDrawerOpen={isChatDrawerOpen}
             bind:stagedChatBlockIds={stagedChatBlockIds}
+            bind:stagedChanges={stagedChanges}
+            bind:stagedAttachments={stagedAttachments}
           />
         </div>
       </div>
