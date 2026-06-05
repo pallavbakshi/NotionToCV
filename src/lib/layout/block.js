@@ -135,7 +135,7 @@ export function composeBlock(block, blockRect, ctx) {
   const usedHeightMm = contentHeightMm + borderHeightMm;
   const baseLineHeight = baseStyle.lineHeightMm;
   const maxLines = Math.floor(blockRect.heightMm / baseLineHeight);
-  const overflow = usedHeightMm > blockRect.heightMm + EPSILON;
+  const overflow = contentHeightMm > blockRect.heightMm + EPSILON;
   const linesRemaining = maxLines - allLines.length;
 
   return {

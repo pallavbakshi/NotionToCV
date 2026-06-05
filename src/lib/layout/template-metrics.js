@@ -50,7 +50,7 @@ const BUILT_IN = {
       color: '#111111',
       letterSpacingPt: 1.5,
       textTransform: 'uppercase',
-      borderBottom: { widthPt: 0.75, color: '#111111' },
+      borderBottom: null, // headings never auto-underline; underline is user-driven (text mark) only
       borderLeft: null,
       paddingLeftMm: null,
     },
@@ -105,7 +105,7 @@ const BUILT_IN = {
       color: '#065f46',
       letterSpacingPt: 1.5,
       textTransform: 'uppercase',
-      borderBottom: { widthPt: 0.75, color: '#065f46' },
+      borderBottom: null, // headings never auto-underline; underline is user-driven (text mark) only
       borderLeft: null,
       paddingLeftMm: null,
     },
@@ -160,7 +160,7 @@ const BUILT_IN = {
       color: '#78350f',
       letterSpacingPt: 0,
       textTransform: 'none',
-      borderBottom: { widthPt: 0.5, color: '#78350f' },
+      borderBottom: null, // headings never auto-underline; underline is user-driven (text mark) only
       borderLeft: null,
       paddingLeftMm: null,
     },
@@ -334,15 +334,10 @@ function parseCustomTemplate(cssString, templateId) {
       }
     }
 
-    // Parse border-bottom: e.g. "0.75pt solid #111111" or "0.75pt #111111"
-    let border = fallback.borderBottom;
-    const borderRaw = get('border-bottom');
-    if (borderRaw) {
-      const bm = borderRaw.match(/([\d.]+)pt(?:\s+solid)?\s+([^;\s]+)/);
-      if (bm) {
-        border = { widthPt: parseFloat(bm[1]), color: bm[2] };
-      }
-    }
+    // Section headings never auto-underline. A `border-bottom` in custom-template
+    // CSS is intentionally ignored — the only underline is user-driven (the text
+    // `underline` mark applied to a selection). Kept null for all block types.
+    const border = null;
 
     // Parse border-left: e.g. "2mm solid #1e3a8a"
     let borderLeft = fallback.borderLeft;

@@ -316,13 +316,19 @@
   // Inject custom template CSS
   $effect(() => {
     const allCss = Object.values(customTemplates).join('\n');
+    // Headings never auto-underline: strip any `border-bottom` declared in
+    // imported/custom template CSS (e.g. a section rule under h2). The only
+    // underline is user-driven — the `underline` text mark on a selection.
+    // Targets the exact `border-bottom:` property only, leaving border-bottom-*
+    // longhands (e.g. -radius) and other borders intact.
+    const sanitizedCss = allCss.replace(/border-bottom\s*:[^;}]*;?/gi, '');
     let styleEl = document.getElementById('custom-template-styles');
     if (!styleEl) {
       styleEl = document.createElement('style');
       styleEl.id = 'custom-template-styles';
       document.head.appendChild(styleEl);
     }
-    styleEl.textContent = allCss;
+    styleEl.textContent = sanitizedCss;
   });
 
   // Inject theme-color-overrides CSS variables
