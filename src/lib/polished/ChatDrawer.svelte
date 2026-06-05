@@ -611,11 +611,12 @@
         };
       }
       
+      const isPlaced = !!block.canvas;
       let capacity = null;
       let widthMm = 0;
       let heightMm = 0;
-      
-      if (block.canvas) {
+
+      if (isPlaced) {
         widthMm = block.canvas.colSpan === 0 ? 4 : block.canvas.colSpan * cw + (block.canvas.colSpan - 1) * 4;
         heightMm = block.canvas.rowSpan * 5;
         
@@ -654,14 +655,17 @@
         id: block.id,
         type: block.type,
         name: block.name,
+        placement_status: isPlaced
+          ? 'placed — block is on the A4 canvas and has a fixed spatial budget'
+          : 'unplaced — block exists in the Notion editor but has not been added to the canvas yet; spatial budget is unknown and content length is unconstrained',
         canvas: block.canvas,
-        widthMm,
-        heightMm,
+        widthMm: isPlaced ? widthMm : null,
+        heightMm: isPlaced ? heightMm : null,
         plaintext,
-        capacity,
-        rendered_html_reference: renderedHtml,
-        applied_styles: appliedStyles,
-        neighbors
+        capacity: isPlaced ? capacity : 'N/A — block is unplaced; no spatial budget to check against. You may still propose content edits but cannot verify fit until the block is placed on the canvas.',
+        rendered_html_reference: renderedHtml || null,
+        applied_styles: Object.keys(appliedStyles).length > 0 ? appliedStyles : null,
+        neighbors: isPlaced ? neighbors : 'N/A — unplaced blocks have no canvas neighbors'
       };
       
     } else if (name === 'update_block_content') {
