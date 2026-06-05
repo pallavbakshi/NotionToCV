@@ -247,6 +247,7 @@
           codeBlock: false,
           code: false,
           trailingNode: false,
+          history: false,
         }),
         TextStyle,
         Color,

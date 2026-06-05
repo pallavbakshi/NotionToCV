@@ -11,7 +11,11 @@
     paddingMm = $bindable(15),
     activeTemplate = $bindable('clean'),
     customTemplates = $bindable({}),
-    themeColors = $bindable()
+    themeColors = $bindable(),
+    undo = null,
+    redo = null,
+    historyPastLength = 0,
+    historyFutureLength = 0
   } = $props();
 
   let fileInput;
@@ -632,6 +636,9 @@
 <div class="top-bar">
   <div class="view-label">Notion View</div>
   <div class="action-buttons">
+    <button type="button" class="btn btn-outline" onclick={undo} disabled={historyPastLength === 0} title="Undo (Cmd+Z)">↶ Undo</button>
+    <button type="button" class="btn btn-outline" onclick={redo} disabled={historyFutureLength === 0} title="Redo (Cmd+Shift+Z)">↷ Redo</button>
+    <div style="width: 1px; height: 16px; background-color: var(--notion-border); margin: 0 4px; align-self: center;"></div>
     <button type="button" class="btn btn-outline" onclick={triggerImport}>Import JSON</button>
     <button type="button" class="btn btn-outline" onclick={exportJSON}>Export JSON</button>
     <input 
