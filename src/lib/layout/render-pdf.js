@@ -157,7 +157,11 @@ export async function renderResumePDF(blocks, ctx) {
 async function embedImageFromDataUrl(pdfDoc, dataUrl) {
   const match = dataUrl.match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/i);
   if (!match) {
-    throw new Error('Unsupported image data URL format');
+    // pdf-lib only embeds PNG/JPEG. Uploads are normalized to PNG client-side, but
+    // legacy/imported data could still carry e.g. webp — skip it (drop the image)
+    // rather than throwing and aborting the whole PDF.
+    console.warn('[render-pdf] Skipped unsupported image format (expected PNG/JPEG).');
+    return null;
   }
   const format = match[1].toLowerCase();
   const base64 = match[2];

@@ -292,10 +292,15 @@
       }
       const img = new Image();
       img.onload = () => {
+        // Cap dimensions: a small webp decodes lossless to a much larger PNG, and a
+        // headshot never needs more than ~1200px. Keeps the exported PDF lean.
+        const MAX_W = 1200;
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (w > MAX_W) { h = Math.round((h * MAX_W) / w); w = MAX_W; }
         const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        canvas.getContext('2d').drawImage(img, 0, 0);
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         if (updateBlockImageData) updateBlockImageData(block.id, canvas.toDataURL('image/png'));
       };
       img.onerror = () => { if (updateBlockImageData) updateBlockImageData(block.id, dataUrl); };
