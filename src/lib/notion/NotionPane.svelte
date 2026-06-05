@@ -1,5 +1,6 @@
 <!-- NotionPane.svelte -->
 <script>
+  import { onMount } from 'svelte';
   import BlockEditor from './BlockEditor.svelte';
 
   // Svelte 5 props
@@ -10,7 +11,11 @@
     paddingMm = $bindable(15),
     activeTemplate = $bindable('clean'),
     customTemplates = $bindable({}),
-    themeColors = $bindable()
+    themeColors = $bindable(),
+    undo = null,
+    redo = null,
+    historyPastLength = 0,
+    historyFutureLength = 0
   } = $props();
 
   let fileInput;
@@ -25,6 +30,18 @@
   let dropIndicatorTop = $state(null);
   let scrollContainerEl;
   let contentWrapperEl;
+
+  // Multi-block states
+  let selectedBlockIds = $state([]);
+  let selectionBox = $state({
+    active: false,
+    startX: 0,
+    startY: 0,
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0
+  });
 
   // Programmatic focus helper
   function focusBlock(index, position = 'end') {
@@ -67,6 +84,29 @@
     }
   }
 
+  function deleteMultipleBlocks(ids) {
+    if (ids.length === 0) return;
+    const firstId = ids[0];
+    const firstIdx = blocks.findIndex(b => b.id === firstId);
+
+    blocks = blocks.filter(b => !ids.includes(b.id));
+
+    // Invariant: Never allow an empty blocks array
+    if (blocks.length === 0) {
+      blocks = [{
+        id: 'b_' + Math.random().toString(36).substring(2, 9),
+        type: 'paragraph',
+        content: [],
+        canvas: null,
+        name: null
+      }];
+    }
+
+    selectedBlockIds = [];
+    const focusIdx = firstIdx > 0 ? firstIdx - 1 : 0;
+    focusBlock(focusIdx, 'end');
+  }
+
   function duplicateBlock(index) {
     const original = blocks[index];
     const newBlock = {
@@ -79,6 +119,27 @@
     blocks.splice(index + 1, 0, newBlock);
     blocks = [...blocks];
     focusBlock(index + 1, 'end');
+  }
+
+  function duplicateMultipleBlocks(ids) {
+    if (ids.length === 0) return;
+    const selectedBlocks = blocks.filter(b => ids.includes(b.id));
+    const duplicates = selectedBlocks.map(b => ({
+      ...b,
+      id: 'b_' + Math.random().toString(36).substring(2, 9),
+      content: JSON.parse(JSON.stringify(b.content)),
+      canvas: null,
+      name: null
+    }));
+
+    const lastId = ids[ids.length - 1];
+    const targetIdx = blocks.findIndex(b => b.id === lastId);
+    const insertIdx = targetIdx !== -1 ? targetIdx + 1 : blocks.length;
+
+    blocks.splice(insertIdx, 0, ...duplicates);
+    blocks = [...blocks];
+
+    selectedBlockIds = duplicates.map(b => b.id);
   }
 
   function updateBlock(index, patch) {
@@ -98,6 +159,23 @@
     }
     blocks.splice(adjustedToIndex, 0, item);
     blocks = [...blocks];
+  }
+
+  function moveBlocks(idsToMove, toRealIndex) {
+    const targetBlocks = blocks.filter(b => idsToMove.includes(b.id));
+    if (targetBlocks.length === 0) return;
+
+    const targetBlock = blocks[toRealIndex] || null;
+    const remainingBlocks = blocks.filter(b => !idsToMove.includes(b.id));
+
+    let insertIdx = remainingBlocks.length;
+    if (targetBlock) {
+      insertIdx = remainingBlocks.findIndex(b => b.id === targetBlock.id);
+      if (insertIdx === -1) insertIdx = remainingBlocks.length;
+    }
+
+    remainingBlocks.splice(insertIdx, 0, ...targetBlocks);
+    blocks = remainingBlocks;
   }
 
   // Merging logic
@@ -193,11 +271,16 @@
   // Drag and Drop Event Handlers
   function handleDragStart(index, e) {
     dragFromIndex = index;
-    const block = blocks[index];
+    const block = notionBlocks[index];
     if (block) {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', block.id);
       draggedBlockId = block.id;
+
+      // If dragged block isn't in selection, reset selection to just this block
+      if (!selectedBlockIds.includes(block.id)) {
+        selectedBlockIds = [block.id];
+      }
     }
   }
 
@@ -248,20 +331,314 @@
   function handleDrop(index, e) {
     e.preventDefault();
     if (dragFromIndex !== null && dropTargetIndex !== null) {
-      // Translate notionBlocks indices to real blocks indices
-      const fromReal = blocks.findIndex(b => b.id === notionBlocks[dragFromIndex]?.id);
+      const draggedBlock = notionBlocks[dragFromIndex];
       const toNotion = notionBlocks[dropTargetIndex];
-      const toReal   = toNotion ? blocks.findIndex(b => b.id === toNotion.id) : blocks.length;
-      if (fromReal !== -1) moveBlock(fromReal, toReal);
+      const toReal = toNotion ? blocks.findIndex(b => b.id === toNotion.id) : blocks.length;
+
+      if (draggedBlock && selectedBlockIds.includes(draggedBlock.id)) {
+        moveBlocks(selectedBlockIds, toReal);
+      } else {
+        const fromReal = blocks.findIndex(b => b.id === draggedBlock?.id);
+        if (fromReal !== -1) moveBlock(fromReal, toReal);
+      }
     }
     handleDragEnd();
   }
+
+  // Pointer events for marquee selection
+  function handleContainerPointerDown(e) {
+    if (e.button !== 0) return;
+
+    const target = e.target;
+    if (
+      target.closest('.ProseMirror') ||
+      target.closest('button') ||
+      target.closest('input') ||
+      target.closest('select') ||
+      target.closest('textarea') ||
+      target.closest('.drag-handle') ||
+      target.closest('.block-name-badge') ||
+      target.closest('.bubble-menu-card') ||
+      target.closest('.slash-menu-card') ||
+      target.closest('.at-menu-card') ||
+      target.closest('.action-menu-card')
+    ) {
+      return;
+    }
+
+    if (!e.shiftKey) {
+      selectedBlockIds = [];
+    }
+
+    e.preventDefault();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    selectionBox = {
+      active: true,
+      startX,
+      startY,
+      left: startX,
+      top: startY,
+      width: 0,
+      height: 0
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }
+
+  function handlePointerMove(e) {
+    if (!selectionBox.active) return;
+
+    const currentX = e.clientX;
+    const currentY = e.clientY;
+
+    const left = Math.min(selectionBox.startX, currentX);
+    const top = Math.min(selectionBox.startY, currentY);
+    const width = Math.abs(selectionBox.startX - currentX);
+    const height = Math.abs(selectionBox.startY - currentY);
+
+    selectionBox = {
+      ...selectionBox,
+      left,
+      top,
+      width,
+      height
+    };
+
+    updateSelectionFromBox();
+  }
+
+  function updateSelectionFromBox() {
+    if (!selectionBox.active) return;
+    if (!contentWrapperEl) return;
+
+    const boxRect = {
+      left: selectionBox.left,
+      right: selectionBox.left + selectionBox.width,
+      top: selectionBox.top,
+      bottom: selectionBox.top + selectionBox.height
+    };
+
+    const rows = contentWrapperEl.querySelectorAll('.block-editor-row');
+    const newSelectedIds = [];
+
+    rows.forEach(row => {
+      const rect = row.getBoundingClientRect();
+      const overlap = !(
+        rect.right < boxRect.left ||
+        rect.left > boxRect.right ||
+        rect.bottom < boxRect.top ||
+        rect.top > boxRect.bottom
+      );
+
+      if (overlap) {
+        const blockId = row.getAttribute('data-block-id');
+        if (blockId) {
+          newSelectedIds.push(blockId);
+        }
+      }
+    });
+
+    selectedBlockIds = newSelectedIds;
+  }
+
+  function handlePointerUp() {
+    selectionBox.active = false;
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+  }
+
+  // Shift range selection
+  function handleSelectBlock(blockId, shift) {
+    if (shift) {
+      const targetIdx = blocks.findIndex(b => b.id === blockId);
+      if (targetIdx === -1) return;
+
+      if (selectedBlockIds.length === 0) {
+        selectedBlockIds = [blockId];
+      } else {
+        const lastSelectedId = selectedBlockIds[selectedBlockIds.length - 1];
+        const lastIdx = blocks.findIndex(b => b.id === lastSelectedId);
+
+        if (lastIdx !== -1) {
+          const start = Math.min(lastIdx, targetIdx);
+          const end = Math.max(lastIdx, targetIdx);
+          const rangeBlocks = blocks.slice(start, end + 1).map(b => b.id);
+          selectedBlockIds = [...new Set([...selectedBlockIds, ...rangeBlocks])];
+        } else {
+          selectedBlockIds = [blockId];
+        }
+      }
+    } else {
+      selectedBlockIds = [blockId];
+    }
+  }
+
+  function handleEditorFocus(blockId) {
+    selectedBlockIds = [];
+  }
+
+  // Keyboard copy/cut/paste and general window handlers
+  onMount(() => {
+    function handleKeyDown(e) {
+      if (selectedBlockIds.length === 0) return;
+
+      if (e.key === 'Escape') {
+        selectedBlockIds = [];
+        return;
+      }
+
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (
+          document.activeElement.tagName === 'INPUT' || 
+          document.activeElement.tagName === 'TEXTAREA' ||
+          document.activeElement.closest('.ProseMirror')
+        ) {
+          return;
+        }
+        e.preventDefault();
+        deleteMultipleBlocks(selectedBlockIds);
+      }
+    }
+
+    function handleCopy(e) {
+      if (selectedBlockIds.length === 0) return;
+      if (
+        document.activeElement.tagName === 'INPUT' || 
+        document.activeElement.tagName === 'TEXTAREA' ||
+        document.activeElement.closest('.ProseMirror')
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      const selectedBlocks = blocks.filter(b => selectedBlockIds.includes(b.id));
+      const plainText = selectedBlocks.map(b => {
+        const textContent = b.content ? b.content.map(node => node.text || '').join('') : '';
+        if (b.type === 'h1') return '# ' + textContent;
+        if (b.type === 'h2') return '## ' + textContent;
+        if (b.type === 'h3') return '### ' + textContent;
+        return textContent;
+      }).join('\n');
+
+      const jsonData = JSON.stringify(selectedBlocks);
+      e.clipboardData.setData('text/plain', plainText);
+      e.clipboardData.setData('application/json', jsonData);
+    }
+
+    function handleCut(e) {
+      if (selectedBlockIds.length === 0) return;
+      if (
+        document.activeElement.tagName === 'INPUT' || 
+        document.activeElement.tagName === 'TEXTAREA' ||
+        document.activeElement.closest('.ProseMirror')
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      handleCopy(e);
+      deleteMultipleBlocks(selectedBlockIds);
+    }
+
+    async function handlePaste(e) {
+      if (selectedBlockIds.length === 0) return;
+      if (
+        document.activeElement.tagName === 'INPUT' || 
+        document.activeElement.tagName === 'TEXTAREA' ||
+        document.activeElement.closest('.ProseMirror')
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      const clipboardData = e.clipboardData || window.clipboardData;
+      const jsonData = clipboardData.getData('application/json');
+      const textData = clipboardData.getData('text/plain');
+
+      let newBlocks = [];
+      try {
+        if (jsonData) {
+          const parsed = JSON.parse(jsonData);
+          if (Array.isArray(parsed) && parsed.every(b => b.type && b.id)) {
+            newBlocks = parsed.map(b => ({
+              ...b,
+              id: 'b_' + Math.random().toString(36).substring(2, 9),
+              canvas: null
+            }));
+          }
+        }
+      } catch (err) {}
+
+      if (newBlocks.length === 0 && textData) {
+        const lines = textData.split(/\r?\n/);
+        newBlocks = lines.map(line => {
+          let type = 'paragraph';
+          let contentText = line;
+          if (line.startsWith('# ')) {
+            type = 'h1';
+            contentText = line.substring(2);
+          } else if (line.startsWith('## ')) {
+            type = 'h2';
+            contentText = line.substring(3);
+          } else if (line.startsWith('### ')) {
+            type = 'h3';
+            contentText = line.substring(4);
+          }
+          return {
+            id: 'b_' + Math.random().toString(36).substring(2, 9),
+            type,
+            content: contentText ? [{ type: 'text', text: contentText }] : [],
+            canvas: null,
+            name: null
+          };
+        });
+      }
+
+      if (newBlocks.length > 0) {
+        const lastSelectedId = selectedBlockIds[selectedBlockIds.length - 1];
+        const targetIdx = blocks.findIndex(b => b.id === lastSelectedId);
+        const insertIdx = targetIdx !== -1 ? targetIdx + 1 : blocks.length;
+
+        blocks.splice(insertIdx, 0, ...newBlocks);
+        blocks = [...blocks];
+
+        selectedBlockIds = newBlocks.map(b => b.id);
+      }
+    }
+
+    function handleWindowClick(e) {
+      if (selectedBlockIds.length > 0 && scrollContainerEl && !scrollContainerEl.contains(e.target)) {
+        selectedBlockIds = [];
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('copy', handleCopy);
+    window.addEventListener('cut', handleCut);
+    window.addEventListener('paste', handlePaste);
+    window.addEventListener('pointerdown', handleWindowClick);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('copy', handleCopy);
+      window.removeEventListener('cut', handleCut);
+      window.removeEventListener('paste', handlePaste);
+      window.removeEventListener('pointerdown', handleWindowClick);
+    };
+  });
 </script>
 
 <!-- Top Bar -->
 <div class="top-bar">
   <div class="view-label">Notion View</div>
   <div class="action-buttons">
+    <button type="button" class="btn btn-outline" onclick={() => undo?.()} disabled={historyPastLength === 0} title="Undo (Cmd+Z)">↶ Undo</button>
+    <button type="button" class="btn btn-outline" onclick={() => redo?.()} disabled={historyFutureLength === 0} title="Redo (Cmd+Shift+Z)">↷ Redo</button>
+    <div style="width: 1px; height: 16px; background-color: var(--notion-border); margin: 0 4px; align-self: center;"></div>
     <button type="button" class="btn btn-outline" onclick={triggerImport}>Import JSON</button>
     <button type="button" class="btn btn-outline" onclick={exportJSON}>Export JSON</button>
     <input 
@@ -275,9 +652,11 @@
 </div>
 
 <!-- Editor scroll container -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div 
   class="notion-editor-scroll" 
   bind:this={scrollContainerEl}
+  onpointerdown={handleContainerPointerDown}
 >
   <div class="notion-content-wrapper" style="position: relative;" bind:this={contentWrapperEl}>
     <!-- Page Title -->
@@ -316,6 +695,12 @@
             {duplicateBlock}
             onDragStart={(e) => handleDragStart(idx, e)}
             onDragEnd={handleDragEnd}
+            selected={selectedBlockIds.includes(block.id)}
+            selectedBlockIds={selectedBlockIds}
+            onSelectBlock={handleSelectBlock}
+            onEditorFocus={handleEditorFocus}
+            deleteSelectedBlocks={deleteMultipleBlocks}
+            duplicateSelectedBlocks={duplicateMultipleBlocks}
           />
         </div>
       {/each}
@@ -326,6 +711,25 @@
       <div 
         class="drop-indicator" 
         style="top: {dropIndicatorTop}px;"
+      ></div>
+    {/if}
+
+    <!-- Selection Marquee visual box -->
+    {#if selectionBox.active}
+      <div 
+        class="marquee-selection-box"
+        style="
+          position: fixed;
+          left: {selectionBox.left}px;
+          top: {selectionBox.top}px;
+          width: {selectionBox.width}px;
+          height: {selectionBox.height}px;
+          border: 1px solid rgba(35, 131, 226, 0.4);
+          background-color: rgba(35, 131, 226, 0.08);
+          pointer-events: none;
+          z-index: 10000;
+          border-radius: 2px;
+        "
       ></div>
     {/if}
   </div>

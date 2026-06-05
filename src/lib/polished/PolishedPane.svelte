@@ -21,7 +21,11 @@
     customTemplates = {},
     themeColors = $bindable(),
     onGoToDashboard,
-    onChangeTemplate
+    onChangeTemplate,
+    undo = null,
+    redo = null,
+    historyPastLength = 0,
+    historyFutureLength = 0
   } = $props();
 
   let isDrawerOpen = $state(false);
@@ -356,6 +360,9 @@
           <div class="toolbar-divider-v"></div>
         {/if}
         <div class="toolbar-label">Polished View</div>
+        <button type="button" class="btn-change-template" onclick={() => undo?.()} disabled={historyPastLength === 0} style="display: flex; align-items: center; gap: 4px;" title="Undo (Cmd+Z)">↶ Undo</button>
+        <button type="button" class="btn-change-template" onclick={() => redo?.()} disabled={historyFutureLength === 0} style="display: flex; align-items: center; gap: 4px;" title="Redo (Cmd+Shift+Z)">↷ Redo</button>
+        <div class="toolbar-divider-v"></div>
         {#if onChangeTemplate}
           <button type="button" class="btn-change-template" onclick={onChangeTemplate}>
             ⊞ {templateName.charAt(0).toUpperCase() + templateName.slice(1)}

@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import NotionPane from './lib/notion/NotionPane.svelte';
   import PolishedPane from './lib/polished/PolishedPane.svelte';
   import TemplateGallery from './lib/polished/TemplateGallery.svelte';
@@ -57,6 +57,173 @@
   let isDragging = $state(false);
   let draggedBlockId = $state(null);
   let isExportMode = $state(false);
+
+  // Central Undo/Redo History states
+  let historyPast = $state([]);
+  let historyFuture = $state([]);
+  let isUndoRedoing = $state(false);
+  let lastSavedStateJson = $state("");
+  let debounceTimer;
+
+  function getHistoryState() {
+    return {
+      blocks: JSON.parse(JSON.stringify(blocks)),
+      pageTitle,
+      paddingMm,
+      activeTemplate,
+      themeColors: JSON.parse(JSON.stringify(themeColors))
+    };
+  }
+
+  function serializeState(state) {
+    return JSON.stringify({
+      blocks: state.blocks,
+      pageTitle: state.pageTitle,
+      paddingMm: state.paddingMm,
+      activeTemplate: state.activeTemplate,
+      themeColors: state.themeColors
+    });
+  }
+
+  function saveHistoryState(state) {
+    historyPast = [...historyPast, JSON.parse(JSON.stringify(state))];
+    historyFuture = [];
+    if (historyPast.length > 50) {
+      historyPast = historyPast.slice(1);
+    }
+  }
+
+  function undo() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+      const prev = JSON.parse(lastSavedStateJson);
+      saveHistoryState(prev);
+    }
+
+    if (historyPast.length === 0) return;
+
+    isUndoRedoing = true;
+    const currentState = getHistoryState();
+    historyFuture = [currentState, ...historyFuture];
+
+    const previousState = historyPast[historyPast.length - 1];
+    historyPast = historyPast.slice(0, -1);
+
+    blocks = previousState.blocks;
+    pageTitle = previousState.pageTitle;
+    paddingMm = previousState.paddingMm;
+    activeTemplate = previousState.activeTemplate;
+    themeColors = previousState.themeColors;
+
+    lastSavedStateJson = serializeState(previousState);
+
+    setTimeout(() => {
+      isUndoRedoing = false;
+    }, 50);
+  }
+
+  function redo() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+
+    if (historyFuture.length === 0) return;
+
+    isUndoRedoing = true;
+    const currentState = getHistoryState();
+    historyPast = [...historyPast, currentState];
+
+    const nextState = historyFuture[0];
+    historyFuture = historyFuture.slice(1);
+
+    blocks = nextState.blocks;
+    pageTitle = nextState.pageTitle;
+    paddingMm = nextState.paddingMm;
+    activeTemplate = nextState.activeTemplate;
+    themeColors = nextState.themeColors;
+
+    lastSavedStateJson = serializeState(nextState);
+
+    setTimeout(() => {
+      isUndoRedoing = false;
+    }, 50);
+  }
+
+  $effect(() => {
+    const currentBlocks = blocks;
+    const currentPageTitle = pageTitle;
+    const currentPaddingMm = paddingMm;
+    const currentActiveTemplate = activeTemplate;
+    const currentThemeColors = themeColors;
+
+    if (isUndoRedoing) return;
+    if (currentBlocks.length === 0) return;
+
+    const currentState = {
+      blocks: currentBlocks,
+      pageTitle: currentPageTitle,
+      paddingMm: currentPaddingMm,
+      activeTemplate: currentActiveTemplate,
+      themeColors: currentThemeColors
+    };
+    const currentStateJson = serializeState(currentState);
+
+    if (!lastSavedStateJson) {
+      lastSavedStateJson = currentStateJson;
+      return;
+    }
+
+    if (currentStateJson !== lastSavedStateJson) {
+      const prev = JSON.parse(lastSavedStateJson);
+      
+      const isStructureChanged = 
+        prev.blocks.length !== currentBlocks.length ||
+        prev.pageTitle !== currentPageTitle ||
+        prev.paddingMm !== currentPaddingMm ||
+        prev.activeTemplate !== currentActiveTemplate ||
+        JSON.stringify(prev.themeColors) !== JSON.stringify(currentThemeColors) ||
+        prev.blocks.some((b, i) => !currentBlocks[i] || b.type !== currentBlocks[i].type || b.id !== currentBlocks[i].id) ||
+        prev.blocks.some((b, i) => !currentBlocks[i] || JSON.stringify(b.canvas) !== JSON.stringify(currentBlocks[i].canvas));
+
+      if (isStructureChanged) {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        saveHistoryState(prev);
+        lastSavedStateJson = currentStateJson;
+      } else {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          saveHistoryState(prev);
+          lastSavedStateJson = currentStateJson;
+          debounceTimer = null;
+        }, 800);
+      }
+    }
+  });
+
+  // Global Keydown Handler for Undo/Redo
+  function handleGlobalKeyDown(e) {
+    if (!currentPath.startsWith('/resume/')) return;
+
+    const userPlatform = (navigator.userAgentData?.platform ?? navigator.platform ?? '').toUpperCase();
+    const isMac = userPlatform.includes('MAC') || navigator.userAgent.includes('Mac');
+    const isUndo = (isMac ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey;
+    const isRedo = 
+      ((isMac ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === 'z' && e.shiftKey) ||
+      ((isMac ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === 'y');
+
+    if (isUndo) {
+      e.preventDefault();
+      undo();
+    } else if (isRedo) {
+      e.preventDefault();
+      redo();
+    }
+  }
 
   // Sync paneWidth to localStorage
   try {
@@ -178,6 +345,15 @@
 
   // Helper to parse path and load CV data
   function handleRouteChange(path) {
+    // Reset history when switching resumes
+    historyPast = [];
+    historyFuture = [];
+    lastSavedStateJson = "";
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+
     if (path === '/' || path === '/dashboard') {
       if (path === '/') {
         window.history.replaceState({}, '', '/dashboard');
@@ -217,6 +393,13 @@
     currentPath = path;
     handleRouteChange(path);
   }
+
+  onDestroy(() => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+  });
 
   onMount(async () => {
     const params = new URLSearchParams(window.location.search);
@@ -409,6 +592,7 @@
 <svelte:window
   onpointermove={handlePointerMove}
   onpointerup={stopDragging}
+  onkeydown={handleGlobalKeyDown}
 />
 
 {#if isExportMode}
@@ -453,6 +637,10 @@
             bind:activeTemplate={activeTemplate}
             bind:customTemplates={customTemplates}
             bind:themeColors={themeColors}
+            undo={undo}
+            redo={redo}
+            historyPastLength={historyPast.length}
+            historyFutureLength={historyFuture.length}
           />
         </div>
 
@@ -482,6 +670,10 @@
             bind:themeColors={themeColors}
             onGoToDashboard={() => navigate('/dashboard')}
             onChangeTemplate={handleChangeTemplate}
+            undo={undo}
+            redo={redo}
+            historyPastLength={historyPast.length}
+            historyFutureLength={historyFuture.length}
           />
         </div>
       </div>
