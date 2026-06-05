@@ -15,7 +15,8 @@
     undo = null,
     redo = null,
     historyPastLength = 0,
-    historyFutureLength = 0
+    historyFutureLength = 0,
+    onAskAI = null
   } = $props();
 
   let fileInput;
@@ -504,12 +505,27 @@
       }
     }
 
+    function isSelectionInChatDrawer() {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const node = selection.anchorNode;
+        if (node) {
+          const element = node.nodeType === 3 ? node.parentElement : node;
+          if (element && element.closest('.chat-drawer')) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
     function handleCopy(e) {
       if (selectedBlockIds.length === 0) return;
       if (
         document.activeElement.tagName === 'INPUT' || 
         document.activeElement.tagName === 'TEXTAREA' ||
-        document.activeElement.closest('.ProseMirror')
+        document.activeElement.closest('.ProseMirror') ||
+        isSelectionInChatDrawer()
       ) {
         return;
       }
@@ -534,7 +550,8 @@
       if (
         document.activeElement.tagName === 'INPUT' || 
         document.activeElement.tagName === 'TEXTAREA' ||
-        document.activeElement.closest('.ProseMirror')
+        document.activeElement.closest('.ProseMirror') ||
+        isSelectionInChatDrawer()
       ) {
         return;
       }
@@ -611,6 +628,9 @@
     }
 
     function handleWindowClick(e) {
+      if (e.target.closest('.floating-chat-bubble-container')) {
+        return;
+      }
       if (selectedBlockIds.length > 0 && scrollContainerEl && !scrollContainerEl.contains(e.target)) {
         selectedBlockIds = [];
       }
@@ -701,6 +721,7 @@
             onEditorFocus={handleEditorFocus}
             deleteSelectedBlocks={deleteMultipleBlocks}
             duplicateSelectedBlocks={duplicateMultipleBlocks}
+            onAskAI={onAskAI}
           />
         </div>
       {/each}
@@ -735,7 +756,60 @@
   </div>
 </div>
 
+{#if selectedBlockIds.length > 0}
+  <div class="floating-chat-bubble-container" contenteditable="false">
+    <button
+      type="button"
+      class="floating-chat-bubble"
+      onclick={() => onAskAI?.(selectedBlockIds)}
+    >
+      💬 Chat with AI ({selectedBlockIds.length} block{selectedBlockIds.length > 1 ? 's' : ''})
+    </button>
+  </div>
+{/if}
+
 <style>
+  .floating-chat-bubble-container {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    animation: bubble-fade-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes bubble-fade-up {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 12px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+
+  .floating-chat-bubble {
+    background: #0a2463;
+    color: #ffffff;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(10, 36, 99, 0.15), 0 2px 4px rgba(10, 36, 99, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background-color 0.15s, transform 0.15s;
+    font-family: var(--font-sans);
+  }
+
+  .floating-chat-bubble:hover {
+    background: #081d50;
+    transform: scale(1.03);
+  }
   .top-bar {
     height: 44px;
     border-bottom: 1px solid var(--notion-border);

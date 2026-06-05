@@ -30,7 +30,8 @@
     onSelectBlock,
     onEditorFocus,
     deleteSelectedBlocks,
-    duplicateSelectedBlocks
+    duplicateSelectedBlocks,
+    onAskAI = null
   } = $props();
 
   let editorElement;
@@ -721,6 +722,15 @@
     showActionMenu = false;
   }
 
+  function handleActionAskAI() {
+    if (selected && onAskAI) {
+      onAskAI(selectedBlockIds);
+    } else if (onAskAI) {
+      onAskAI([block.id]);
+    }
+    showActionMenu = false;
+  }
+
   function handleActionDuplicate() {
     if (selected && duplicateSelectedBlocks) {
       duplicateSelectedBlocks(selectedBlockIds);
@@ -985,6 +995,13 @@
         Duplicate block
       </button>
       
+      <button type="button" class="action-menu-btn" onclick={handleActionAskAI} style="color: #10b981;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+        </svg>
+        💬 Chat with AI
+      </button>
+
       <div class="action-menu-divider"></div>
       <button type="button" class="action-menu-btn" onclick={handleActionRename}>
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

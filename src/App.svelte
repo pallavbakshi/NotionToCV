@@ -58,6 +58,15 @@
   let draggedBlockId = $state(null);
   let isExportMode = $state(false);
 
+  // Phase 3 AI Chat Drawer states
+  let isChatDrawerOpen = $state(false);
+  let stagedChatBlockIds = $state([]);
+
+  function handleAskAI(blockIds) {
+    isChatDrawerOpen = true;
+    stagedChatBlockIds = blockIds;
+  }
+
   // Central Undo/Redo History states
   let historyPast = $state([]);
   let historyFuture = $state([]);
@@ -641,6 +650,7 @@
             redo={redo}
             historyPastLength={historyPast.length}
             historyFutureLength={historyFuture.length}
+            onAskAI={handleAskAI}
           />
         </div>
 
@@ -674,6 +684,9 @@
             redo={redo}
             historyPastLength={historyPast.length}
             historyFutureLength={historyFuture.length}
+            activeResumeId={activeResumeId}
+            bind:isChatDrawerOpen={isChatDrawerOpen}
+            bind:stagedChatBlockIds={stagedChatBlockIds}
           />
         </div>
       </div>

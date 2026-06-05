@@ -5,6 +5,7 @@
   import CvPage from './CvPage.svelte';
   import ElementsDock from './ElementsDock.svelte';
   import { findOverlappingIds } from './canvasUtils.js';
+  import ChatDrawer from './ChatDrawer.svelte';
 
   let {
     blocks,
@@ -25,22 +26,58 @@
     undo = null,
     redo = null,
     historyPastLength = 0,
-    historyFutureLength = 0
+    historyFutureLength = 0,
+    activeResumeId = null,
+    isChatDrawerOpen = $bindable(false),
+    stagedChatBlockIds = $bindable([])
   } = $props();
 
   let isDrawerOpen = $state(false);
+  let chatDrawerEl = $state(null);
   let activePicker = $state(null); // 'h1' | 'h2' | 'h3' | 'text' | 'bg'
   let originalStyle = null;
 
   function openStyleDrawer() {
     originalStyle = JSON.parse(JSON.stringify(themeColors));
     isDrawerOpen = true;
+    isChatDrawerOpen = false;
     activePicker = null;
   }
 
   function saveStyle() {
     originalStyle = null;
     isDrawerOpen = false;
+  }
+
+  function openChatDrawer() {
+    isDrawerOpen = false; // Close style drawer
+    isChatDrawerOpen = true;
+  }
+
+  function toggleChatDrawer() {
+    if (isChatDrawerOpen) {
+      isChatDrawerOpen = false;
+    } else {
+      openChatDrawer();
+    }
+  }
+
+  function handleAskAI(blockIds) {
+    openChatDrawer();
+    setTimeout(() => {
+      if (chatDrawerEl) {
+        chatDrawerEl.forceAttachBlocks(blockIds);
+      }
+    }, 50);
+  }
+
+  function chatWithPolishedView() {
+    openChatDrawer();
+    setTimeout(() => {
+      if (chatDrawerEl) {
+        chatDrawerEl.forceAttachPolishedCV();
+      }
+    }, 50);
   }
 
   function discardStyle() {
@@ -192,7 +229,10 @@
       e.target.closest('.elements-dock') || 
       e.target.closest('.ham-dropdown') ||
       e.target.closest('.color-picker-wrapper') ||
-      e.target.closest('.btn-delete-page')
+      e.target.closest('.btn-delete-page') ||
+      e.target.closest('.floating-chat-bubble-container') ||
+      e.target.closest('.chat-drawer') ||
+      e.target.closest('.btn-chat-polished-banner')
     ) {
       return;
     }
@@ -370,81 +410,93 @@
         {/if}
       </div>
 
-      <!-- Right: hamburger menu -->
-      <div class="hamburger-menu-wrap">
+      <!-- Right: chat + hamburger menu -->
+      <div class="toolbar-right" style="display: flex; align-items: center; gap: 8px;">
         <button
           type="button"
-          class="btn-hamburger"
-          class:open={isMenuOpen}
-          onclick={(e) => { e.stopPropagation(); isMenuOpen = !isMenuOpen; }}
-          aria-label="Canvas options"
+          class="btn-chat-toggle"
+          class:active={isChatDrawerOpen}
+          onclick={toggleChatDrawer}
+          title="Chat with AI"
         >
-          <span class="ham-line"></span>
-          <span class="ham-line"></span>
-          <span class="ham-line"></span>
+          💬 Chat with AI
         </button>
 
-        {#if isMenuOpen}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="ham-dropdown" onclick={(e) => e.stopPropagation()}>
+        <div class="hamburger-menu-wrap">
+          <button
+            type="button"
+            class="btn-hamburger"
+            class:open={isMenuOpen}
+            onclick={(e) => { e.stopPropagation(); isMenuOpen = !isMenuOpen; }}
+            aria-label="Canvas options"
+          >
+            <span class="ham-line"></span>
+            <span class="ham-line"></span>
+            <span class="ham-line"></span>
+          </button>
 
-            <!-- Add Page -->
-            <div class="ham-section">
-              <button type="button" class="ham-btn" onclick={() => { addPage(); isMenuOpen = false; }}>
-                + Add Page
-              </button>
+          {#if isMenuOpen}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="ham-dropdown" onclick={(e) => e.stopPropagation()}>
+
+              <!-- Add Page -->
+              <div class="ham-section">
+                <button type="button" class="ham-btn" onclick={() => { addPage(); isMenuOpen = false; }}>
+                  + Add Page
+                </button>
+              </div>
+
+              <div class="ham-divider"></div>
+
+              <!-- 🎨 Style -->
+              <div class="ham-section">
+                <span class="ham-section-label">Theme</span>
+                <button
+                  type="button"
+                  class="ham-btn"
+                  class:active={isDrawerOpen}
+                  onclick={() => { if (isDrawerOpen) { saveStyle(); } else { openStyleDrawer(); } isMenuOpen = false; }}
+                >
+                  🎨 {isDrawerOpen ? 'Close Style' : 'Style Settings'}
+                </button>
+              </div>
+
+              <div class="ham-divider"></div>
+
+              <!-- Page Padding -->
+              <div class="ham-section">
+                <span class="ham-section-label">Page Padding: {paddingMm}mm</span>
+                <input
+                  type="range"
+                  min="10"
+                  max="25"
+                  step="1"
+                  bind:value={paddingMm}
+                  class="ham-slider"
+                />
+              </div>
+
+              <div class="ham-divider"></div>
+
+              <!-- Download PDF -->
+              <div class="ham-section">
+                <button
+                  type="button"
+                  class="ham-btn ham-btn-primary"
+                  onclick={() => { downloadPdf(); isMenuOpen = false; }}
+                  disabled={downloading}
+                >
+                  {#if downloading}
+                    <span class="spinner"></span> Generating...
+                  {:else}
+                    ↓ Download PDF
+                  {/if}
+                </button>
+              </div>
+
             </div>
-
-            <div class="ham-divider"></div>
-
-            <!-- 🎨 Style -->
-            <div class="ham-section">
-              <span class="ham-section-label">Theme</span>
-              <button
-                type="button"
-                class="ham-btn"
-                class:active={isDrawerOpen}
-                onclick={() => { if (isDrawerOpen) { saveStyle(); } else { openStyleDrawer(); } isMenuOpen = false; }}
-              >
-                🎨 {isDrawerOpen ? 'Close Style' : 'Style Settings'}
-              </button>
-            </div>
-
-            <div class="ham-divider"></div>
-
-            <!-- Padding slider -->
-            <div class="ham-section">
-              <span class="ham-section-label">Page Padding: {paddingMm}mm</span>
-              <input
-                type="range"
-                min="10"
-                max="25"
-                step="1"
-                bind:value={paddingMm}
-                class="ham-slider"
-              />
-            </div>
-
-            <div class="ham-divider"></div>
-
-            <!-- Download PDF -->
-            <div class="ham-section">
-              <button
-                type="button"
-                class="ham-btn ham-btn-primary"
-                onclick={() => { downloadPdf(); isMenuOpen = false; }}
-                disabled={downloading}
-              >
-                {#if downloading}
-                  <span class="spinner"></span> Generating...
-                {:else}
-                  ↓ Download PDF
-                {/if}
-              </button>
-            </div>
-
-          </div>
-        {/if}
+          {/if}
+        </div>
       </div>
     </div>
   {/if}
@@ -657,6 +709,22 @@
     </div>
   {/if}
 
+  {#if !isExportMode && isChatDrawerOpen}
+    <ChatDrawer
+      bind:this={chatDrawerEl}
+      resumeId={activeResumeId || 'default'}
+      {blocks}
+      {pageTitle}
+      {paddingMm}
+      templateName={templateName}
+      {customTemplates}
+      {themeColors}
+      {selectedBlockIds}
+      bind:stagedChatBlockIds={stagedChatBlockIds}
+      onClose={() => isChatDrawerOpen = false}
+    />
+  {/if}
+
   <!-- Scroll area for A4 pages -->
   <div class="pages-scroll-area" class:export-scroll={isExportMode}>
 
@@ -664,6 +732,19 @@
       <div class="overlap-banner">
         <span class="banner-icon">⚠️</span>
         <span class="banner-text">{overlapCount} block{overlapCount > 1 ? 's' : ''} overlapping — move or resize the highlighted blocks to fix.</span>
+      </div>
+    {/if}
+
+    {#if !isExportMode}
+      <div class="canvas-top-actions">
+        <button
+          type="button"
+          class="btn-chat-polished-banner"
+          onclick={chatWithPolishedView}
+          title="Analyze visual layout, whitespace and fonts with AI feedback"
+        >
+          🎨 Chat with AI (Polished CV)
+        </button>
       </div>
     {/if}
 
@@ -698,6 +779,7 @@
             {overlappingBlockIds}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
+            onAskAI={handleAskAI}
           />
           {#if !isExportMode && pageNum > totalPages}
             <div class="ghost-page-label">Page {pageNum} (Drop block to add page)</div>
@@ -726,6 +808,18 @@
         height: {Math.abs(marqueeState.startY - marqueeState.currentY)}px;
       "
     ></div>
+  {/if}
+
+  {#if !isExportMode && selectedBlockIds.length > 0}
+    <div class="floating-chat-bubble-container" contenteditable="false">
+      <button
+        type="button"
+        class="floating-chat-bubble"
+        onclick={() => handleAskAI(selectedBlockIds)}
+      >
+        💬 Chat with AI ({selectedBlockIds.length} block{selectedBlockIds.length > 1 ? 's' : ''})
+      </button>
+    </div>
   {/if}
 </div>
 
@@ -1451,9 +1545,101 @@
     border-color: #ef4444;
   }
 
+  .btn-chat-toggle {
+    font-size: 11px;
+    font-weight: 600;
+    color: #4b5563;
+    background: rgba(55, 53, 47, 0.06);
+    border: 1px solid rgba(55, 53, 47, 0.12);
+    border-radius: 5px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .btn-chat-toggle:hover, .btn-chat-toggle.active {
+    background-color: rgba(10, 36, 99, 0.08);
+    color: #0a2463;
+    border-color: rgba(10, 36, 99, 0.25);
+  }
+
+  .canvas-top-actions {
+    display: flex;
+    justify-content: center;
+    padding: 12px 0 4px 0;
+    flex-shrink: 0;
+  }
+
+  .btn-chat-polished-banner {
+    font-size: 11px;
+    font-weight: 700;
+    color: #0a2463;
+    background: rgba(10, 36, 99, 0.05);
+    border: 1px dashed rgba(10, 36, 99, 0.25);
+    border-radius: 6px;
+    padding: 6px 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 1px 3px rgba(10, 36, 99, 0.02);
+  }
+
+  .btn-chat-polished-banner:hover {
+    background: rgba(10, 36, 99, 0.09);
+    border-color: #0a2463;
+    box-shadow: 0 2px 8px rgba(10, 36, 99, 0.06);
+  }
+
+  .floating-chat-bubble-container {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    animation: bubble-fade-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes bubble-fade-up {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 12px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+
+  .floating-chat-bubble {
+    background: #0a2463;
+    color: #ffffff;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(10, 36, 99, 0.15), 0 2px 4px rgba(10, 36, 99, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background-color 0.15s, transform 0.15s;
+    font-family: var(--font-sans);
+  }
+
+  .floating-chat-bubble:hover {
+    background: #081d50;
+    transform: scale(1.03);
+  }
 
   @media print {
-    .theme-drawer {
+    .theme-drawer, .btn-chat-toggle, .canvas-top-actions, .floating-chat-bubble-container {
       display: none !important;
     }
   }
