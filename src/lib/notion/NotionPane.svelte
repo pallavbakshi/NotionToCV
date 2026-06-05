@@ -16,11 +16,17 @@
     redo = null,
     historyPastLength = 0,
     historyFutureLength = 0,
-    onAskAI = null
+    onAskAI = null,
+    stagedChanges = $bindable({}),
+    acceptStagedChange = null,
+    denyStagedChange = null,
+    acceptAllStagedChanges = null,
+    denyAllStagedChanges = null
   } = $props();
 
   let fileInput;
   let focusTarget = $state({ index: null, position: 'end', timestamp: 0 });
+  let hasAnyStagedChanges = $derived(Object.keys(stagedChanges).length > 0);
 
   // Canvas-sourced elements (hr, vbar, headshot) are managed on the canvas side only
   let notionBlocks = $derived(blocks.filter(b => b.source !== 'canvas'));
@@ -659,6 +665,15 @@
     <button type="button" class="btn btn-outline" onclick={() => undo?.()} disabled={historyPastLength === 0} title="Undo (Cmd+Z)">↶ Undo</button>
     <button type="button" class="btn btn-outline" onclick={() => redo?.()} disabled={historyFutureLength === 0} title="Redo (Cmd+Shift+Z)">↷ Redo</button>
     <div style="width: 1px; height: 16px; background-color: var(--notion-border); margin: 0 4px; align-self: center;"></div>
+    {#if hasAnyStagedChanges}
+      <button type="button" class="btn btn-accept-all" onclick={acceptAllStagedChanges} title="Accept all proposed changes">
+        ✓ Accept All ({Object.keys(stagedChanges).length})
+      </button>
+      <button type="button" class="btn btn-deny-all" onclick={denyAllStagedChanges} title="Deny all proposed changes">
+        ✕ Deny All
+      </button>
+      <div style="width: 1px; height: 16px; background-color: var(--notion-border); margin: 0 4px; align-self: center;"></div>
+    {/if}
     <button type="button" class="btn btn-outline" onclick={triggerImport}>Import JSON</button>
     <button type="button" class="btn btn-outline" onclick={exportJSON}>Export JSON</button>
     <input 
@@ -722,6 +737,9 @@
             deleteSelectedBlocks={deleteMultipleBlocks}
             duplicateSelectedBlocks={duplicateMultipleBlocks}
             onAskAI={onAskAI}
+            bind:stagedChanges={stagedChanges}
+            {acceptStagedChange}
+            {denyStagedChange}
           />
         </div>
       {/each}
@@ -893,5 +911,25 @@
     pointer-events: none;
     z-index: 5;
     transition: top 0.05s ease-out;
+  }
+
+  .btn-accept-all {
+    background-color: #22c55e !important;
+    border: 1px solid #16a34a !important;
+    color: #ffffff !important;
+    font-weight: 600;
+  }
+  .btn-accept-all:hover {
+    background-color: #16a34a !important;
+  }
+  .btn-deny-all {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #64748b !important;
+    font-weight: 600;
+  }
+  .btn-deny-all:hover {
+    background-color: #f1f5f9 !important;
+    color: #334155 !important;
   }
 </style>

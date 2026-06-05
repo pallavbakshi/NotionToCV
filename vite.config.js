@@ -2,8 +2,147 @@ import { defineConfig, loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import puppeteer from 'puppeteer'
 import fs from 'fs'
+import Anthropic from '@anthropic-ai/sdk'
 
 const printCache = new Map();
+
+const ANTHROPIC_KEYWORDS = ['claude', 'anthropic', 'opus', 'sonnet', 'haiku'];
+
+function isAnthropicModel(modelName) {
+  if (!modelName) return false;
+  const lower = modelName.toLowerCase();
+  return ANTHROPIC_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+function resolveModelName(requestedModel, env) {
+  if (!requestedModel) return 'anthropic/claude-3.5-sonnet';
+  const lower = requestedModel.toLowerCase();
+  if (lower.includes('opus')) {
+    return env.ANTHROPIC_DEFAULT_OPUS_MODEL || process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || requestedModel;
+  }
+  if (lower.includes('sonnet') || requestedModel === 'anthropic/claude-3.5-sonnet') {
+    return env.ANTHROPIC_DEFAULT_SONNET_MODEL || process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || requestedModel;
+  }
+  if (lower.includes('haiku')) {
+    return env.ANTHROPIC_DEFAULT_HAIKU_MODEL || process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL || requestedModel;
+  }
+  return requestedModel;
+}
+
+function mapOpenAiMessagesToAnthropic(messages) {
+  return messages.map(msg => {
+    if (msg.role === 'assistant') {
+      const content = [];
+      if (msg.content) {
+        content.push({ type: 'text', text: msg.content });
+      }
+      if (msg.tool_calls) {
+        for (const tc of msg.tool_calls) {
+          let parsedArgs = {};
+          const tcFunc = tc.function || {};
+          try {
+            parsedArgs = typeof tcFunc.arguments === 'string' ? JSON.parse(tcFunc.arguments) : tcFunc.arguments;
+          } catch (e) {
+            console.error('Failed to parse tool arguments:', tcFunc.arguments, e);
+          }
+          content.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tcFunc.name,
+            input: parsedArgs
+          });
+        }
+      }
+      return {
+        role: 'assistant',
+        content: content.length > 0 ? content : undefined
+      };
+    } else if (msg.role === 'tool') {
+      return {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: msg.tool_call_id,
+            content: msg.content
+          }
+        ]
+      };
+    } else {
+      // role: 'user'
+      if (typeof msg.content === 'string') {
+        return {
+          role: 'user',
+          content: msg.content
+        };
+      } else if (Array.isArray(msg.content)) {
+        const content = msg.content.map(part => {
+          if (part.type === 'text') {
+            return { type: 'text', text: part.text };
+          } else if (part.type === 'image_url') {
+            const url = part.image_url?.url || '';
+            if (url.startsWith('data:')) {
+              const match = url.match(/^data:([^;]+);base64,(.+)$/);
+              if (match) {
+                return {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: match[1],
+                    data: match[2]
+                  }
+                };
+              }
+            }
+            return { type: 'text', text: `[Image URL: ${url}]` };
+          }
+          return part;
+        });
+        return {
+          role: 'user',
+          content
+        };
+      }
+      return {
+        role: 'user',
+        content: String(msg.content || '')
+      };
+    }
+  }).filter(m => m.content !== undefined);
+}
+
+function mergeConsecutiveRoles(messages) {
+  if (messages.length === 0) return [];
+  const merged = [];
+  let currentMsg = null;
+
+  for (const msg of messages) {
+    if (!currentMsg) {
+      currentMsg = { role: msg.role, content: Array.isArray(msg.content) ? [...msg.content] : [msg.content] };
+    } else if (currentMsg.role === msg.role) {
+      const additionalParts = Array.isArray(msg.content) ? msg.content : [msg.content];
+      const currentParts = currentMsg.content.map(p => typeof p === 'string' ? { type: 'text', text: p } : p);
+      const newParts = additionalParts.map(p => typeof p === 'string' ? { type: 'text', text: p } : p);
+      currentMsg.content = [...currentParts, ...newParts];
+    } else {
+      merged.push(currentMsg);
+      currentMsg = { role: msg.role, content: Array.isArray(msg.content) ? [...msg.content] : [msg.content] };
+    }
+  }
+  if (currentMsg) {
+    merged.push(currentMsg);
+  }
+
+  return merged.map(m => {
+    if (m.content.length === 1 && typeof m.content[0] === 'string') {
+      return { role: m.role, content: m.content[0] };
+    }
+    return {
+      role: m.role,
+      content: m.content.map(c => typeof c === 'string' ? { type: 'text', text: c } : c)
+    };
+  });
+}
 
 function mainPlugin(env) {
   return {
@@ -423,7 +562,7 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
             };
 
             try {
-              const { messages, systemPrompt, model } = JSON.parse(body);
+              const { messages, systemPrompt, model, tools, tool_choice } = JSON.parse(body);
 
               const OPENROUTER_KEY = env.OPENROUTER_API_KEY;
               if (!OPENROUTER_KEY) {
@@ -433,94 +572,226 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                 return;
               }
 
-              const orHeaders = {
-                'Authorization': `Bearer ${OPENROUTER_KEY}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'http://localhost:5173',
-                'X-Title': 'NotionToCV'
-              };
+              const isAnthropic = isAnthropicModel(model);
 
-              const controller = new AbortController();
-              timeoutId = setTimeout(() => {
-                console.log('OpenRouter stream generation timeout');
-                controller.abort();
-              }, 120000); // 2 minutes timeout
+              if (isAnthropic) {
+                const baseURL = env.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://openrouter.ai/api';
+                const apiKey = env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_AUTH_TOKEN || env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
+                const timeout = parseInt(env.API_TIMEOUT_MS || process.env.API_TIMEOUT_MS) || 120000;
 
-              req.on('aborted', () => {
-                controller.abort();
-              });
-              res.on('close', () => {
-                if (!res.writableEnded) {
-                  controller.abort();
+                const anthropic = new Anthropic({
+                  apiKey,
+                  baseURL,
+                  timeout
+                });
+
+                const resolvedModel = resolveModelName(model, env);
+                const mappedMessages = mergeConsecutiveRoles(mapOpenAiMessagesToAnthropic(messages));
+
+                const anthropicTools = tools ? tools.map(t => ({
+                  name: t.function.name,
+                  description: t.function.description,
+                  input_schema: t.function.parameters
+                })) : undefined;
+
+                let anthropicToolChoice = undefined;
+                if (tool_choice) {
+                  if (tool_choice === 'auto') {
+                    anthropicToolChoice = { type: 'auto' };
+                  } else if (tool_choice === 'any') {
+                    anthropicToolChoice = { type: 'any' };
+                  } else if (typeof tool_choice === 'object' && tool_choice.function?.name) {
+                    anthropicToolChoice = { type: 'tool', name: tool_choice.function.name };
+                  }
                 }
-              });
 
-              const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: orHeaders,
-                body: JSON.stringify({
-                  model: model || 'google/gemini-2.5-flash',
-                  messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...messages
-                  ],
+                const controller = new AbortController();
+                timeoutId = setTimeout(() => {
+                  console.log('Anthropic stream generation timeout');
+                  controller.abort();
+                }, timeout);
+
+                req.on('aborted', () => {
+                  controller.abort();
+                });
+                res.on('close', () => {
+                  if (!res.writableEnded) {
+                    controller.abort();
+                  }
+                });
+
+                const stream = await anthropic.messages.create({
+                  model: resolvedModel,
+                  max_tokens: 4096,
+                  system: systemPrompt,
+                  messages: mappedMessages,
+                  tools: anthropicTools,
+                  tool_choice: anthropicToolChoice,
                   stream: true
-                }),
-                signal: controller.signal
-              });
+                }, {
+                  signal: controller.signal
+                });
 
-              if (!response.ok) {
                 cleanup();
-                const errText = await response.text();
-                res.statusCode = response.status;
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ error: 'OpenRouter error: ' + errText }));
-                return;
-              }
 
-              res.setHeader('Content-Type', 'text/event-stream');
-              res.setHeader('Cache-Control', 'no-cache');
-              res.setHeader('Connection', 'keep-alive');
+                res.setHeader('Content-Type', 'text/event-stream');
+                res.setHeader('Cache-Control', 'no-cache');
+                res.setHeader('Connection', 'keep-alive');
 
-              let reader = null;
-              try {
-                // Read response body as stream and stream to client
-                if (response.body) {
-                  if (typeof response.body.getReader === 'function') {
-                    reader = response.body.getReader();
-                    while (true) {
-                      if (controller.signal.aborted) {
-                        break;
-                      }
-                      const { done, value } = await reader.read();
-                      if (done) break;
-                      if (controller.signal.aborted) {
-                        break;
-                      }
-                      res.write(value);
+                for await (const event of stream) {
+                  if (controller.signal.aborted) {
+                    break;
+                  }
+
+                  if (event.type === 'content_block_start') {
+                    const index = event.index;
+                    if (event.content_block?.type === 'tool_use') {
+                      const toolUse = event.content_block;
+                      const chunk = {
+                        choices: [{
+                          delta: {
+                            tool_calls: [{
+                              index: index,
+                              id: toolUse.id,
+                              type: 'function',
+                              function: {
+                                name: toolUse.name,
+                                arguments: ''
+                              }
+                            }]
+                          }
+                        }]
+                      };
+                      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
                     }
-                  } else {
-                    for await (const chunk of response.body) {
-                      if (controller.signal.aborted) {
-                        break;
-                      }
-                      res.write(chunk);
+                  } else if (event.type === 'content_block_delta') {
+                    if (event.delta?.type === 'text_delta') {
+                      const text = event.delta.text;
+                      const chunk = {
+                        choices: [{
+                          delta: {
+                            content: text
+                          }
+                        }]
+                      };
+                      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                    } else if (event.delta?.type === 'input_json_delta') {
+                      const partialJson = event.delta.partial_json;
+                      const chunk = {
+                        choices: [{
+                          delta: {
+                            tool_calls: [{
+                              index: event.index,
+                              function: {
+                                arguments: partialJson
+                              }
+                            }]
+                          }
+                        }]
+                      };
+                      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
                     }
                   }
                 }
-              } catch (streamErr) {
-                console.log('Stream generation aborted or closed:', streamErr.message);
-              } finally {
-                cleanup();
-                if (reader) {
-                  try {
-                    await reader.cancel();
-                  } catch (e) {}
-                  try {
-                    reader.releaseLock();
-                  } catch (e) {}
-                }
+
+                res.write('data: [DONE]\n\n');
                 res.end();
+
+              } else {
+                // OpenAI-compatible fetch fallback
+                const orHeaders = {
+                  'Authorization': `Bearer ${OPENROUTER_KEY}`,
+                  'Content-Type': 'application/json',
+                  'HTTP-Referer': 'http://localhost:5173',
+                  'X-Title': 'NotionToCV'
+                };
+
+                const timeout = parseInt(env.API_TIMEOUT_MS || process.env.API_TIMEOUT_MS) || 120000;
+
+                const controller = new AbortController();
+                timeoutId = setTimeout(() => {
+                  console.log('OpenRouter stream generation timeout');
+                  controller.abort();
+                }, timeout);
+
+                req.on('aborted', () => {
+                  controller.abort();
+                });
+                res.on('close', () => {
+                  if (!res.writableEnded) {
+                    controller.abort();
+                  }
+                });
+
+                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                  method: 'POST',
+                  headers: orHeaders,
+                  body: JSON.stringify({
+                    model: model || 'google/gemini-2.5-flash',
+                    messages: [
+                      { role: 'system', content: systemPrompt },
+                      ...messages
+                    ],
+                    tools,
+                    tool_choice,
+                    stream: true
+                  }),
+                  signal: controller.signal
+                });
+
+                if (!response.ok) {
+                  cleanup();
+                  const errText = await response.text();
+                  res.statusCode = response.status;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: 'OpenRouter error: ' + errText }));
+                  return;
+                }
+
+                res.setHeader('Content-Type', 'text/event-stream');
+                res.setHeader('Cache-Control', 'no-cache');
+                res.setHeader('Connection', 'keep-alive');
+
+                let reader = null;
+                try {
+                  // Read response body as stream and stream to client
+                  if (response.body) {
+                    if (typeof response.body.getReader === 'function') {
+                      reader = response.body.getReader();
+                      while (true) {
+                        if (controller.signal.aborted) {
+                          break;
+                        }
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        if (controller.signal.aborted) {
+                          break;
+                        }
+                        res.write(value);
+                      }
+                    } else {
+                      for await (const chunk of response.body) {
+                        if (controller.signal.aborted) {
+                          break;
+                        }
+                        res.write(chunk);
+                      }
+                    }
+                  }
+                } catch (streamErr) {
+                  console.log('Stream generation aborted or closed:', streamErr.message);
+                } finally {
+                  cleanup();
+                  if (reader) {
+                    try {
+                      await reader.cancel();
+                    } catch (e) {}
+                    try {
+                      reader.releaseLock();
+                    } catch (e) {}
+                  }
+                  res.end();
+                }
               }
             } catch (err) {
               cleanup();
@@ -560,15 +831,28 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
 
               await page.goto(url, { waitUntil: 'networkidle0' });
 
-              const pageElements = await page.$$('.cv-page');
-              const screenshots = [];
-              for (const el of pageElements) {
-                const buffer = await el.screenshot({ type: 'jpeg', quality: 80 });
-                screenshots.push(buffer.toString('base64'));
-              }
+              if (data.blockId) {
+                const el = await page.$(`[data-block-id="${data.blockId}"]`);
+                if (el) {
+                  const buffer = await el.screenshot({ type: 'jpeg', quality: 80 });
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ screenshot: buffer.toString('base64') }));
+                } else {
+                  res.statusCode = 404;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: `Block ${data.blockId} not found` }));
+                }
+              } else {
+                const pageElements = await page.$$('.cv-page');
+                const screenshots = [];
+                for (const el of pageElements) {
+                  const buffer = await el.screenshot({ type: 'jpeg', quality: 80 });
+                  screenshots.push(buffer.toString('base64'));
+                }
 
-              res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ screenshots }));
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ screenshots }));
+              }
             } catch (err) {
               console.error('Error generating screenshots:', err);
               res.statusCode = 500;

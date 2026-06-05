@@ -1,6 +1,11 @@
 <!-- ChatDrawer.svelte -->
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
+  import { Editor } from '@tiptap/core';
+  import { StarterKit } from '@tiptap/starter-kit';
+  import { TextStyle } from '@tiptap/extension-text-style';
+  import { Color } from '@tiptap/extension-color';
+  import { FontFamily } from '@tiptap/extension-font-family';
 
   let {
     resumeId,
@@ -12,7 +17,9 @@
     themeColors,
     selectedBlockIds = [],
     stagedChatBlockIds = $bindable([]),
-    onClose
+    onClose,
+    stagedChanges = $bindable({}),
+    stagedAttachments = $bindable([])
   } = $props();
 
   // Conversation history list and active conversation state
@@ -22,7 +29,6 @@
 
   // Message staging and generating state
   let inputText = $state('');
-  let stagedAttachments = $state([]); // { type: 'block' | 'polished' | 'file', label, ... }
   let isGenerating = $state(false);
   let abortController = $state(null);
   let showAttachDropdown = $state(false);
@@ -62,6 +68,18 @@
   // Active chat conversation computed details
   let activeChat = $derived(chatList.find(c => c.id === activeChatId));
   let messages = $derived(activeChat ? activeChat.messages : []);
+  let chatMode = $derived(activeChat ? (activeChat.mode || 'chat') : 'chat');
+
+  function setChatMode(newMode) {
+    if (!activeChatId) return;
+    chatList = chatList.map(c => {
+      if (c.id === activeChatId) {
+        return { ...c, mode: newMode };
+      }
+      return c;
+    });
+    saveChats();
+  }
 
   // Monitor staged blocks triggered from outside
   $effect(() => {
@@ -149,6 +167,7 @@
       id: 'chat_' + Math.random().toString(36).substring(2, 9),
       title: 'New Chat',
       messages: [],
+      mode: 'chat',
       updatedAt: new Date().toISOString()
     };
     chatList = [newChat, ...chatList];
@@ -341,8 +360,458 @@
       reader.readAsText(file);
     }
 
-    // Reset input
-    e.target.value = '';
+  }
+
+  // Agent Mode Tools & Helpers
+  const AGENT_TOOLS = [
+    {
+      type: "function",
+      function: {
+        name: "read_block",
+        description: "Read the content, layout, dimensions, styling, capacity, and neighbors of a specific resume block.",
+        parameters: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "The unique ID of the block to read."
+            }
+          },
+          required: ["id"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "update_block_content",
+        description: "Stage a change to a block's content using HTML (without CSS/inline styles). This automatically runs verification to check if the new content fits within the block's physical budget and capacity.",
+        parameters: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "The unique ID of the block to update."
+            },
+            html_without_css: {
+              type: "string",
+              description: "The proposed text content as standard semantic HTML (e.g. using <p>, <strong>, <em>, <ul>, <li>). Do not include any styles, classes, inline CSS, or font declarations."
+            }
+          },
+          required: ["id", "html_without_css"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "get_block_screenshot",
+        description: "Capture and return a visual screenshot of the block as it currently renders on the CV canvas. Useful to verify density, layout, or line-wrapping details.",
+        parameters: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "The unique ID of the block to screenshot."
+            }
+          },
+          required: ["id"]
+        }
+      }
+    }
+  ];
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function parseHtmlToTiptapJson(html, blockType) {
+    const isHeading = blockType === 'h1' || blockType === 'h2' || blockType === 'h3';
+    const wrapperHtml = isHeading ? `<h${blockType[1]}>${html}</h${blockType[1]}>` : `<div>${html}</div>`;
+    
+    const tempEditor = new Editor({
+      extensions: [
+        StarterKit.configure({
+          heading: { levels: [1, 2, 3] },
+          bulletList: false,
+          orderedList: false,
+          listItem: false,
+          blockquote: false,
+          horizontalRule: false,
+          codeBlock: false,
+          code: false,
+          trailingNode: false,
+          history: false,
+        }),
+        TextStyle,
+        Color,
+        FontFamily
+      ],
+      content: wrapperHtml,
+    });
+    
+    const json = tempEditor.getJSON();
+    tempEditor.destroy();
+    
+    const firstChild = json.content?.[0];
+    return firstChild?.content ?? [];
+  }
+
+  function parseTiptapJsonToHtml(content) {
+    if (!content || !Array.isArray(content)) return '';
+    return content.map(node => {
+      if (node.type === 'text') {
+        let text = escapeHtml(node.text || '');
+        if (node.marks) {
+          for (const mark of node.marks) {
+            if (mark.type === 'bold') text = `<strong>${text}</strong>`;
+            if (mark.type === 'italic') text = `<em>${text}</em>`;
+            if (mark.type === 'underline') text = `<u>${text}</u>`;
+            if (mark.type === 'strike') text = `<s>${text}</s>`;
+          }
+        }
+        return text;
+      } else if (node.type === 'hardBreak') {
+        return '<br/>';
+      }
+      return '';
+    }).join('');
+  }
+
+  function sanitizeHtmlWithoutCss(input) {
+    const doc = new DOMParser().parseFromString(input || '', 'text/html');
+    doc.body.querySelectorAll('*').forEach(el => {
+      el.removeAttribute('style');
+      el.removeAttribute('class');
+      el.removeAttribute('id');
+    });
+    return doc.body.innerHTML;
+  }
+
+  function measureHtmlHeight(html, blockType, widthMm, templateName) {
+    const tempDiv = document.createElement('div');
+    tempDiv.className = `polished-container tmpl-${templateName} block-type-${blockType}`;
+    tempDiv.style.position = 'absolute';
+    tempDiv.style.visibility = 'hidden';
+    tempDiv.style.top = '-9999px';
+    tempDiv.style.left = '-9999px';
+    tempDiv.style.width = `${widthMm}mm`;
+    tempDiv.style.boxSizing = 'border-box';
+    tempDiv.style.wordBreak = 'break-word';
+    tempDiv.style.whiteSpace = 'pre-wrap';
+    tempDiv.innerHTML = html;
+    
+    const parent = document.querySelector('.polished-container') || document.body;
+    parent.appendChild(tempDiv);
+    const heightPx = tempDiv.scrollHeight;
+    parent.removeChild(tempDiv);
+    
+    return heightPx;
+  }
+
+  function canvasToRect(canvas, colWidth, paddingMm) {
+    let left, width;
+    if (canvas.colSpan === 0) {
+      left = paddingMm + canvas.col * (colWidth + 4) + colWidth;
+      width = 4;
+    } else {
+      left = paddingMm + canvas.col * (colWidth + 4);
+      width = canvas.colSpan * colWidth + (canvas.colSpan - 1) * 4;
+    }
+    const top = paddingMm + canvas.row * 5;
+    const height = canvas.rowSpan * 5;
+    return { left, top, right: left + width, bottom: top + height };
+  }
+
+  function findNeighbors(blockId, blocksList, colWidth, paddingMm) {
+    const block = blocksList.find(b => b.id === blockId);
+    if (!block || !block.canvas) return { above: null, below: null, left: null, right: null };
+    
+    const pageNum = block.canvas.page;
+    const rect = canvasToRect(block.canvas, colWidth, paddingMm);
+    
+    let bestAbove = null, bestBelow = null, bestLeft = null, bestRight = null;
+    
+    for (const b of blocksList) {
+      if (!b.canvas || b.id === blockId || b.canvas.page !== pageNum) continue;
+      const r = canvasToRect(b.canvas, colWidth, paddingMm);
+      
+      // Check above
+      if (r.bottom <= rect.top && r.right > rect.left && r.left < rect.right) {
+        if (!bestAbove || r.bottom > bestAbove.rect.bottom) {
+          bestAbove = { block: b, rect: r };
+        }
+      }
+      // Check below
+      if (r.top >= rect.bottom && r.right > rect.left && r.left < rect.right) {
+        if (!bestBelow || r.top < bestBelow.rect.top) {
+          bestBelow = { block: b, rect: r };
+        }
+      }
+      // Check left
+      if (r.right <= rect.left && r.bottom > rect.top && r.top < rect.bottom) {
+        if (!bestLeft || r.right > bestLeft.rect.right) {
+          bestLeft = { block: b, rect: r };
+        }
+      }
+      // Check right
+      if (r.left >= rect.right && r.bottom > rect.top && r.top < rect.bottom) {
+        if (!bestRight || r.left < bestRight.rect.left) {
+          bestRight = { block: b, rect: r };
+        }
+      }
+    }
+    
+    const formatNeighbor = (nb) => {
+      if (!nb) return null;
+      const text = nb.block.content?.map(n => n.text || '').join('') || '';
+      return {
+        id: nb.block.id,
+        type: nb.block.type,
+        name: nb.block.name,
+        content_plaintext_snippet: text.slice(0, 60)
+      };
+    };
+    
+    return {
+      above: formatNeighbor(bestAbove),
+      below: formatNeighbor(bestBelow),
+      left: formatNeighbor(bestLeft),
+      right: formatNeighbor(bestRight)
+    };
+  }
+
+  async function runAgentTool(name, args) {
+    const PX_PER_MM = 96 / 25.4;
+    const cw = (210 - 2 * paddingMm - 12) / 4;
+    
+    if (name === 'read_block') {
+      const block = blocks.find(b => b.id === args.id);
+      if (!block) {
+        return { error: `Block ${args.id} not found` };
+      }
+      
+      const plaintext = block.content?.map(node => node.text || '').join('') || '';
+      const contentHtmlEl = document.querySelector(`[data-block-id="${block.id}"] .block-content-container`);
+      const renderedHtml = contentHtmlEl ? contentHtmlEl.innerHTML : '';
+      
+      let appliedStyles = {};
+      if (contentHtmlEl) {
+        const computed = window.getComputedStyle(contentHtmlEl);
+        appliedStyles = {
+          fontFamily: computed.fontFamily,
+          fontSize: computed.fontSize,
+          lineHeight: computed.lineHeight,
+          padding: computed.padding
+        };
+      }
+      
+      const isPlaced = !!block.canvas;
+      let capacity = null;
+      let widthMm = 0;
+      let heightMm = 0;
+
+      if (isPlaced) {
+        widthMm = block.canvas.colSpan === 0 ? 4 : block.canvas.colSpan * cw + (block.canvas.colSpan - 1) * 4;
+        heightMm = block.canvas.rowSpan * 5;
+        
+        let lineHeightMm = 5;
+        if (block.type === 'h1') lineHeightMm = 20;
+        else if (block.type === 'h2') lineHeightMm = 15;
+        else if (block.type === 'h3') lineHeightMm = 10;
+        
+        const maxLines = Math.floor(heightMm / lineHeightMm);
+        
+        let charsPerLine = 20;
+        if (block.type === 'h1') charsPerLine = Math.round(widthMm / 7);
+        else if (block.type === 'h2') charsPerLine = Math.round(widthMm / 5);
+        else if (block.type === 'h3') charsPerLine = Math.round(widthMm / 3.5);
+        else charsPerLine = Math.round(widthMm / 1.8);
+        
+        // Measure current lines using real canvas styling via measureHtmlHeight
+        const blockHtml = contentHtmlEl ? contentHtmlEl.innerHTML : parseTiptapJsonToHtml(block.content);
+        const proposedHeightPx = measureHtmlHeight(blockHtml, block.type, widthMm, templateName);
+        const lineHeightPx = lineHeightMm * PX_PER_MM;
+        const currentLines = Math.max(1, Math.round(proposedHeightPx / lineHeightPx));
+        const isOverflowing = proposedHeightPx > (heightMm * PX_PER_MM + 1);
+        
+        capacity = {
+          max_lines: maxLines,
+          approx_characters_per_line: charsPerLine,
+          current_lines_used: currentLines,
+          lines_remaining: maxLines - currentLines,
+          is_overflowing: isOverflowing
+        };
+      }
+      
+      const neighbors = findNeighbors(block.id, blocks, cw, paddingMm);
+      
+      return {
+        id: block.id,
+        type: block.type,
+        name: block.name,
+        placement_status: isPlaced
+          ? 'placed — block is on the A4 canvas and has a fixed spatial budget'
+          : 'unplaced — block exists in the Notion editor but has not been added to the canvas yet; spatial budget is unknown and content length is unconstrained',
+        canvas: block.canvas,
+        widthMm: isPlaced ? widthMm : null,
+        heightMm: isPlaced ? heightMm : null,
+        plaintext,
+        capacity: isPlaced ? capacity : 'N/A — block is unplaced; no spatial budget to check against. You may still propose content edits but cannot verify fit until the block is placed on the canvas.',
+        rendered_html_reference: renderedHtml || null,
+        applied_styles: Object.keys(appliedStyles).length > 0 ? appliedStyles : null,
+        neighbors: isPlaced ? neighbors : 'N/A — unplaced blocks have no canvas neighbors'
+      };
+      
+    } else if (name === 'update_block_content') {
+      const block = blocks.find(b => b.id === args.id);
+      if (!block) {
+        return { error: `Block ${args.id} not found` };
+      }
+      
+      const sanitizedHtml = sanitizeHtmlWithoutCss(args.html_without_css);
+      const proposedContent = parseHtmlToTiptapJson(sanitizedHtml, block.type);
+      
+      stagedChanges = {
+        ...stagedChanges,
+        [block.id]: {
+          originalContent: block.content,
+          proposedContent,
+          proposedHtml: sanitizedHtml
+        }
+      };
+      
+      let capacity = {
+        max_lines: null,
+        current_lines_used: null,
+        lines_remaining: null,
+        is_overflowing: false,
+        message: "Block is not currently placed on canvas"
+      };
+      
+      if (block.canvas) {
+        const widthMm = block.canvas.colSpan === 0 ? 4 : block.canvas.colSpan * cw + (block.canvas.colSpan - 1) * 4;
+        const heightMm = block.canvas.rowSpan * 5;
+        
+        let lineHeightMm = 5;
+        if (block.type === 'h1') lineHeightMm = 20;
+        else if (block.type === 'h2') lineHeightMm = 15;
+        else if (block.type === 'h3') lineHeightMm = 10;
+        
+        const maxLines = Math.floor(heightMm / lineHeightMm);
+        const proposedHeightPx = measureHtmlHeight(sanitizedHtml, block.type, widthMm, templateName);
+        const lineHeightPx = lineHeightMm * PX_PER_MM;
+        const currentLines = Math.max(1, Math.round(proposedHeightPx / lineHeightPx));
+        const isOverflowing = proposedHeightPx > (heightMm * PX_PER_MM + 1);
+        
+        capacity = {
+          max_lines: maxLines,
+          current_lines_used: currentLines,
+          lines_remaining: maxLines - currentLines,
+          is_overflowing: isOverflowing
+        };
+      }
+      
+      return {
+        status: "success",
+        staged: true,
+        capacity
+      };
+      
+    } else if (name === 'get_block_screenshot') {
+      const block = blocks.find(b => b.id === args.id);
+      if (!block) {
+        return { error: `Block ${args.id} not found` };
+      }
+      
+      try {
+        const response = await fetch('/api/screenshot', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            blocks,
+            pageTitle,
+            paddingMm,
+            templateName,
+            customTemplates,
+            themeColors,
+            blockId: block.id
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        
+        const result = await response.json();
+        return {
+          status: "success",
+          blockId: block.id,
+          screenshot_base64: result.screenshot
+        };
+      } catch (err) {
+        console.error('Screenshot tool failed:', err);
+        return { error: `Screenshot failed: ${err.message}` };
+      }
+    }
+    
+    return { error: `Unknown tool: ${name}` };
+  }
+
+  function getAgentSystemPrompt() {
+    const outline = blocks.map((b, i) => {
+      const isPlaced = b.canvas !== null;
+      const posText = isPlaced 
+        ? `Page ${b.canvas.page}, Col ${b.canvas.col}, Row ${b.canvas.row} (Span ${b.canvas.colSpan}x${b.canvas.rowSpan})`
+        : 'Unplaced';
+      const textContent = b.content?.map(node => node.text || '').join('') || '';
+      return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}] - Content: "${textContent}"`;
+    }).join('\n');
+
+    let cleanHtml = '';
+    const pagesEl = document.querySelector('.pages-list');
+    if (pagesEl) {
+      const clone = pagesEl.cloneNode(true);
+      clone.querySelectorAll('.floating-toolbar, .hover-drag-handle, .resize-handle, .grid-overlay').forEach(el => el.remove());
+      cleanHtml = clone.innerHTML;
+    }
+
+    const themeStyleEl = document.getElementById('theme-color-overrides');
+    const themeStyles = themeStyleEl ? themeStyleEl.textContent : '';
+
+    return `You are Antigravity CV Editor Agent, an expert AI resume editor.
+You are helping the user edit their resume using tools to read and propose changes to blocks.
+
+Here is the full Notion view of the resume (every block's ID, type, name, canvas position, and content):
+Title: ${pageTitle || 'Untitled Resume'}
+Outline & Content:
+${outline}
+
+Here is the clean rendered HTML structure of the A4 polished CV pages (reflecting committed blocks):
+\`\`\`html
+${cleanHtml}
+\`\`\`
+
+Here are the custom CSS overrides applied to the pages:
+\`\`\`css
+${themeStyles}
+\`\`\`
+
+Guidelines:
+1. You are in Agent Mode. You have tools to read, update block content, and take screenshots.
+2. Use 'read_block' to get full details of a block including styling, spatial capacity, and neighbors.
+3. Use 'update_block_content' to propose modifications to block text. Specify semantic HTML (e.g. <p>, <strong>, <em>, <ul>, <li>). Do not include any styles or CSS.
+4. Your proposed changes will be STAGED as red/green inline diffs in the Notion pane. The user will accept or deny them.
+5. Respect the block spatial budget! Always check capacity numbers returned by update_block_content or read_block to ensure your revisions fit. Avoid overflowing blocks.
+6. When referencing blocks, use their ID or name (e.g. @contact-section).
+7. Respond to the user with a summary of the edits you proposed or explanation of why you made them.`;
   }
 
   // Generate system prompt context outline
@@ -371,6 +840,7 @@ Guidelines:
   }
 
   // Send Message
+  // Send Message
   async function sendMessage() {
     if (!inputText.trim() && stagedAttachments.length === 0) return;
     if (isGenerating) return;
@@ -397,23 +867,14 @@ Guidelines:
       timestamp: new Date().toISOString()
     };
 
-    // Create assistant streaming placeholder
-    const assistantMsg = {
-      id: 'msg_' + Math.random().toString(36).substring(2, 9),
-      role: 'assistant',
-      content: '',
-      timestamp: new Date().toISOString()
-    };
-
-    // Update local state
+    // Update local state to show user message immediately
     chatList = chatList.map(c => {
       if (c.id === activeChatId) {
-        // Generate title if it was "New Chat"
         const currentTitle = c.title === 'New Chat' ? (queryText.slice(0, 30) || 'Review Resume') : c.title;
         return {
           ...c,
           title: currentTitle,
-          messages: [...c.messages, userMsg, assistantMsg],
+          messages: [...c.messages, userMsg],
           updatedAt: new Date().toISOString()
         };
       }
@@ -422,20 +883,31 @@ Guidelines:
 
     saveChats();
 
-    // Prepare API call payload
-    const systemPrompt = getSystemPromptOutline();
+    const systemPrompt = chatMode === 'agent' ? getAgentSystemPrompt() : getSystemPromptOutline();
+    const activeModel = chatMode === 'agent' ? 'anthropic/claude-sonnet-4-5' : 'google/gemini-2.5-flash';
 
-    // Map chat history messages
+    // Map history payload
     const historyPayload = [];
     const activeChatRef = chatList.find(c => c.id === activeChatId);
-    // Send all messages except the last empty assistant placeholder
-    const pastMessages = activeChatRef.messages.slice(0, -1);
+    const pastMessages = activeChatRef ? activeChatRef.messages : [];
 
     for (const msg of pastMessages) {
       if (msg.role === 'assistant') {
-        historyPayload.push({ role: 'assistant', content: msg.content });
-      } else {
-        // Reconstruct user message payload including attachments
+        const item = { role: 'assistant', content: msg.content || null };
+        if (msg.tool_calls) {
+          item.tool_calls = msg.tool_calls;
+        }
+        historyPayload.push(item);
+      } else if (msg.role === 'tool' && msg.isToolResult) {
+        historyPayload.push({
+          role: 'tool',
+          tool_call_id: msg.tool_call_id,
+          name: msg.name,
+          content: msg.content
+        });
+      } else if (msg.role === 'tool_call') {
+        // Skip visual tool call status helpers
+      } else if (msg.role === 'user') {
         let textPart = msg.content;
         
         // Append block contents if attached
@@ -449,6 +921,15 @@ Guidelines:
                 textPart += `\n- Block ID ${b?.id ?? 'unknown'} (${b?.type ?? 'unknown'}): "${bText}"`;
               });
             }
+          });
+        }
+
+        // Append denied block rejections if attached
+        const deniedAttached = msg.attachments ? msg.attachments.filter(a => a.type === 'denied') : [];
+        if (deniedAttached.length > 0) {
+          textPart += '\n\n[User Rejections]:';
+          deniedAttached.forEach(att => {
+            textPart += `\n- Proposed content change for Block ID ${att.blockId} has been explicitly REJECTED/DENIED by the user. They did not approve this proposed revision. Please think of another wording/strategy or ask how they want it instead.`;
           });
         }
 
@@ -495,17 +976,25 @@ Guidelines:
       }
     }
 
-    try {
+    async function runGeneration(currentHistory) {
+      if (abortController?.signal?.aborted) return;
+
+      const requestPayload = {
+        messages: currentHistory,
+        systemPrompt,
+        model: activeModel
+      };
+
+      if (chatMode === 'agent') {
+        requestPayload.tools = AGENT_TOOLS;
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          messages: historyPayload,
-          systemPrompt,
-          model: 'google/gemini-2.5-flash'
-        }),
+        body: JSON.stringify(requestPayload),
         signal: abortController.signal
       });
 
@@ -517,13 +1006,34 @@ Guidelines:
       const decoder = new TextDecoder();
       let buffer = '';
 
+      let contentAccumulated = '';
+      let toolCallsAccumulated = [];
+
+      const assistantMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+      const assistantMsg = {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date().toISOString()
+      };
+
+      chatList = chatList.map(c => {
+        if (c.id === activeChatId) {
+          return {
+            ...c,
+            messages: [...c.messages, assistantMsg]
+          };
+        }
+        return c;
+      });
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        buffer = lines.pop(); // Hold incomplete line
+        buffer = lines.pop();
 
         for (const line of lines) {
           const cleanLine = line.trim();
@@ -533,20 +1043,43 @@ Guidelines:
             if (dataStr === '[DONE]') continue;
             try {
               const parsed = JSON.parse(dataStr);
-              const text = parsed.choices?.[0]?.delta?.content || '';
+              const delta = parsed.choices?.[0]?.delta;
+
+              // 1. Accumulate text content
+              const text = delta?.content || '';
               if (text) {
-                // Append text chunk to the active streaming assistant message
+                contentAccumulated += text;
                 chatList = chatList.map(c => {
                   if (c.id === activeChatId) {
-                    const updatedMessages = [...c.messages];
-                    const lastMsg = updatedMessages[updatedMessages.length - 1];
-                    if (lastMsg && lastMsg.role === 'assistant') {
-                      lastMsg.content += text;
-                    }
-                    return { ...c, messages: updatedMessages };
+                    return {
+                      ...c,
+                      messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: contentAccumulated } : m)
+                    };
                   }
                   return c;
                 });
+              }
+
+              // 2. Accumulate tool calls (OpenAI format: function.name / function.arguments)
+              if (delta?.tool_calls) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index;
+                  if (!toolCallsAccumulated[idx]) {
+                    toolCallsAccumulated[idx] = {
+                      id: tc.id || '',
+                      type: 'function',
+                      function: {
+                        name: tc.function?.name || '',
+                        arguments: ''
+                      }
+                    };
+                  }
+                  if (tc.id) toolCallsAccumulated[idx].id = tc.id;
+                  if (tc.function?.name) toolCallsAccumulated[idx].function.name = tc.function.name;
+                  if (tc.function?.arguments) {
+                    toolCallsAccumulated[idx].function.arguments += tc.function.arguments;
+                  }
+                }
               }
             } catch (e) {
               // Ignore partial parsing errors
@@ -554,7 +1087,117 @@ Guidelines:
           }
         }
       }
+
+      // Clean up empty placeholder if only tool calls were received
+      if (!contentAccumulated && toolCallsAccumulated.length > 0) {
+        chatList = chatList.map(c => {
+          if (c.id === activeChatId) {
+            return {
+              ...c,
+              messages: c.messages.filter(m => m.id !== assistantMsgId)
+            };
+          }
+          return c;
+        });
+      }
+
       saveChats();
+
+      const completedToolCalls = toolCallsAccumulated.filter(Boolean);
+
+      if (completedToolCalls.length > 0) {
+        // Construct tool calls for history
+        const assistantToolCallMsg = {
+          role: 'assistant',
+          content: contentAccumulated || null,
+          tool_calls: completedToolCalls
+        };
+
+        const nextHistory = [...currentHistory, assistantToolCallMsg];
+
+        // Status msg in UI
+        const toolCallStatusMsg = {
+          id: 'msg_' + Math.random().toString(36).substring(2, 9),
+          role: 'tool_call',
+          content: `Running agent tools: ${completedToolCalls.map(t => t.function?.name).join(', ')}...`,
+          timestamp: new Date().toISOString()
+        };
+
+        chatList = chatList.map(c => {
+          if (c.id === activeChatId) {
+            return { ...c, messages: [...c.messages, toolCallStatusMsg] };
+          }
+          return c;
+        });
+
+        const toolResultMessagesForHistory = [];
+
+        for (const tc of completedToolCalls) {
+          const tcName = tc.function?.name || '';
+          let parsedArgs = {};
+          try {
+            parsedArgs = JSON.parse(tc.function?.arguments || '{}');
+          } catch (e) {}
+
+          const stepMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+          const stepMsg = {
+            id: stepMsgId,
+            role: 'tool_call',
+            tool_call_id: tc.id,
+            name: tcName,
+            content: `⚙️ Tool use: ${tcName}(${Object.keys(parsedArgs).length ? JSON.stringify(parsedArgs) : ''})...`,
+            timestamp: new Date().toISOString()
+          };
+
+          chatList = chatList.map(c => {
+            if (c.id === activeChatId) {
+              return { ...c, messages: [...c.messages, stepMsg] };
+            }
+            return c;
+          });
+
+          const result = await runAgentTool(tcName, parsedArgs);
+
+          // Create the real tool result message for persistence
+          const toolResultMsg = {
+            id: 'msg_' + Math.random().toString(36).substring(2, 9),
+            role: 'tool',
+            isToolResult: true,
+            tool_call_id: tc.id,
+            name: tcName,
+            content: JSON.stringify(result),
+            timestamp: new Date().toISOString()
+          };
+
+          // Update step msg status text in UI and append raw result message
+          chatList = chatList.map(c => {
+            if (c.id === activeChatId) {
+              return {
+                ...c,
+                messages: [
+                  ...c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${tcName}` } : m),
+                  toolResultMsg
+                ]
+              };
+            }
+            return c;
+          });
+
+          toolResultMessagesForHistory.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            name: tc.name,
+            content: JSON.stringify(result)
+          });
+        }
+
+        saveChats();
+        await runGeneration([...nextHistory, ...toolResultMessagesForHistory]);
+      }
+    }
+
+    try {
+      await runGeneration(historyPayload);
     } catch (err) {
       if (err.name === 'AbortError') {
         console.log('Stream generation aborted');
@@ -566,6 +1209,13 @@ Guidelines:
             const lastMsg = updatedMessages[updatedMessages.length - 1];
             if (lastMsg && lastMsg.role === 'assistant') {
               lastMsg.content += `\n\n*Error: Failed to fetch response. (${err.message})*`;
+            } else {
+              updatedMessages.push({
+                id: 'msg_' + Math.random().toString(36).substring(2, 9),
+                role: 'assistant',
+                content: `*Error: Failed to fetch response. (${err.message})*`,
+                timestamp: new Date().toISOString()
+              });
             }
             return { ...c, messages: updatedMessages };
           }
@@ -713,7 +1363,7 @@ Guidelines:
     {:else}
       <div class="header-left">
         <h3>💬 Chat with AI</h3>
-        <span class="chat-model-tag">Gemini 2.5</span>
+        <span class="chat-model-tag">{chatMode === 'agent' ? 'Claude Sonnet 4.5' : 'Gemini 2.5'}</span>
       </div>
       <div class="header-actions">
         <button type="button" class="btn-header-action" onclick={() => historyView = true} title="View previous chats">History</button>
@@ -722,6 +1372,27 @@ Guidelines:
       </div>
     {/if}
   </div>
+
+  {#if !historyView}
+    <div class="mode-toggle-bar">
+      <button 
+        type="button" 
+        class="mode-toggle-btn" 
+        class:active={chatMode === 'chat'} 
+        onclick={() => setChatMode('chat')}
+      >
+        Chat Mode
+      </button>
+      <button 
+        type="button" 
+        class="mode-toggle-btn" 
+        class:active={chatMode === 'agent'} 
+        onclick={() => setChatMode('agent')}
+      >
+        Agent Mode
+      </button>
+    </div>
+  {/if}
 
   <div class="drawer-content">
     {#if historyView}
@@ -782,15 +1453,16 @@ Guidelines:
           </div>
         {:else}
           {#each messages as msg (msg.id)}
-            <div class="message-row {msg.role}">
+            {#if msg.role !== 'tool'}
+              <div class="message-row {msg.role}">
               <div class="message-bubble">
                 {#if msg.role === 'user'}
                   <div class="message-text">{msg.content}</div>
                   {#if msg.attachments && msg.attachments.length > 0}
                     <div class="attached-chips-display">
                       {#each msg.attachments as att}
-                        <span class="chip chip-readonly" title={att.type}>
-                          {#if att.type === 'block'}📦{:else if att.type === 'polished'}🎨{:else}📎{/if}
+                        <span class="chip chip-readonly" class:chip-denied={att.type === 'denied'} title={att.type}>
+                          {#if att.type === 'block'}📦{:else if att.type === 'polished'}🎨{:else if att.type === 'denied'}❌{:else}📎{/if}
                           {att.label}
                         </span>
                       {/each}
@@ -816,6 +1488,7 @@ Guidelines:
                 {/if}
               </div>
             </div>
+          {/if}
           {/each}
         {/if}
       </div>
@@ -833,8 +1506,8 @@ Guidelines:
       {#if stagedAttachments.length > 0}
         <div class="staged-chips">
           {#each stagedAttachments as att, i}
-            <span class="chip" class:chip-loading={att.loading}>
-              {#if att.type === 'block'}📦{:else if att.type === 'polished'}🎨{:else}📎{/if}
+            <span class="chip" class:chip-loading={att.loading} class:chip-denied={att.type === 'denied'}>
+              {#if att.type === 'block'}📦{:else if att.type === 'polished'}🎨{:else if att.type === 'denied'}❌{:else}📎{/if}
               {att.label}
               {#if !att.loading}
                 <button type="button" class="btn-remove-chip" onclick={() => removeAttachment(i)}>✕</button>
@@ -965,6 +1638,38 @@ Guidelines:
     padding: 0 16px;
     border-bottom: 1px solid rgba(55, 53, 47, 0.08);
     flex-shrink: 0;
+  }
+
+  .mode-toggle-bar {
+    display: flex;
+    background: rgba(0, 0, 0, 0.04);
+    margin: 8px 12px 0 12px;
+    padding: 3px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+
+  .mode-toggle-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4b5563;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+  }
+
+  .mode-toggle-btn:hover {
+    color: #111827;
+  }
+
+  .mode-toggle-btn.active {
+    background: #ffffff;
+    color: var(--chat-primary, #0a2463);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
   }
 
   .header-left {
@@ -1224,6 +1929,18 @@ Guidelines:
     border-color: rgba(156, 163, 175, 0.15);
     color: #6b7280;
     animation: chip-pulse 1.5s infinite ease-in-out;
+  }
+
+  .chip.chip-denied {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #dc2626;
+  }
+
+  .chip-readonly.chip-denied {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fee2e2;
   }
 
   @keyframes chip-pulse {
