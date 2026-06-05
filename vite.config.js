@@ -6,7 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const printCache = new Map();
 
-const ANTHROPIC_KEYWORDS = ['claude', 'anthropic', 'grok', 'minimax', 'opus', 'sonnet', 'haiku'];
+const ANTHROPIC_KEYWORDS = ['claude', 'anthropic', 'opus', 'sonnet', 'haiku'];
 
 function isAnthropicModel(modelName) {
   if (!modelName) return false;
@@ -39,15 +39,16 @@ function mapOpenAiMessagesToAnthropic(messages) {
       if (msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           let parsedArgs = {};
+          const tcFunc = tc.function || {};
           try {
-            parsedArgs = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.arguments;
+            parsedArgs = typeof tcFunc.arguments === 'string' ? JSON.parse(tcFunc.arguments) : tcFunc.arguments;
           } catch (e) {
-            console.error('Failed to parse tool arguments:', tc.arguments, e);
+            console.error('Failed to parse tool arguments:', tcFunc.arguments, e);
           }
           content.push({
             type: 'tool_use',
             id: tc.id,
-            name: tc.name,
+            name: tcFunc.name,
             input: parsedArgs
           });
         }
@@ -705,11 +706,13 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                   'X-Title': 'NotionToCV'
                 };
 
+                const timeout = parseInt(env.API_TIMEOUT_MS || process.env.API_TIMEOUT_MS) || 120000;
+
                 const controller = new AbortController();
                 timeoutId = setTimeout(() => {
                   console.log('OpenRouter stream generation timeout');
                   controller.abort();
-                }, 120000); // 2 minutes timeout
+                }, timeout);
 
                 req.on('aborted', () => {
                   controller.abort();

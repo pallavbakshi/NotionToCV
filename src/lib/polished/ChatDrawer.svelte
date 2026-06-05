@@ -421,6 +421,15 @@
     }
   ];
 
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function parseHtmlToTiptapJson(html, blockType) {
     const isHeading = blockType === 'h1' || blockType === 'h2' || blockType === 'h3';
     const wrapperHtml = isHeading ? `<h${blockType[1]}>${html}</h${blockType[1]}>` : `<div>${html}</div>`;
@@ -457,7 +466,7 @@
     if (!content || !Array.isArray(content)) return '';
     return content.map(node => {
       if (node.type === 'text') {
-        let text = node.text || '';
+        let text = escapeHtml(node.text || '');
         if (node.marks) {
           for (const mark of node.marks) {
             if (mark.type === 'bold') text = `<strong>${text}</strong>`;
@@ -472,6 +481,16 @@
       }
       return '';
     }).join('');
+  }
+
+  function sanitizeHtmlWithoutCss(input) {
+    const doc = new DOMParser().parseFromString(input || '', 'text/html');
+    doc.body.querySelectorAll('*').forEach(el => {
+      el.removeAttribute('style');
+      el.removeAttribute('class');
+      el.removeAttribute('id');
+    });
+    return doc.body.innerHTML;
   }
 
   function measureHtmlHeight(html, blockType, widthMm, templateName) {
@@ -651,14 +670,15 @@
         return { error: `Block ${args.id} not found` };
       }
       
-      const proposedContent = parseHtmlToTiptapJson(args.html_without_css, block.type);
+      const sanitizedHtml = sanitizeHtmlWithoutCss(args.html_without_css);
+      const proposedContent = parseHtmlToTiptapJson(sanitizedHtml, block.type);
       
       stagedChanges = {
         ...stagedChanges,
         [block.id]: {
           originalContent: block.content,
           proposedContent,
-          proposedHtml: args.html_without_css
+          proposedHtml: sanitizedHtml
         }
       };
       
@@ -680,7 +700,7 @@
         else if (block.type === 'h3') lineHeightMm = 10;
         
         const maxLines = Math.floor(heightMm / lineHeightMm);
-        const proposedHeightPx = measureHtmlHeight(args.html_without_css, block.type, widthMm, templateName);
+        const proposedHeightPx = measureHtmlHeight(sanitizedHtml, block.type, widthMm, templateName);
         const lineHeightPx = lineHeightMm * PX_PER_MM;
         const currentLines = Math.max(1, Math.round(proposedHeightPx / lineHeightPx));
         const isOverflowing = proposedHeightPx > (heightMm * PX_PER_MM + 1);
@@ -874,7 +894,7 @@ Guidelines:
           item.tool_calls = msg.tool_calls;
         }
         historyPayload.push(item);
-      } else if (msg.role === 'tool') {
+      } else if (msg.role === 'tool' && msg.isToolResult) {
         historyPayload.push({
           role: 'tool',
           tool_call_id: msg.tool_call_id,
@@ -1113,7 +1133,7 @@ Guidelines:
           const stepMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
           const stepMsg = {
             id: stepMsgId,
-            role: 'tool',
+            role: 'tool_call',
             tool_call_id: tc.id,
             name: tc.name,
             content: `⚙️ Tool use: ${tc.name}(${Object.keys(parsedArgs).length ? JSON.stringify(parsedArgs) : ''})...`,
@@ -1129,12 +1149,26 @@ Guidelines:
 
           const result = await runAgentTool(tc.name, parsedArgs);
 
-          // Update step msg status text in UI
+          // Create the real tool result message for persistence
+          const toolResultMsg = {
+            id: 'msg_' + Math.random().toString(36).substring(2, 9),
+            role: 'tool',
+            isToolResult: true,
+            tool_call_id: tc.id,
+            name: tc.name,
+            content: JSON.stringify(result),
+            timestamp: new Date().toISOString()
+          };
+
+          // Update step msg status text in UI and append raw result message
           chatList = chatList.map(c => {
             if (c.id === activeChatId) {
               return {
                 ...c,
-                messages: c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${tc.name}` } : m)
+                messages: [
+                  ...c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${tc.name}` } : m),
+                  toolResultMsg
+                ]
               };
             }
             return c;
@@ -1410,7 +1444,8 @@ Guidelines:
           </div>
         {:else}
           {#each messages as msg (msg.id)}
-            <div class="message-row {msg.role}">
+            {#if msg.role !== 'tool'}
+              <div class="message-row {msg.role}">
               <div class="message-bubble">
                 {#if msg.role === 'user'}
                   <div class="message-text">{msg.content}</div>
@@ -1444,6 +1479,7 @@ Guidelines:
                 {/if}
               </div>
             </div>
+          {/if}
           {/each}
         {/if}
       </div>

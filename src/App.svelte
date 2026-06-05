@@ -420,6 +420,10 @@
 
   // Helper to parse path and load CV data
   function handleRouteChange(path) {
+    // Reset staged agent artifacts when switching context
+    stagedChanges = {};
+    stagedAttachments = [];
+
     // Reset history when switching resumes
     historyPast = [];
     historyFuture = [];
