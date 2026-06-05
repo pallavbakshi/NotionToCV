@@ -880,7 +880,7 @@ Guidelines:
     saveChats();
 
     const systemPrompt = chatMode === 'agent' ? getAgentSystemPrompt() : getSystemPromptOutline();
-    const activeModel = chatMode === 'agent' ? 'anthropic/claude-3.5-sonnet' : 'google/gemini-2.5-flash';
+    const activeModel = chatMode === 'agent' ? 'anthropic/claude-sonnet-4-5' : 'google/gemini-2.5-flash';
 
     // Map history payload
     const historyPayload = [];
@@ -1056,22 +1056,24 @@ Guidelines:
                 });
               }
 
-              // 2. Accumulate tool calls
+              // 2. Accumulate tool calls (OpenAI format: function.name / function.arguments)
               if (delta?.tool_calls) {
                 for (const tc of delta.tool_calls) {
                   const idx = tc.index;
                   if (!toolCallsAccumulated[idx]) {
                     toolCallsAccumulated[idx] = {
                       id: tc.id || '',
-                      name: tc.function?.name || '',
-                      arguments: '',
-                      type: 'function'
+                      type: 'function',
+                      function: {
+                        name: tc.function?.name || '',
+                        arguments: ''
+                      }
                     };
                   }
                   if (tc.id) toolCallsAccumulated[idx].id = tc.id;
-                  if (tc.function?.name) toolCallsAccumulated[idx].name = tc.function.name;
+                  if (tc.function?.name) toolCallsAccumulated[idx].function.name = tc.function.name;
                   if (tc.function?.arguments) {
-                    toolCallsAccumulated[idx].arguments += tc.function.arguments;
+                    toolCallsAccumulated[idx].function.arguments += tc.function.arguments;
                   }
                 }
               }
@@ -1097,12 +1099,14 @@ Guidelines:
 
       saveChats();
 
-      if (toolCallsAccumulated.length > 0) {
+      const completedToolCalls = toolCallsAccumulated.filter(Boolean);
+
+      if (completedToolCalls.length > 0) {
         // Construct tool calls for history
         const assistantToolCallMsg = {
           role: 'assistant',
           content: contentAccumulated || null,
-          tool_calls: toolCallsAccumulated
+          tool_calls: completedToolCalls
         };
 
         const nextHistory = [...currentHistory, assistantToolCallMsg];
@@ -1111,7 +1115,7 @@ Guidelines:
         const toolCallStatusMsg = {
           id: 'msg_' + Math.random().toString(36).substring(2, 9),
           role: 'tool_call',
-          content: `Running agent tools: ${toolCallsAccumulated.map(t => t.name).join(', ')}...`,
+          content: `Running agent tools: ${completedToolCalls.map(t => t.function?.name).join(', ')}...`,
           timestamp: new Date().toISOString()
         };
 
@@ -1124,10 +1128,11 @@ Guidelines:
 
         const toolResultMessagesForHistory = [];
 
-        for (const tc of toolCallsAccumulated) {
+        for (const tc of completedToolCalls) {
+          const tcName = tc.function?.name || '';
           let parsedArgs = {};
           try {
-            parsedArgs = JSON.parse(tc.arguments);
+            parsedArgs = JSON.parse(tc.function?.arguments || '{}');
           } catch (e) {}
 
           const stepMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
@@ -1135,8 +1140,8 @@ Guidelines:
             id: stepMsgId,
             role: 'tool_call',
             tool_call_id: tc.id,
-            name: tc.name,
-            content: `⚙️ Tool use: ${tc.name}(${Object.keys(parsedArgs).length ? JSON.stringify(parsedArgs) : ''})...`,
+            name: tcName,
+            content: `⚙️ Tool use: ${tcName}(${Object.keys(parsedArgs).length ? JSON.stringify(parsedArgs) : ''})...`,
             timestamp: new Date().toISOString()
           };
 
@@ -1147,7 +1152,7 @@ Guidelines:
             return c;
           });
 
-          const result = await runAgentTool(tc.name, parsedArgs);
+          const result = await runAgentTool(tcName, parsedArgs);
 
           // Create the real tool result message for persistence
           const toolResultMsg = {
@@ -1155,7 +1160,7 @@ Guidelines:
             role: 'tool',
             isToolResult: true,
             tool_call_id: tc.id,
-            name: tc.name,
+            name: tcName,
             content: JSON.stringify(result),
             timestamp: new Date().toISOString()
           };
@@ -1166,7 +1171,7 @@ Guidelines:
               return {
                 ...c,
                 messages: [
-                  ...c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${tc.name}` } : m),
+                  ...c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${tcName}` } : m),
                   toolResultMsg
                 ]
               };
@@ -1354,7 +1359,7 @@ Guidelines:
     {:else}
       <div class="header-left">
         <h3>💬 Chat with AI</h3>
-        <span class="chat-model-tag">{chatMode === 'agent' ? 'Claude 3.5' : 'Gemini 2.5'}</span>
+        <span class="chat-model-tag">{chatMode === 'agent' ? 'Claude Sonnet 4.5' : 'Gemini 2.5'}</span>
       </div>
       <div class="header-actions">
         <button type="button" class="btn-header-action" onclick={() => historyView = true} title="View previous chats">History</button>
