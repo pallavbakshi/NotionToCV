@@ -204,9 +204,18 @@ function renderLineText(parts, line) {
     const fontStyleAttr = isRealItalic ? ' font-style="italic"' : '';
     const chars = span.glyphs.map(g => escapeXml(g.char)).join('');
 
+    // The engine already shaped this run (one absolute x per glyph, GPOS kerning
+    // baked in) and deliberately did NOT form ligatures. The browser, however,
+    // re-shapes <text> content by default: if it forms a ligature (e.g. "fl"),
+    // two characters collapse into one glyph and the per-character x list desyncs,
+    // shifting every glyph after it. Disable browser kerning/ligatures so our
+    // explicit positions are honored verbatim — and so screen matches the PDF,
+    // which draws by glyph id and never ligates.
+    const NO_RESHAPE = ` font-kerning="none" style="font-variant-ligatures:none;font-feature-settings:'liga' 0,'clig' 0,'dlig' 0,'calt' 0"`;
+
     // Emit the span as a <text> with the given per-glyph x list.
     const emit = (xs) => {
-      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${escapeXml(span.fontName)}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${escapeXml(span.color)}"${transform}>`);
+      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${escapeXml(span.fontName)}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${escapeXml(span.color)}"${transform}${NO_RESHAPE}>`);
       parts.push(chars);
       parts.push('</text>');
     };

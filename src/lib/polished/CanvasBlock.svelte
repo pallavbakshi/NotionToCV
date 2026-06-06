@@ -597,22 +597,34 @@
   /* Resize Handles */
   .resize-handle {
     position: absolute;
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     background-color: var(--color-imperial-blue);
     border: 1px solid var(--color-ghost-white);
     border-radius: 1px;
     z-index: 100;
   }
 
-  .tl { top: -3px; left: -3px; cursor: nwse-resize; }
-  .t  { top: -3px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-  .tr { top: -3px; right: -3px; cursor: nesw-resize; }
-  .r  { top: 50%; right: -3px; transform: translateY(-50%); cursor: ew-resize; }
-  .br { bottom: -3px; right: -3px; cursor: nwse-resize; }
-  .b  { bottom: -3px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-  .bl { bottom: -3px; left: -3px; cursor: nesw-resize; }
-  .l  { top: 50%; left: -3px; transform: translateY(-50%); cursor: ew-resize; }
+  /* Expand hit target area to 20px for easier hovering/dragging */
+  .resize-handle::after {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: -6px;
+    width: 20px;
+    height: 20px;
+    background: transparent;
+    z-index: 101;
+  }
+
+  .tl { top: -4px; left: -4px; cursor: nwse-resize; }
+  .t  { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+  .tr { top: -4px; right: -4px; cursor: nesw-resize; }
+  .r  { top: 50%; right: -4px; transform: translateY(-50%); cursor: ew-resize; }
+  .br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+  .b  { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+  .bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+  .l  { top: 50%; left: -4px; transform: translateY(-50%); cursor: ew-resize; }
 
   /* Floating Action Toolbar */
   .floating-toolbar {

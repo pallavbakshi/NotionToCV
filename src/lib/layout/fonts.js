@@ -106,6 +106,15 @@ function binarySlug(family, weight, italic) {
  */
 export async function initFonts() {
   const isNode = typeof window === 'undefined';
+  // In the browser we must also hand the binaries to the CSS font system, or the
+  // on-screen SVG <text font-family="Inter"> falls back to a system font whose
+  // metrics differ from the fontkit-shaped positions — drawing each glyph at the
+  // right x but with the wrong width, which collides/gaps dense lines. Register a
+  // FontFace per binary (keyed by the font's OWN familyName/weight/style so it
+  // matches exactly what render-svg emits).
+  const canRegisterFontFaces = !isNode && typeof FontFace !== 'undefined'
+    && typeof document !== 'undefined' && document.fonts;
+  const fontFaceLoads = [];
 
   for (const { family, weights, italic } of FONT_INVENTORY) {
     for (const w of weights) {
@@ -133,7 +142,31 @@ export async function initFonts() {
       const font = /** @type {import('fontkit').Font} */ (created);
       REGISTRY.set(key, font);
       FONT_BUFFERS.set(key, /** @type {ArrayBuffer} */ (buffer));
+
+      if (canRegisterFontFaces) {
+        // Use the binary's own metadata so the registered (family, weight, style)
+        // exactly matches the <text> attributes render-svg derives from the font.
+        const regFamily = font.familyName || family;
+        const weightClass = font['OS/2']?.usWeightClass || w;
+        const style = (font.subfamilyName || '').toLowerCase().includes('italic') || italic
+          ? 'italic' : 'normal';
+        try {
+          const face = new FontFace(regFamily, buffer, { weight: String(weightClass), style });
+          fontFaceLoads.push(
+            face.load().then((loaded) => document.fonts.add(loaded)).catch(() => {})
+          );
+        } catch (e) {
+          // FontFace construction can throw on malformed input — non-fatal; the
+          // block simply renders with a fallback until the font is available.
+        }
+      }
     }
+  }
+
+  // Let callers (and the first paint) benefit once faces are ready; failures here
+  // are non-fatal (shaping already works regardless of the CSS font system).
+  if (fontFaceLoads.length > 0) {
+    await Promise.allSettled(fontFaceLoads);
   }
 }
 
