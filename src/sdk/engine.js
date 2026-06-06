@@ -154,12 +154,13 @@ export class ResumeAgentEngine {
         yield { type: 'tool_result', id: tc.id, name: tcName, result };
 
         if (stagedChangesUpdate) {
-          // Emit staged_change only for newly added blocks — not the full
-          // accumulated map, which would re-emit blocks from earlier turns.
-          const prevKeys = new Set(Object.keys(stagedChanges));
+          // Emit staged_change whenever a block's staged content changes — including
+          // the second (or Nth) update to the same block. Compare by serialized value
+          // so that true no-ops (identical re-proposal) are not re-emitted.
+          const prev = stagedChanges;
           stagedChanges = stagedChangesUpdate;
           for (const [blockId, change] of Object.entries(stagedChangesUpdate)) {
-            if (!prevKeys.has(blockId)) {
+            if (JSON.stringify(prev[blockId]) !== JSON.stringify(change)) {
               yield { type: 'staged_change', blockId, change };
             }
           }

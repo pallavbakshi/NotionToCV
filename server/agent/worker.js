@@ -83,11 +83,17 @@ async function runJob(job) {
 
     const { state: dehydratedState, instruction, opts } = job.input;
 
-    // Fix #8: only rehydrate if the state actually has file:// image URIs —
-    // text-only resumes skip disk I/O entirely, and a missing image file won't
-    // crash jobs that never request screenshots.
-    const hasImages = dehydratedState.blocks?.some(b => b.imageData?.startsWith('file://'));
-    const state = hasImages ? await rehydrateState(dehydratedState) : dehydratedState;
+    // FR5.8: on-demand rehydration — don't load image bytes upfront. Build a
+    // screenshot provider wrapper that rehydrates the full state only on the first
+    // screenshot request, then caches the result for the rest of the job.
+    // Text-only jobs (which never call get_block_screenshot) never touch the disk.
+    let rehydratedState = null;
+    async function lazyScreenshotProvider(args) {
+      if (!rehydratedState) {
+        rehydratedState = await rehydrateState(dehydratedState);
+      }
+      return nodeScreenshotProvider({ ...args, blocks: rehydratedState.blocks });
+    }
 
     // Fix #9: only pass safe, known opts to the engine — never let the queue
     // client inject messages/systemPrompt to override host-built context (FR2.8).
@@ -99,18 +105,31 @@ async function runJob(job) {
 
     const engine = new SDK.ResumeAgentEngine({
       modelProvider: nodeModelProvider,
-      screenshotProvider: nodeScreenshotProvider,
+      screenshotProvider: lazyScreenshotProvider,
       model: safeOpts.model,
       maxTurns: safeOpts.maxTurns
     });
 
+    // FR5.6: wall-clock budget guard — abort the job if it runs over the limit.
+    const JOB_TIMEOUT_MS = (opts.timeoutMs && Number.isFinite(opts.timeoutMs))
+      ? Math.min(opts.timeoutMs, 30 * 60 * 1000) // cap at 30 min regardless
+      : 20 * 60 * 1000; // default 20 min
+    const timeoutId = setTimeout(() => {
+      console.log(`[worker] Job ${job.id.slice(0, 8)} timed out after ${JOB_TIMEOUT_MS / 1000}s`);
+      job.abortController?.abort();
+    }, JOB_TIMEOUT_MS);
+
     const events = [];
-    for await (const ev of engine.optimizeResume(state, instruction, {
-      ...safeOpts,
-      mode: 'agent',       // always agent in background; spread after so it can't be overridden
-      signal: job.abortController?.signal
-    })) {
-      events.push(ev);
+    try {
+      for await (const ev of engine.optimizeResume(dehydratedState, instruction, {
+        ...safeOpts,
+        mode: 'agent',
+        signal: job.abortController?.signal
+      })) {
+        events.push(ev);
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     const doneEvent = events.find(e => e.type === 'done');

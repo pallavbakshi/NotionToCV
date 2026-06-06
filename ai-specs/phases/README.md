@@ -77,8 +77,11 @@ These were settled during design and are **not** re-litigated per phase:
 | Phase | Status | Notes |
 | :---- | :----- | :---- |
 | Phase 1 | **Complete** | `src/sdk/index.js`, `types.js`, `providers/browser.js` shipped; `messageParser.js` isomorphic; `linkedom` added; `test-sdk-phase1.cjs` 7/7 passing |
-| Phase 2 | In progress | Engine loop extraction underway |
-| Phase 3–6 | Not started | |
+| Phase 2 | **Complete** | `src/sdk/engine.js` — 30-turn loop, full event stream, staged transactions, coach mode, `validateBlockLayout`; `test-sdk-phase2.cjs` 24/24 passing |
+| Phase 3 | **Complete** | `scripts/resume-agent.cjs` — headless CLI with `--strict-capacity`, `--jd`, `--verbose`, `--model`; `src/sdk/providers/node.js` — Anthropic SDK streaming + screenshot via `/api/screenshot` |
+| Phase 4 | **Complete** | `ChatDrawer.svelte` rewired to `ResumeAgentEngine`; `agentTools.js` / `spatialUtils.js` deleted; final transaction merged on `done`; background-cancel wired to stop button |
+| Phase 5 | **Mostly complete** | Queue, worker, image dehydration/lazy-rehydration, routes, polling UI, 5-job concurrency cap, 20-min wall-clock timeout; known gap: auth is localStorage-based (no real server sessions) |
+| Phase 6 | **Prototype** | `scripts/jd-pipeline.cjs` + dashboard results surface + approve-into-editor flow; known gaps: no dashboard master-CV selector, fit report lacks requirement→block mapping, no automated factuality check |
 
 ## Pre-Phase-1 state (for historical context)
 
