@@ -303,6 +303,13 @@
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      renderError = `File too large: ${file.name} (max 10MB)`;
+      setTimeout(() => { renderError = ''; }, 4000);
+      return;
+    }
+
     const reader = new FileReader();
     const isImage = file.type.startsWith('image/');
 
@@ -739,7 +746,7 @@
       return '<p>' + para.replace(/\n/g, '<br/>') + '</p>';
     }).join('');
 
-    escaped = escaped.replace(/\x00CB(BLOCK|INLINE)(\d+)\x00/g, (_, type, i) => codeBlocks[parseInt(i)]);
+    escaped = escaped.replace(/\x00CB(BLOCK|INLINE)(\d+)\x00/g, (_, type, i) => codeBlocks[parseInt(i, 10)]);
 
     return escaped;
   }

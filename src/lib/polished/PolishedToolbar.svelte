@@ -55,7 +55,7 @@
       const sanitizedTitle = (pageTitle.trim() || 'Untitled').replace(/[/\\:*?"<>|]/g, '_');
       a.download = `${sanitizedTitle}_resume.pdf`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (err) {
       console.error('Error generating PDF:', err);
       alert('Error generating PDF: ' + err.message);

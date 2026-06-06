@@ -85,17 +85,7 @@
   }
 
   function discardStyle() {
-    if (originalStyle) {
-      themeColors.h1Color = originalStyle.h1Color;
-      themeColors.h2Color = originalStyle.h2Color;
-      themeColors.h3Color = originalStyle.h3Color;
-      themeColors.textColor = originalStyle.textColor;
-      themeColors.backgroundColor = originalStyle.backgroundColor;
-      themeColors.h1Font = originalStyle.h1Font;
-      themeColors.h2Font = originalStyle.h2Font;
-      themeColors.h3Font = originalStyle.h3Font;
-      themeColors.textFont = originalStyle.textFont;
-    }
+    if (originalStyle) Object.assign(themeColors, originalStyle);
     originalStyle = null;
     isDrawerOpen = false;
   }
@@ -105,7 +95,7 @@
   <div class="theme-drawer" onclick={(e) => e.stopPropagation()}>
     <div class="drawer-header">
       <h3>🎨 Style Settings</h3>
-      <button type="button" class="btn-close-drawer" onclick={saveStyle}>✕</button>
+      <button type="button" class="btn-close-drawer" onclick={discardStyle}>✕</button>
     </div>
 
     <div class="drawer-content">

@@ -66,7 +66,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="cv-card" onclick={() => onEdit?.(cv.id)}>
             <div class="card-body">
-              <h3 class="cv-title">{cv.pageTitle.trim() || 'Untitled CV'}</h3>
+              <h3 class="cv-title">{cv.pageTitle?.trim() || 'Untitled CV'}</h3>
               <div class="cv-meta">
                 <span class="meta-item">
                   <span class="meta-icon">🎨</span>

@@ -1,6 +1,6 @@
 <!-- PolishedPane.svelte — Polished view container: toolbar, theme drawer, A4 pages, AI chat, overlays. -->
 <script>
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import CvPage from './CvPage.svelte';
   import ElementsDock from './ElementsDock.svelte';
   import { findOverlappingIds } from './canvasUtils.js';
@@ -89,9 +89,10 @@
     openChatDrawer();
     stagedChatBlockIds.set(blockIds);
   }
-  function chatWithPolishedView() {
+  async function chatWithPolishedView() {
     openChatDrawer();
-    setTimeout(() => { if (chatDrawerEl) chatDrawerEl.forceAttachPolishedCV(); }, 50);
+    await tick();
+    chatDrawerEl?.forceAttachPolishedCV();
   }
 
   // Keyboard

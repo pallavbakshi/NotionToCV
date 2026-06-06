@@ -212,12 +212,16 @@ export async function runAgentTool(name, args, ctx) {
       return { result: { error: `Block ${args.id} not found` } };
     }
 
+    const screenshotAbort = new AbortController();
+    const screenshotTimeout = setTimeout(() => screenshotAbort.abort(), 30000);
+
     try {
       const response = await fetch('/api/screenshot', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
+        signal: screenshotAbort.signal,
         body: JSON.stringify({
           blocks,
           pageTitle,
@@ -228,8 +232,11 @@ export async function runAgentTool(name, args, ctx) {
         })
       });
 
+      clearTimeout(screenshotTimeout);
+
       if (!response.ok) {
-        throw new Error(await response.text());
+        const errorText = await response.text();
+        throw new Error(`Screenshot failed (${response.status}): ${errorText.slice(0, 200)}`);
       }
 
       const result = await response.json();

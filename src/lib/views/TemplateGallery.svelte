@@ -154,11 +154,17 @@
 
       importStep = 'Rendering pages…';
 
+      const extractAbort = new AbortController();
+      const extractTimeout = setTimeout(() => extractAbort.abort(), 180000);
+
       const response = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pdfBase64: base64 })
+        body: JSON.stringify({ pdfBase64: base64 }),
+        signal: extractAbort.signal
       });
+
+      clearTimeout(extractTimeout);
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: response.statusText }));
@@ -174,7 +180,7 @@
 
       onImport?.({ blocks, css, templateId, themeColors });
     } catch (err) {
-      importError = err.message;
+      importError = err.name === 'AbortError' ? 'Import timed out. Please try a smaller file or try again.' : err.message;
     } finally {
       importing = false;
       importStep = '';
