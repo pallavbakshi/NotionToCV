@@ -1,0 +1,21 @@
+Full-Stack Engineer (React/Node.js)
+Location: San Francisco, CA
+Type: Full-time
+
+About us:
+We're a fast-growing startup building next-generation collaboration tools. Our team is small, agile, and ships fast.
+
+Requirements:
+- 5+ years of full-stack development experience
+- Expert-level React and TypeScript skills
+- Strong backend development with Node.js
+- Experience building real-time features (WebSockets, SSE)
+- Database experience with PostgreSQL and MongoDB
+- Startup experience preferred — must thrive in fast-paced environments
+- Experience with GraphQL APIs
+
+Nice to have:
+- Familiarity with Docker and basic Kubernetes
+- End-to-end encryption or security experience
+- Experience with microservices
+- Frontend testing experience (Cypress, Playwright)

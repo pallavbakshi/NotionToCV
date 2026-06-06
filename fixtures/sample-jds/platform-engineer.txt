@@ -1,0 +1,22 @@
+Senior Platform Engineer
+Location: Remote
+Type: Full-time
+
+About the role:
+We are looking for a Senior Platform Engineer to join our infrastructure team. You will design, build, and maintain the core platform that powers our products serving millions of users.
+
+Requirements:
+- 7+ years of software engineering experience
+- Deep expertise in Kubernetes and container orchestration
+- Experience with service mesh architectures (Istio, Linkerd)
+- Strong Go programming skills
+- Experience with infrastructure-as-code (Terraform, Pulumi)
+- Cloud platform experience (AWS, GCP, or Azure)
+- Experience mentoring junior engineers
+- Strong written communication skills
+
+Nice to have:
+- Open source contributions
+- Conference speaking experience
+- Experience with Rust or systems programming
+- CI/CD pipeline design experience

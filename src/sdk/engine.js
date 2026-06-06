@@ -145,7 +145,8 @@ export class ResumeAgentEngine {
           themeColors: state.themeColors,
           pageTitle: state.title,
           stagedChanges,
-          screenshotProvider: this.screenshotProvider
+          screenshotProvider: this.screenshotProvider,
+          strictCapacity: opts.strictCapacity || false
         });
 
         yield { type: 'tool_result', id: tc.id, name: tcName, result };

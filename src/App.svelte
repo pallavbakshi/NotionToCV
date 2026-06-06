@@ -645,6 +645,39 @@
     resumes = resumes.filter(r => r.id !== id);
     localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
   }
+
+  // Human-review gate for the JD pipeline (Phase 6 FR6.6): an approved tailored
+  // ResumeState is materialised as a new editable resume and opened in the editor.
+  // This is the explicit approve action that precedes any downstream use — the
+  // user reviews and saves from the live editor like any other CV.
+  function handleApproveApplication(state) {
+    if (!state || !Array.isArray(state.blocks)) return;
+    const normalized = normalizeTemplateName(state.templateName);
+    const tdf = templateDefaultFonts[normalized];
+    const srcColors = state.themeColors || {};
+    const newResume = {
+      id: 'res_' + Math.random().toString(36).substring(2, 9),
+      pageTitle: state.title || 'Tailored CV',
+      blocks: state.blocks.map(b => ({ locked: false, ...b })),
+      paddingMm: state.paddingMm ?? 15,
+      templateName: normalized,
+      themeColors: {
+        h1Color: srcColors.h1Color ?? '#0a2463',
+        h2Color: srcColors.h2Color ?? '#0a2463',
+        h3Color: srcColors.h3Color ?? '#1e1b18',
+        textColor: srcColors.textColor ?? '#1e1b18',
+        backgroundColor: srcColors.backgroundColor ?? '#ffffff',
+        h1Font: srcColors.h1Font ?? tdf?.h1 ?? 'Inter',
+        h2Font: srcColors.h2Font ?? tdf?.h2 ?? 'Inter',
+        h3Font: srcColors.h3Font ?? tdf?.h3 ?? 'Inter',
+        textFont: srcColors.textFont ?? tdf?.text ?? 'Inter'
+      },
+      updatedAt: new Date().toISOString()
+    };
+    resumes = [newResume, ...resumes];
+    localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
+    navigate('/resume/' + newResume.id);
+  }
 </script>
 
 <svelte:window
@@ -755,6 +788,7 @@
     onEdit={(id) => navigate('/resume/' + id)}
     onDelete={handleDeleteResume}
     onCreateNew={() => navigate('/new')}
+    onApprove={handleApproveApplication}
   />
 {/if}
 

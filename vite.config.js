@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import fs from 'fs'
+import path from 'path'
 import Anthropic from '@anthropic-ai/sdk'
 import { enqueue, getJob, canAccess, cancelJob } from './server/agent/queue.js'
 import { dehydrateState } from './server/agent/imageStore.js'
@@ -762,7 +763,93 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                         }
                         res.write(value);
                       }
-                    } else {
+        // ── Agent applications (Phase 6 results surface) ──────────────────
+        } else if (req.url === '/api/agent/applications' && req.method === 'GET') {
+          try {
+            const resultsDir = path.join(process.cwd(), 'server/agent/results');
+            if (!fs.existsSync(resultsDir)) {
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify([]));
+              return;
+            }
+            const entries = fs.readdirSync(resultsDir, { withFileTypes: true });
+            const batches = [];
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                const batchResultsPath = path.join(resultsDir, entry.name, 'results.json');
+                if (fs.existsSync(batchResultsPath)) {
+                  try {
+                    const data = JSON.parse(fs.readFileSync(batchResultsPath, 'utf-8'));
+                    data._batchId = entry.name;
+                    batches.push(data);
+                  } catch (_) {}
+                }
+              }
+            }
+            // Newest batches first
+            batches.sort((a, b) => (b._batchId || '').localeCompare(a._batchId || ''));
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(batches));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+
+        } else if (req.url.startsWith('/api/agent/applications/') && req.method === 'GET') {
+          try {
+            const url = new URL(req.url, 'http://localhost');
+            const pathParts = req.url.slice('/api/agent/applications/'.length).split('?')[0].split('/');
+            const batchDir = pathParts[0];
+            const fileParam = url.searchParams.get('file');
+
+            if (fileParam) {
+              // Serve a specific file from the batch directory (PDF, JSON, fit report)
+              const filePath = path.join(process.cwd(), 'server/agent/results', batchDir, decodeURIComponent(fileParam));
+              if (!fs.existsSync(filePath)) {
+                res.statusCode = 404;
+                res.end('File not found');
+                return;
+              }
+              const ext = path.extname(filePath).toLowerCase();
+              const mimeTypes = { '.pdf': 'application/pdf', '.json': 'application/json' };
+              res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+              res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
+              res.end(fs.readFileSync(filePath));
+              return;
+            }
+
+            const resultsPath = path.join(process.cwd(), 'server/agent/results', batchDir, 'results.json');
+            if (!fs.existsSync(resultsPath)) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: 'Batch not found' }));
+              return;
+            }
+            const data = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(data));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+
+        } else if (req.url.startsWith('/api/agent/applications/') && req.method === 'DELETE') {
+          try {
+            const batchDir = req.url.slice('/api/agent/applications/'.length).split('?')[0];
+            const batchPath = path.join(process.cwd(), 'server/agent/results', batchDir);
+            if (!fs.existsSync(batchPath)) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: 'Batch not found' }));
+              return;
+            }
+            fs.rmSync(batchPath, { recursive: true, force: true });
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ deleted: true }));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+
+        } else {
                       for await (const chunk of response.body) {
                         if (controller.signal.aborted) {
                           break;
