@@ -265,5 +265,5 @@ const BUILT_IN = {
  */
 export function getTypeStyle(templateName, blockType) {
   const preset = BUILT_IN[templateName] || BUILT_IN.clean;
-  return preset[blockType] || BUILT_IN.clean[blockType];
+  return preset[blockType] || BUILT_IN.clean[blockType] || BUILT_IN.clean.paragraph;
 }
