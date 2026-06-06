@@ -91,6 +91,7 @@ export function composeBlock(block, blockRect, ctx) {
     const laidOut = layoutRuns(runs, contentWidthMm, blockHeightMm, {
       blockId: block.id,
       blockType,
+      align: block.canvas?.align || 'left',
     });
 
     // Re-base each line's baselineYMm against the running vertical cursor

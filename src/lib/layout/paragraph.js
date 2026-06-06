@@ -140,10 +140,17 @@ export function layoutRuns(runs, contentWidthMm, blockHeightMm, blockMeta) {
   // 4. Position lines with baseline reconciliation
   const lines = [];
   let runningYOffset = 0;
+  const align = blockMeta?.align || 'left';
 
   for (const brokenLine of brokenLines) {
     const lineGlyphs = [];
-    let xMm = 0;
+    let lineOffsetMm = 0;
+    if (align === 'center') {
+      lineOffsetMm = Math.max(0, (contentWidthMm - brokenLine.widthMm) / 2);
+    } else if (align === 'right') {
+      lineOffsetMm = Math.max(0, contentWidthMm - brokenLine.widthMm);
+    }
+    let xMm = lineOffsetMm;
 
     // Collect unique styles on this line to determine line metrics
     const lineStyles = new Set();
