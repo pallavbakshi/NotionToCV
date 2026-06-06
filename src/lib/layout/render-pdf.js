@@ -47,8 +47,12 @@ export async function renderResumePDF(blocks, ctx) {
     layouts.push({ block, rect, lo });
   }
 
-  // Embed required fonts (full binary; subsetting would need pdf-lib's bundled
-  // fontkit fork which has a different API than the standalone fontkit v2)
+  // Embed required fonts as the FULL binary (subset: false). pdf-lib's bundled
+  // @pdf-lib/fontkit subsetter mangles these vendored TrueType binaries (Inter,
+  // Outfit, …) — it fails to copy the glyf outlines of many glyphs, so they embed
+  // as blank/.notdef and the PDF renders e.g. "Pallav BAKSHI" as "alla S".
+  // Verified by rasterizing both paths: subset:true → blank glyphs; subset:false →
+  // perfect. Full embedding costs ~150–330 KB per weight, which is fine for a CV.
   for (const { lo } of layouts) {
     if (lo.kind !== 'text') continue;
     for (const line of lo.lines) {
@@ -60,7 +64,7 @@ export async function renderResumePDF(blocks, ctx) {
           // Medium"), which broke filename reconstruction.
           const fontBuffer = getFontBufferForFont(glyph.font);
           if (fontBuffer) {
-            const pdfFont = await pdfDoc.embedFont(fontBuffer, { subset: true });
+            const pdfFont = await pdfDoc.embedFont(fontBuffer, { subset: false });
             embeddedFonts.set(key, pdfFont);
           }
         }
