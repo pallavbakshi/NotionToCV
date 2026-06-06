@@ -12,6 +12,7 @@
  * @property {Object|null} canvas - Canvas placement: { page, col, row, colSpan, rowSpan } | null if unplaced.
  * @property {boolean} [locked] - Block is locked against modification.
  * @property {string} [source] - Origin: "canvas" or "notion".
+ * @property {string} [imageData] - Base64 data URI for headshot/image blocks (set via canvas.toDataURL / readAsDataURL). Present only on image blocks.
  */
 
 /**

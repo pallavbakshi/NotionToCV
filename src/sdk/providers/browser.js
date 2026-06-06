@@ -7,8 +7,7 @@
 // engine can be injected with Node equivalents without any engine change.
 
 /**
- * Browser model provider — streams normalized Deltas from the server /api/chat endpoint
- * via SSE. Extracted from ChatDrawer.svelte:463–539.
+ * Browser model provider — streams normalized Deltas from the server /api/chat endpoint via SSE.
  *
  * @type {import('../types.js').ModelProvider}
  */

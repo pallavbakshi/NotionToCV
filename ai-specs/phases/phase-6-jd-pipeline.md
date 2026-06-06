@@ -28,9 +28,11 @@
 
 ## 3. Functional Requirements
 
-**FR6.1 — Master CV ingestion.** Accept a superset `ResumeState` (all experience) as the
-source of truth. It must **not** fabricate experience absent from the master CV
-(factuality guardrail).
+**FR6.1 — Master CV source + ingestion.** The master CV is an existing `ResumeState`
+stored in the user's dashboard (same format as any CV — a `ResumeState` with many blocks,
+most `canvas: null` since they are unplaced in the full-history superset). The user
+designates one saved CV as their "master" from the dashboard. It must **not** fabricate
+experience absent from it (factuality guardrail).
 
 **FR6.1a — Mandatory Relevance Filter pre-pass.** The master CV is a multi-page,
 unconstrained data store; feeding it whole into the tailoring loop bloats the context
@@ -44,19 +46,31 @@ a hard requirement, not an optimization.
 **FR6.2 — JD ingestion + requirement extraction.** For each JD (text/file), an LLM step
 produces a structured requirement list used to drive tailoring.
 
-**FR6.3 — Per-JD tailoring run.** For each JD, enqueue a Phase-5 job whose `instruction`
-encodes the JD requirements; the engine rewrites mapped blocks within budget with
-`--strict-capacity`-equivalent enforcement on (no overflow ships).
+**FR6.3 — Per-JD tailoring run.** For each JD, enqueue a Phase-5 job with:
+- `state`: the scoped `ResumeState` output from the Relevance Filter (a subset of the
+  master CV blocks, all with `canvas` placements from the target template)
+- `instruction`: a structured string combining the JD requirement list (from FR6.2) and
+  tailoring directives, e.g. `"Tailor this resume for the following role. Requirements: [structured list]. Rewrite matched blocks to align with these requirements while staying within each block's spatial budget. Do not fabricate experience."`
+- `opts.strictCapacity: true` — no overflowing block ships
 
-**FR6.4 — Batch orchestration.** Submitting M JDs fans out to M jobs via the Phase-5
-queue; the pipeline tracks aggregate progress and collects results.
+The engine rewrites matched blocks within budget using the existing `update_block_content`
+tool and capacity self-correction loop.
+
+**FR6.4 — Batch orchestration.** Submitting M JDs fans out to M Phase-5 jobs. The
+orchestrator tracks aggregate progress (queued / running / done / error counts) and
+collects results as jobs complete. Concurrency is capped at **5 simultaneous jobs** per
+batch to avoid rate-limit spikes; additional jobs queue behind the cap. The per-batch
+cost ceiling is **user-configurable** at submission time (e.g. "stop if estimated cost
+exceeds $X") and defaults to a reasonable cap to be defined during implementation.
 
 **FR6.5 — PDF generation.** Each completed, tailored `ResumeState` is rendered to a
 mathematically-fit PDF via the existing print pipeline.
 
-**FR6.6 — Results surface.** A dashboard listing, per JD: the tailored resume PDF, a
-diff summary vs. the master CV, and a **fit report** (which JD requirements mapped to
-which blocks, capacity status). A human-review gate precedes any downstream use.
+**FR6.6 — Results surface.** A new "Applications" section in the existing dashboard
+lists each batch run. Per JD entry: the tailored resume PDF (download), a diff summary
+vs. the master CV (which blocks changed and how), and a **fit report** (which JD
+requirements were mapped to which blocks, with final capacity status). A human-review
+gate (explicit approve action) precedes any downstream use of the artifact.
 
 **FR6.7 — Guardrails.** Factuality (constrain to master-CV facts in the prompt + review
 gate); capacity (strict, no overflow); per-batch cost ceiling; per-job 30-turn cap.

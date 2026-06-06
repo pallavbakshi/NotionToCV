@@ -20,16 +20,21 @@ Earlier phases build the core; later phases reach the vision.
 
 ```
 Phase 1 ──> Phase 2 ──> Phase 3 (CLI, headless proof)
-                   │
+                   │           │
                    └──> Phase 4 (web rewire)
-                                   │
-            Phase 3 ──────────────┴──> Phase 5 (background worker)
-                                                   │
-                            Phase 3 ──────────────┴──> Phase 6 (JD pipeline @ scale)
+                               │
+                   Phase 2 ────┤
+                   Phase 3 ────┴──> Phase 5 (background worker)
+                                           │
+                               Phase 3 ────┴──> Phase 6 (JD pipeline @ scale)
 ```
 
-Phase 3 (CLI) intentionally precedes Phase 4 (web) — per the vision's **"CLI First"**
-mandate, the SDK must be bulletproof headless before we touch the working web app.
+- Phase 3 (CLI) intentionally precedes Phase 4 (web) — per the vision's **"CLI First"**
+  mandate, the SDK must be bulletproof headless before we touch the working web app.
+- Phase 5 depends on **both** Phase 2 (engine) and Phase 3 (Node providers) — it reuses
+  `nodeModelProvider` and `nodeScreenshotProvider` from Phase 3's `src/sdk/providers/node.js`.
+- Phase 4 is not a hard dependency of Phase 5 but provides the staging UI that
+  Phase 5's result-review flow reuses.
 
 ## Cross-cutting decisions (locked, apply to every phase)
 
@@ -57,21 +62,30 @@ These were settled during design and are **not** re-litigated per phase:
    enforcement flag for automated pipelines, not a core loop mechanic.
 
 5. **Canonical `ResumeState` JSON is the serialization contract.** All three hosts
-   (browser, CLI, worker) speak the same state shape defined in Phase 1.
+   (browser, CLI, worker) speak the same state shape defined in Phase 1. Blocks may
+   carry `imageData` (base64 data URI for headshot/image blocks); this field is defined
+   in Phase 1's schema and **dehydrated to a storage URI** before crossing any queue
+   boundary (Phase 5+).
 
-## Current-state anchor (what exists today)
+6. **No Tiptap `Editor`/`EditorView` in the SDK — headless Tiptap APIs are fine.**
+   The SDK uses `getSchema(extensions)` + ProseMirror `DOMParser` for headless HTML→inline-node
+   conversion (`htmlToInlineNodes`). The full Tiptap `Editor` (which requires a browser
+   mount point and `requestAnimationFrame`) is a web-host concern only.
 
-- The agent loop lives **inside** `src/lib/ai-chat/ChatDrawer.svelte` as the recursive
-  `runGeneration()` (lines ~450–643): call model → stream/accumulate content + tool
-  calls → dispatch via `runAgentTool` → append results → recurse → stop when no tool
-  calls. **It has no turn cap today.**
-- `src/lib/ai-chat/agentTools.js` already holds a *pure* `runAgentTool(name, args, ctx)`
-  and the system prompts — the cleanest part to lift.
-- `src/lib/ai-chat/messageParser.js` uses the browser `DOMParser` (the main isomorphic
-  blocker).
-- `src/lib/layout/` (`computeLayout`, `blockRectMm`, `colWidthMm`, `effectiveBaseStyle`)
-  is already headless and Node-importable — preserved as-is.
-- Staged changes flow through the `src/lib/shared/stagingStore.js` Svelte store
-  (`stagedChanges`) — to be replaced by returned transactions.
-- `package.json` already ships `@anthropic-ai/sdk` and `puppeteer`; `linkedom` is the
-  one new dependency (Phase 1).
+## Phase completion status
+
+| Phase | Status | Notes |
+| :---- | :----- | :---- |
+| Phase 1 | **Complete** | `src/sdk/index.js`, `types.js`, `providers/browser.js` shipped; `messageParser.js` isomorphic; `linkedom` added; `test-sdk-phase1.cjs` 7/7 passing |
+| Phase 2 | In progress | Engine loop extraction underway |
+| Phase 3–6 | Not started | |
+
+## Pre-Phase-1 state (for historical context)
+
+- The agent loop lived **inside** `src/lib/ai-chat/ChatDrawer.svelte` as the recursive
+  `runGeneration()` (lines ~450–643). It had no turn cap.
+- `src/lib/ai-chat/messageParser.js` used the browser `DOMParser` directly (now isomorphic).
+- `src/lib/layout/` was already headless and Node-importable — preserved as-is.
+- Staged changes flowed through `src/lib/shared/stagingStore.js` Svelte store — to be
+  replaced by returned transactions in Phase 2.
+- `package.json` ships `@anthropic-ai/sdk` and `puppeteer`; `linkedom` was added in Phase 1.

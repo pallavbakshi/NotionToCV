@@ -59,13 +59,58 @@ carries `transaction = { stagedChanges }`. **No Svelte store is referenced.**
 `fetch('/api/screenshot')`. Layout imports (`computeLayout`, `blockRectMm`, `colWidthMm`,
 `effectiveBaseStyle`, `initFonts`) stay pointed at `src/lib/layout/` unchanged.
 
+**FR2.5a — `htmlToInlineNodes` uses headless Tiptap schema + ProseMirror DOMParser.**
+The `update_block_content` tool must **not** call `parseHtmlToTiptapJson` (which creates
+a full Tiptap `Editor`/`EditorView`). Instead, `src/sdk/tools.js` exports
+`htmlToInlineNodes(html)` built on the confirmed headless stack:
+
+```js
+import { getSchema } from '@tiptap/core';            // pure — zero DOM needed
+import { DOMParser as PMParser } from 'prosemirror-model';
+
+// schema built once at module load from the identical extension set
+const schema = getSchema(extensions);
+
+export function htmlToInlineNodes(html) {
+  // domAdapter = the same _parseDocument function from messageParser.js's initDomParser adapter
+  // In the browser it's set at module load; in Node it's set after await initSdkDomParser().
+  const body = _parseDocument('<body>' + (html || '') + '</body>').querySelector('body');
+  const pmDoc = PMParser.fromSchema(schema).parse(body);
+  // flatten multi-block → hardBreak separators (mirrors parseHtmlToTiptapJson)
+  const blockNodes = pmDoc.toJSON().content ?? [];
+  const inline = [];
+  for (let i = 0; i < blockNodes.length; i++) {
+    const children = blockNodes[i].content ?? [];
+    if (i > 0 && children.length > 0) inline.push({ type: 'hardBreak' });
+    inline.push(...children);
+  }
+  return inline;
+}
+```
+
+This produces the **same inline node format** as the web app's Tiptap editor, with no
+schema drift risk and no custom parser logic. All 11 agent HTML patterns
+(`<strong>`, `<em>`, `<u>`, `<s>`, `<br>`, multi-`<p>`, nested marks, empty/null)
+verified headlessly under linkedom — all correct.
+
+Extension set must match `parseHtmlToTiptapJson` exactly (StarterKit with the same
+disabled list, TextStyle, Color, FontFamily). `Underline` must **not** appear separately
+— StarterKit already includes it; adding it again triggers a Tiptap duplicate warning.
+
+The staged transaction carries `proposedHtml` (the sanitized HTML string). The web
+host's `ChatDrawer` calls `parseHtmlToTiptapJson(proposedHtml)` when applying the
+change to the live Tiptap editor — that step stays entirely in the host.
+
 **FR2.6 — Abort.** `optimizeResume` accepts an `AbortSignal`; the loop checks it between
 turns and before each model call, terminating with `reason: 'aborted'`.
 
-**FR2.7 — Mode parameter.** The engine supports both the tools-enabled "agent" path and
-the read-only "coach" path (today's `getSystemPromptOutline`, no tools). A `mode` /
-`tools` flag selects prompt + whether tools are passed to the provider. The coach path
-emits only `text` and `done`.
+**FR2.7 — Mode parameter.** `optimizeResume` accepts `opts.mode: 'agent' | 'coach'`
+(default `'agent'`). `'agent'` enables tools and uses `getAgentSystemPrompt`; `'coach'`
+disables tools, uses `getSystemPromptOutline`, and emits only `text` and `done`.
+The mode also carries the model override: `opts.model` takes precedence over the
+engine's constructor `model`; if absent the engine default applies. This allows the web
+host to pass `model: 'google/gemini-2.5-flash'` for coach mode without constructing a
+second engine instance (mirrors today's `ChatDrawer` per-mode model selection).
 
 **FR2.8 — Host-built initial messages.** The engine receives an already-normalized
 initial message array. Host-specific attachment serialization (block chips, screenshots,
@@ -107,7 +152,9 @@ capacity logic) so CLI/pipeline gating and in-loop checks always agree.
 
 ## 6. Definition of Done
 
-- [ ] `grep -rl "svelte\|/api/\|stagingStore\|window\." src/sdk/` returns nothing (except the Phase-1 parser's guarded `window` check).
+- [ ] `grep -rl "svelte\|/api/\|stagingStore\|window\." src/sdk/` returns nothing except `providers/browser.js` (explicitly browser-scoped) and the parser adapter's guarded `window` check.
+- [ ] `grep -r "new Editor\|EditorView" src/sdk/` returns nothing — no Tiptap Editor/view instantiation in the SDK.
+- [ ] `htmlToInlineNodes` test: all 11 HTML patterns produce correct inline node arrays under linkedom (plain text, bold, italic, underline, strike, mixed marks, `<br>`, multi-`<p>`, nested marks, empty, null).
 - [ ] Mock run produces the expected ordered event sequence and an exact staged transaction.
 - [ ] 30-turn cap test: a never-stopping provider halts at exactly 30 turns with `reason: 'max_turns'`.
 - [ ] Abort test: signalling mid-loop yields `reason: 'aborted'` and stops further model calls.

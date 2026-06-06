@@ -32,16 +32,22 @@ message shapes:
 - `text` delta → append to the streaming assistant message (today's 515–520).
 - `tool_call` → the "⚙️ Tool use…" status message (today's 584–599).
 - `tool_result` → the tool-result message + "Executed tool" status flip (today's 619–630).
-- `staged_change` → `stagedChanges.set(...)` (today's 605–607).
+- `staged_change` → **merge** the single `{ blockId, change }` into the existing
+  `stagedChanges` store: `stagedChanges.update(s => ({ ...s, [ev.blockId]: ev.change }))`.
+  Do **not** replace the whole store — earlier staged blocks from the same run must be
+  preserved (today's `stagedChanges.set(stagedChangesUpdate)` where `stagedChangesUpdate`
+  was already a merged copy; the engine now owns the merge, so the host only applies the delta).
 - `done` / `error` → finalize, run `saveChats()`, clear `isGenerating`.
 
 **FR4.2 — Host keeps building attachments.** The attachment serialization (block chips,
 polished-CV screenshots, denied-change notices, text/image files — `ChatDrawer.svelte:391–446`)
 remains in the host and produces the normalized initial `messages` handed to the engine.
 
-**FR4.3 — Both modes through the engine.** Agent mode (tools on) and read-only coach mode
-(`getSystemPromptOutline`, no tools) both route through `optimizeResume` via the Phase-2
-`mode` flag. No separate code path survives in the component.
+**FR4.3 — Both modes through the engine.** Agent mode and read-only coach mode both route
+through `optimizeResume` via `opts.mode`. Agent mode passes `{ mode: 'agent' }` (uses
+`claude-sonnet-4-5` by default). Coach mode passes `{ mode: 'coach', model: 'google/gemini-2.5-flash' }`
+matching today's per-mode model selection in `ChatDrawer.svelte:376`. No separate code
+path survives in the component.
 
 **FR4.4 — Preserved behaviors.** Streaming text render; tool-call status messages;
 staged red/green inline diffs and accept/deny; **stop/abort** (the component's
@@ -51,8 +57,13 @@ persistence; chat history list; error-message rendering (today's 647–676); att
 **FR4.5 — 30-turn cap live.** The production agent path now inherits the 30-turn ceiling
 from the engine; a run that hits it ends cleanly with a user-visible completion (not a hang).
 
-**FR4.6 — Loop deleted.** The body of `runGeneration` is removed; the component retains
-only the thin glue (build messages → iterate events → mutate `chatList`/store → persist).
+**FR4.6 — Loop deleted + dead files removed.** The body of `runGeneration` is removed;
+the component retains only the thin glue (build messages → iterate events → mutate
+`chatList`/store → persist). Additionally, `src/lib/ai-chat/agentTools.js` and
+`src/lib/ai-chat/spatialUtils.js` are **deleted** — their logic was moved to
+`src/sdk/tools.js` and `src/sdk/spatial.js` in Phase 2. Keeping them would create a
+silent duplicate that drifts from the SDK. Any remaining imports of these files are
+updated to point at `src/sdk/`.
 
 ## 4. Technical Design
 
@@ -74,6 +85,7 @@ only the thin glue (build messages → iterate events → mutate `chatList`/stor
 - [ ] `ChatDrawer.svelte` no longer contains the model-calling/tool-dispatch loop (only event consumption).
 - [ ] No `src/sdk/` module imports Svelte; `ChatDrawer` is the only glue layer.
 - [ ] The message/tool payload sent to `/api/chat` is unchanged from pre-refactor (verified by snapshot/network compare).
+- [ ] `src/lib/ai-chat/agentTools.js` and `src/lib/ai-chat/spatialUtils.js` are deleted; no remaining imports reference them.
 
 ## 7. Risks & Mitigations
 

@@ -111,21 +111,18 @@ const path = require('path');
     failed++;
   }
 
-  // optimizeResume should throw since it's not implemented yet
-  try {
-    for await (const _ of engine.optimizeResume({ title: '', paddingMm: 15, templateName: 'clean', themeColors: {}, pageCount: 1, blocks: [] }, 'test')) {
-      // should not reach
-    }
-    console.error('  FAIL: optimizeResume did not throw');
+  // optimizeResume is now live (Phase 2) — verify it returns an async iterable
+  // Signature: optimizeResume(state, instruction, opts?) per FR1.2
+  const iter = engine.optimizeResume(
+    { title: 'T', paddingMm: 15, templateName: 'clean', themeColors: {}, pageCount: 1, blocks: [] },
+    'test'
+  );
+  if (typeof iter[Symbol.asyncIterator] === 'function') {
+    console.log('  PASS: optimizeResume returns an async iterable');
+    passed++;
+  } else {
+    console.error('  FAIL: optimizeResume did not return async iterable');
     failed++;
-  } catch (e) {
-    if (e.message.includes('not implemented')) {
-      console.log('  PASS: optimizeResume correctly throws "not implemented"');
-      passed++;
-    } else {
-      console.error('  FAIL: unexpected error from optimizeResume: ' + e.message);
-      failed++;
-    }
   }
 
   console.log(`\nPhase 1 done. ${passed} passed, ${failed} failed.`);

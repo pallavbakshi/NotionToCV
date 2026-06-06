@@ -34,16 +34,23 @@
 
 ## 3. Functional Requirements
 
-**FR3.1 — Inputs.** `--input <resume.json>` (a `ResumeState`), optional `--jd <file>`,
-`--prompt <string>`. The CLI composes the `instruction` from `--prompt` and/or the JD text.
+**FR3.1 — Inputs.** `--input <resume.json>` (a `ResumeState` conforming to the Phase-1
+schema), `--output <file>` (required; error and exit non-zero if omitted),
+optional `--jd <file>`, `--prompt <string>`, `--model <id>` (overrides the engine
+default; passed as `opts.model`), `--verbose`, `--strict-capacity`.
+The CLI composes the `instruction` from `--prompt` and/or the JD file text.
 
 **FR3.2 — Run.** Instantiate `ResumeAgentEngine` with the Node providers; call
 `optimizeResume`; consume the `AgentEvent` stream. With `--verbose`, log each `tool_call`,
 `tool_result`, and the capacity numbers returned by `update_block_content`.
 
-**FR3.3 — Auto-accept.** On `done`, merge `transaction.stagedChanges[*].proposedContent`
-into the corresponding blocks' `content`, then write `--output <file>`. (No interactive
-prompt — auto-accept is the CLI contract.)
+**FR3.3 — Auto-accept.** On `done`, apply the staged transaction: for each entry in
+`transaction.stagedChanges`, call `htmlToInlineNodes(entry.proposedHtml)` to derive the
+inline node array, set `block.content` to that result, then write the full updated
+`ResumeState` to `--output <file>`. (No interactive prompt — auto-accept is the CLI
+contract.) Note: the transaction carries `proposedHtml`, not a pre-parsed
+`proposedContent` — the CLI is responsible for the HTML → inline-node conversion before
+writing, using the same `htmlToInlineNodes` the engine uses internally.
 
 **FR3.4 — Deterministic diff + capacity.** Before writing, print a per-changed-block
 **unified diff** of plaintext old→new, alongside the layout-engine capacity for the
