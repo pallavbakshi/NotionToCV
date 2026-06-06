@@ -67,15 +67,20 @@
   // Agent Mode Action Helpers
   function acceptStagedChange(blockId) {
     let change;
+    let beforeStaged;
     stagedChanges.update(s => {
+      beforeStaged = JSON.stringify(s);
       change = s[blockId];
       if (!change) return s;
       const updated = { ...s };
       delete updated[blockId];
       return updated;
     });
+    console.log('[ACCEPT] blockId:', blockId, 'change:', change ? 'found' : 'missing', 'stagedChanges before:', beforeStaged);
     if (!change) return;
+    const beforeBlocks = JSON.stringify(blocks.find(b => b.id === blockId)?.content);
     blocks = blocks.map(b => b.id === blockId ? { ...b, content: change.proposedContent } : b);
+    console.log('[ACCEPT] blocks before:', beforeBlocks, 'blocks after:', JSON.stringify(blocks.find(b => b.id === blockId)?.content));
   }
 
   function denyStagedChange(blockId) {
@@ -162,10 +167,12 @@
   }
 
   function undo() {
+    console.log('[UNDO] start. historyPast:', historyPast.length, 'historyFuture:', historyFuture.length, 'debounceTimer:', !!debounceTimer);
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
       const prev = JSON.parse(lastSavedStateJson);
+      console.log('[UNDO] flushing debounce. prev blocks[0] content:', JSON.stringify(prev.blocks[0]?.content));
       saveHistoryState(prev);
     }
 
@@ -177,6 +184,7 @@
 
     const previousState = historyPast[historyPast.length - 1];
     historyPast = historyPast.slice(0, -1);
+    console.log('[UNDO] restoring. previousState.blocks[0] content:', JSON.stringify(previousState.blocks[0]?.content), 'historyPast left:', historyPast.length);
 
     blocks = previousState.blocks;
     pageTitle = previousState.pageTitle;
@@ -226,7 +234,10 @@
     const currentActiveTemplate = activeTemplate;
     const currentThemeColors = themeColors;
 
-    if (isUndoRedoing) return;
+    if (isUndoRedoing) {
+      console.log('[HISTORY EFFECT] skipped (isUndoRedoing=true)');
+      return;
+    }
     if (currentBlocks.length === 0) return;
 
     const currentState = {
@@ -239,6 +250,7 @@
     const currentStateJson = serializeState(currentState);
 
     if (!lastSavedStateJson) {
+      console.log('[HISTORY EFFECT] init lastSavedStateJson');
       lastSavedStateJson = currentStateJson;
       return;
     }
@@ -254,6 +266,8 @@
         JSON.stringify(prev.themeColors) !== JSON.stringify(currentThemeColors) ||
         prev.blocks.some((b, i) => !currentBlocks[i] || b.type !== currentBlocks[i].type || b.id !== currentBlocks[i].id) ||
         prev.blocks.some((b, i) => !currentBlocks[i] || JSON.stringify(b.canvas) !== JSON.stringify(currentBlocks[i].canvas));
+
+      console.log('[HISTORY EFFECT] changed. isStructureChanged:', isStructureChanged, 'prev.blocks[0].content:', JSON.stringify(prev.blocks[0]?.content), 'current.blocks[0].content:', JSON.stringify(currentBlocks[0]?.content));
 
       if (isStructureChanged) {
         if (debounceTimer) {

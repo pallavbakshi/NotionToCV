@@ -4,6 +4,7 @@
   import BlockEditor from './BlockEditor.svelte';
   import { templateDefaultFonts, normalizeTemplateName } from '../shared/templateFonts.js';
   import { stagedChanges } from '../shared/stagingStore.js';
+  import { parseClipboard } from './clipboardParser.js';
 
   // Svelte 5 props
   let { 
@@ -161,6 +162,39 @@
     blocks = [...blocks];
 
     selectedBlockIds = duplicates.map(b => b.id);
+  }
+
+  // Strategy 2 paste: split the block at `index` at the cursor (before/after are
+  // the inline halves) and drop the pasted blocks in between. If both halves are
+  // empty (cursor in an empty block), the block is simply replaced.
+  function insertPastedBlocks(index, before, after, newBlocks) {
+    if (index < 0 || index >= blocks.length) return;
+    if (blocks[index]?.locked) return;
+    if (!newBlocks || newBlocks.length === 0) return;
+
+    const current = blocks[index];
+    const hasBefore = before && before.length > 0;
+    const hasAfter = after && after.length > 0;
+
+    const out = [];
+    if (hasBefore) out.push({ ...current, content: before });
+    out.push(...newBlocks);
+    if (hasAfter) {
+      out.push({
+        ...current,
+        id: 'b_' + Math.random().toString(36).substring(2, 9),
+        name: null,
+        content: after
+      });
+    }
+
+    blocks.splice(index, 1, ...out);
+    blocks = [...blocks];
+
+    // Focus the end of the last pasted block.
+    const lastPastedIdx = (hasBefore ? index + 1 : index) + newBlocks.length - 1;
+    selectedBlockIds = [];
+    focusBlock(lastPastedIdx, 'end');
   }
 
   function updateBlock(index, patch) {
@@ -604,70 +638,41 @@
       deleteMultipleBlocks(selectedBlockIds);
     }
 
-    async function handlePaste(e) {
-      if (selectedBlockIds.length === 0) return;
+    function handlePaste(e) {
+      // Let native paste handle text fields and in-block editing — pasting into
+      // a focused block stays ProseMirror's job (inline paste). Block-level
+      // paste only fires when the user is NOT typing in an editable target.
+      const ae = document.activeElement;
       if (
-        document.activeElement.tagName === 'INPUT' || 
-        document.activeElement.tagName === 'TEXTAREA' ||
-        document.activeElement.closest('.ProseMirror')
+        ae && (
+          ae.tagName === 'INPUT' ||
+          ae.tagName === 'TEXTAREA' ||
+          ae.closest?.('.ProseMirror') ||
+          ae.closest?.('.chat-drawer')
+        )
       ) {
         return;
       }
 
-      e.preventDefault();
       const clipboardData = e.clipboardData || window.clipboardData;
-      const jsonData = clipboardData.getData('application/json');
-      const textData = clipboardData.getData('text/plain');
+      const newBlocks = parseClipboard(clipboardData);
+      if (!newBlocks || newBlocks.length === 0) return;
 
-      let newBlocks = [];
-      try {
-        if (jsonData) {
-          const parsed = JSON.parse(jsonData);
-          if (Array.isArray(parsed) && parsed.every(b => b.type && b.id)) {
-            newBlocks = parsed.map(b => ({
-              ...b,
-              id: 'b_' + Math.random().toString(36).substring(2, 9),
-              canvas: null
-            }));
-          }
-        }
-      } catch (err) {}
+      e.preventDefault();
 
-      if (newBlocks.length === 0 && textData) {
-        const lines = textData.split(/\r?\n/);
-        newBlocks = lines.map(line => {
-          let type = 'paragraph';
-          let contentText = line;
-          if (line.startsWith('# ')) {
-            type = 'h1';
-            contentText = line.substring(2);
-          } else if (line.startsWith('## ')) {
-            type = 'h2';
-            contentText = line.substring(3);
-          } else if (line.startsWith('### ')) {
-            type = 'h3';
-            contentText = line.substring(4);
-          }
-          return {
-            id: 'b_' + Math.random().toString(36).substring(2, 9),
-            type,
-            content: contentText ? [{ type: 'text', text: contentText }] : [],
-            canvas: null,
-            name: null
-          };
-        });
-      }
-
-      if (newBlocks.length > 0) {
+      // Insert after the last selected block, or append to the end when nothing
+      // is selected (e.g. pasting into empty document space).
+      let insertIdx = blocks.length;
+      if (selectedBlockIds.length > 0) {
         const lastSelectedId = selectedBlockIds[selectedBlockIds.length - 1];
         const targetIdx = blocks.findIndex(b => b.id === lastSelectedId);
-        const insertIdx = targetIdx !== -1 ? targetIdx + 1 : blocks.length;
-
-        blocks.splice(insertIdx, 0, ...newBlocks);
-        blocks = [...blocks];
-
-        selectedBlockIds = newBlocks.map(b => b.id);
+        if (targetIdx !== -1) insertIdx = targetIdx + 1;
       }
+
+      blocks.splice(insertIdx, 0, ...newBlocks);
+      blocks = [...blocks];
+
+      selectedBlockIds = newBlocks.map(b => b.id);
     }
 
     function handleWindowClick(e) {
@@ -765,6 +770,7 @@
             {focusBlock}
             {mergeWithPrevious}
             {duplicateBlock}
+            {insertPastedBlocks}
             onDragStart={(e) => handleDragStart(idx, e)}
             onDragEnd={handleDragEnd}
             selected={selectedBlockIds.includes(block.id)}
