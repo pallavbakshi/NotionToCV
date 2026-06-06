@@ -6,7 +6,10 @@
 
 export { ResumeAgentEngine } from './engine.js';
 
-// Re-export provider implementations for host convenience
+// Re-export browser provider implementations for host convenience.
+// Node providers (nodeModelProvider, nodeScreenshotProvider) are intentionally
+// NOT re-exported here — doing so would pull @anthropic-ai/sdk and puppeteer
+// into the browser bundle. Node hosts import from './providers/node.js' directly.
 export { browserModelProvider, browserScreenshotProvider } from './providers/browser.js';
 
 // Re-export tool utilities for hosts that need direct access

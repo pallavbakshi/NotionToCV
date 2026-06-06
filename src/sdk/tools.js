@@ -310,14 +310,14 @@ export async function runAgentTool(name, args, ctx) {
 
       // FR6.7: strictCapacity — reject changes that overflow the block budget.
       // The agent sees the capacity numbers and is expected to self-correct.
-      if (ctx.strictCapacity && lo.overflow) {
+      if (ctx.strictCapacity && capacity.is_overflowing) {
         return {
           result: {
             status: "rejected",
             staged: false,
             reason: "overflow",
             capacity,
-            message: `Content overflows block budget (${lo.lines.length}/${lo.maxLines} lines used). Shorten the text or split across more blocks.`
+            message: `Content overflows block budget (${capacity.current_lines_used}/${capacity.max_lines} lines used). Shorten the text or split across more blocks.`
           }
         };
       }

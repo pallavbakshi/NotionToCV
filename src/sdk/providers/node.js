@@ -31,7 +31,11 @@ function toAnthropicMessages(messages) {
         if (msg.content) content.push({ type: 'text', text: msg.content });
         for (const tc of msg.tool_calls) {
           let input = {};
-          try { input = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+          try {
+            input = JSON.parse(tc.function.arguments || '{}');
+          } catch (e) {
+            console.warn(`Failed to parse tool arguments for ${tc.function.name}:`, e.message);
+          }
           content.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input });
         }
         result.push({ role: 'assistant', content });

@@ -132,6 +132,13 @@ export class ResumeAgentEngine {
       history.push(assistantMsg);
 
       for (const tc of completedToolCalls) {
+        // Check abort between tool dispatches — important for multi-tool turns
+        // where a screenshot tool may be slow and the user aborts mid-batch.
+        if (signal?.aborted) {
+          yield { type: 'done', reason: 'aborted', transaction: { stagedChanges } };
+          return;
+        }
+
         const tcName = tc.function?.name || '';
         let parsedArgs = {};
         try {

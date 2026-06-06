@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { writeFile, readFile, mkdir, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -36,6 +36,13 @@ export async function dehydrateState(state) {
     if (block.imageData && block.imageData.startsWith('data:')) {
       const uri = await storeImage(block.imageData);
       return { ...block, imageData: uri };
+    }
+    // Reject any pre-existing file:// URIs — only our own storeImage output is
+    // trusted. An attacker injecting "file:///etc/passwd" is stripped here so
+    // it never reaches rehydrateState / fetchImage.
+    if (block.imageData && block.imageData.startsWith('file:')) {
+      const { imageData: _stripped, ...rest } = block;
+      return rest;
     }
     return block;
   }));
@@ -96,6 +103,11 @@ async function fetchImage(uri) {
   if (!match) throw new Error(`Unsupported storage URI: ${uri}`);
 
   const filepath = match[1];
+  // Guard against path traversal — only files inside STORE_DIR may be read.
+  const resolved = resolve(filepath);
+  if (!resolved.startsWith(STORE_DIR + '/') && resolved !== STORE_DIR) {
+    throw new Error(`Invalid storage path (outside store directory): ${uri}`);
+  }
   const buffer = await readFile(filepath);
 
   const ext = filepath.split('.').pop() || 'png';
@@ -113,6 +125,9 @@ export async function cleanupState(state) {
     if (block.imageData && !block.imageData.startsWith('data:')) {
       const match = block.imageData.match(/^file:\/\/(.+)$/);
       if (match) {
+        // Guard against path traversal before deleting.
+        const resolved = resolve(match[1]);
+        if (!resolved.startsWith(STORE_DIR + '/') && resolved !== STORE_DIR) continue;
         await unlink(match[1]).catch(() => {});
       }
     }

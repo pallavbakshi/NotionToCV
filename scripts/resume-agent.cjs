@@ -27,11 +27,21 @@ const opts = {};
 
 for (let i = 0; i < args.length; i++) {
   switch (args[i]) {
-    case '--input':   opts.input   = args[++i]; break;
-    case '--output':  opts.output  = args[++i]; break;
-    case '--prompt':  opts.prompt  = args[++i]; break;
-    case '--jd':      opts.jd      = args[++i]; break;
-    case '--model':   opts.model   = args[++i]; break;
+    case '--input':
+      if (++i >= args.length || args[i].startsWith('--')) { console.error('--input requires a value'); process.exit(2); }
+      opts.input = args[i]; break;
+    case '--output':
+      if (++i >= args.length || args[i].startsWith('--')) { console.error('--output requires a value'); process.exit(2); }
+      opts.output = args[i]; break;
+    case '--prompt':
+      if (++i >= args.length || args[i].startsWith('--')) { console.error('--prompt requires a value'); process.exit(2); }
+      opts.prompt = args[i]; break;
+    case '--jd':
+      if (++i >= args.length || args[i].startsWith('--')) { console.error('--jd requires a value'); process.exit(2); }
+      opts.jd = args[i]; break;
+    case '--model':
+      if (++i >= args.length || args[i].startsWith('--')) { console.error('--model requires a value'); process.exit(2); }
+      opts.model = args[i]; break;
     case '--verbose': opts.verbose = true;      break;
     case '--strict-capacity': opts.strictCapacity = true; break;
     case '--help':
@@ -71,6 +81,10 @@ if (!opts.prompt && !opts.jd) { console.error('Missing required --prompt <string
 let inputState;
 try {
   inputState = JSON.parse(fs.readFileSync(opts.input, 'utf-8'));
+  if (!Array.isArray(inputState.blocks))   throw new Error('Missing required property: blocks (must be an array)');
+  if (inputState.paddingMm === undefined)  throw new Error('Missing required property: paddingMm');
+  if (!inputState.templateName)            throw new Error('Missing required property: templateName');
+  if (!inputState.themeColors)             throw new Error('Missing required property: themeColors');
 } catch (e) {
   console.error(`Failed to read input file "${opts.input}": ${e.message}`);
   process.exit(1);
@@ -94,6 +108,11 @@ if (opts.jd) {
 // ---------------------------------------------------------------
 
 async function main() {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error('Missing required environment variable: ANTHROPIC_API_KEY');
+    process.exit(1);
+  }
+
   const { parseHTML } = require('linkedom');
   const { document } = parseHTML('<html><head></head><body></body></html>');
   globalThis.document = document;

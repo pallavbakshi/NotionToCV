@@ -31,8 +31,18 @@ for (let i = 0; i < args.length; i++) {
     case '--jds':          opts.jdsDir      = args[++i]; break;
     case '--jd':           opts.jdFile      = args[++i]; break;
     case '--output':       opts.output      = args[++i]; break;
-    case '--concurrency':  opts.concurrency = parseInt(args[++i]) || 5; break;
-    case '--cost-cap':     opts.costCap     = parseFloat(args[++i]) || 0; break;
+    case '--concurrency': {
+      const val = args[++i];
+      if (!val || val.startsWith('--')) { console.error('--concurrency requires a numeric value'); process.exit(2); }
+      opts.concurrency = parseInt(val) || 5;
+      break;
+    }
+    case '--cost-cap': {
+      const val = args[++i];
+      if (!val || val.startsWith('--')) { console.error('--cost-cap requires a numeric value'); process.exit(2); }
+      opts.costCap = parseFloat(val) || 0;
+      break;
+    }
     case '--queued':       opts.queued      = true; break;
     case '--verbose':      opts.verbose     = true; break;
     case '--help':
@@ -464,14 +474,18 @@ Output format (JSON only, no markdown):
       let capacityViolations = [];
       for (const block of tailoredState.blocks) {
         if (!block.canvas || !['paragraph', 'h1', 'h2', 'h3'].includes(block.type)) continue;
-        const rect = blockRectMm(block.canvas, entry.scopedState.paddingMm);
-        const lo = computeLayout(block, rect, {
-          templateName: entry.scopedState.templateName,
-          paddingMm: entry.scopedState.paddingMm,
-          themeColors: entry.scopedState.themeColors
-        });
-        if (lo.overflow) {
-          capacityViolations.push({ blockId: block.id, name: block.name, used: lo.lines.length, max: lo.maxLines });
+        try {
+          const rect = blockRectMm(block.canvas, entry.scopedState.paddingMm);
+          const lo = computeLayout(block, rect, {
+            templateName: entry.scopedState.templateName,
+            paddingMm: entry.scopedState.paddingMm,
+            themeColors: entry.scopedState.themeColors
+          });
+          if (lo.overflow) {
+            capacityViolations.push({ blockId: block.id, name: block.name, used: lo.lines.length, max: lo.maxLines });
+          }
+        } catch (err) {
+          if (opts.verbose) console.error(`  Layout check error for block ${block.id}: ${err.message}`);
         }
       }
 

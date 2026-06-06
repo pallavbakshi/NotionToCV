@@ -114,7 +114,9 @@ async function runJob(job) {
     const JOB_TIMEOUT_MS = (opts.timeoutMs && Number.isFinite(opts.timeoutMs))
       ? Math.min(opts.timeoutMs, 30 * 60 * 1000) // cap at 30 min regardless
       : 20 * 60 * 1000; // default 20 min
+    let timedOut = false;
     const timeoutId = setTimeout(() => {
+      timedOut = true;
       console.log(`[worker] Job ${job.id.slice(0, 8)} timed out after ${JOB_TIMEOUT_MS / 1000}s`);
       job.abortController?.abort();
     }, JOB_TIMEOUT_MS);
@@ -139,7 +141,10 @@ async function runJob(job) {
     console.log(`[worker] Job ${job.id.slice(0, 8)} completed (reason: ${doneEvent?.reason || 'unknown'})`);
 
   } catch (err) {
-    if (err.name === 'AbortError') {
+    if (err.name === 'AbortError' && timedOut) {
+      console.log(`[worker] Job ${job.id.slice(0, 8)} timed out`);
+      markError(job.id, 'Job exceeded time limit');
+    } else if (err.name === 'AbortError') {
       console.log(`[worker] Job ${job.id.slice(0, 8)} aborted`);
     } else {
       console.error(`[worker] Job ${job.id.slice(0, 8)} failed:`, err.message);
