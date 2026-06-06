@@ -1,0 +1,74 @@
+{
+  "title": "Jane Doe — Senior Software Engineer",
+  "paddingMm": 15,
+  "templateName": "clean",
+  "themeColors": {
+    "h1Font": "Inter",
+    "h2Font": "Inter",
+    "h3Font": "Inter",
+    "textFont": "Inter",
+    "h1Color": "#111111",
+    "h2Color": "#333333",
+    "h3Color": "#444444",
+    "textColor": "#222222",
+    "backgroundColor": "#ffffff"
+  },
+  "pageCount": 1,
+  "blocks": [
+    {
+      "id": "b-summary",
+      "type": "paragraph",
+      "name": "summary",
+      "content": [
+        { "type": "text", "text": "Senior software engineer with 8+ years of experience building scalable web applications and cloud infrastructure." }
+      ],
+      "canvas": { "page": 1, "col": 0, "row": 0, "colSpan": 4, "rowSpan": 3 },
+      "locked": false,
+      "source": "canvas"
+    },
+    {
+      "id": "b-experience-1",
+      "type": "paragraph",
+      "name": "experience-acme",
+      "content": [
+        { "type": "text", "text": "Led a team of 5 engineers to migrate a monolith to microservices, reducing deployment time by 60% and improving system reliability." }
+      ],
+      "canvas": { "page": 1, "col": 0, "row": 3, "colSpan": 4, "rowSpan": 4 },
+      "locked": false,
+      "source": "canvas"
+    },
+    {
+      "id": "b-experience-2",
+      "type": "paragraph",
+      "name": "experience-startup",
+      "content": [
+        { "type": "text", "text": "Built the core API from scratch serving 100k+ daily active users." }
+      ],
+      "canvas": { "page": 1, "col": 0, "row": 7, "colSpan": 4, "rowSpan": 2 },
+      "locked": false,
+      "source": "canvas"
+    },
+    {
+      "id": "b-skills",
+      "type": "paragraph",
+      "name": "skills",
+      "content": [
+        { "type": "text", "text": "TypeScript, Python, Go, React, Node.js, Kubernetes, AWS, PostgreSQL" }
+      ],
+      "canvas": { "page": 1, "col": 0, "row": 9, "colSpan": 4, "rowSpan": 2 },
+      "locked": false,
+      "source": "canvas"
+    },
+    {
+      "id": "b-education",
+      "type": "paragraph",
+      "name": "education",
+      "content": [
+        { "type": "text", "text": "B.S. Computer Science, University of California, Berkeley" }
+      ],
+      "canvas": { "page": 1, "col": 0, "row": 11, "colSpan": 4, "rowSpan": 2 },
+      "locked": true,
+      "source": "canvas"
+    }
+  ]
+}
