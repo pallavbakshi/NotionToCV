@@ -478,11 +478,18 @@
       screenshotProvider: browserScreenshotProvider
     });
 
-    let contentAccumulated = '';
+    let contentAccumulated = ''; // first-turn content — used by done handler to detect empty opener
     let hadToolCalls = false;
     let stepMsgIdMap = {};
 
+    // Per-turn tracking: each assistant speaking turn gets its own message bubble.
+    // After every tool_result, needNewBubble=true so the next text event inserts
+    // a fresh bubble rather than appending to the opener.
     const assistantMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+    let currentTurnMsgId = assistantMsgId;
+    let currentTurnContent = '';
+    let needNewBubble = false;
+
     const assistantMsg = {
       id: assistantMsgId,
       role: 'assistant',
@@ -506,15 +513,30 @@
         mode: chatMode === 'agent' ? 'agent' : 'coach'
       })) {
         switch (ev.type) {
-          case 'text':
-            contentAccumulated += ev.delta;
+          case 'text': {
+            // After a tool_result, open a fresh assistant bubble for this turn's text.
+            if (needNewBubble) {
+              needNewBubble = false;
+              currentTurnMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+              currentTurnContent = '';
+              chatList = chatList.map(c => {
+                if (c.id === activeChatId) {
+                  return { ...c, messages: [...c.messages, { id: currentTurnMsgId, role: 'assistant', content: '', timestamp: new Date().toISOString() }] };
+                }
+                return c;
+              });
+            }
+            currentTurnContent += ev.delta;
+            // Track first-turn content separately so done handler can detect an empty opener.
+            if (currentTurnMsgId === assistantMsgId) contentAccumulated = currentTurnContent;
             chatList = chatList.map(c => {
               if (c.id === activeChatId) {
-                return { ...c, messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: contentAccumulated } : m) };
+                return { ...c, messages: c.messages.map(m => m.id === currentTurnMsgId ? { ...m, content: currentTurnContent } : m) };
               }
               return c;
             });
             break;
+          }
 
           case 'tool_call': {
             hadToolCalls = true;
@@ -561,6 +583,8 @@
               }
               return c;
             });
+            // Next text event belongs to a new assistant turn — open a fresh bubble.
+            needNewBubble = true;
             break;
           }
 
@@ -570,17 +594,17 @@
             break;
 
           case 'error':
+            // Append error to whichever bubble is currently active.
             chatList = chatList.map(c => {
               if (c.id === activeChatId) {
-                return { ...c, messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: m.content + `\n\n*Error: ${ev.error}*` } : m) };
+                return { ...c, messages: c.messages.map(m => m.id === currentTurnMsgId ? { ...m, content: m.content + `\n\n*Error: ${ev.error}*` } : m) };
               }
               return c;
             });
             break;
 
           case 'done':
-            // Remove empty assistant message if no content AND tool calls happened
-            // (tool status messages convey the action)
+            // Remove the opener bubble if it was empty (agent started straight with a tool call).
             if (!contentAccumulated && hadToolCalls) {
               chatList = chatList.map(c => {
                 if (c.id === activeChatId) {
@@ -590,10 +614,11 @@
               });
             }
 
+            // Append the turn-limit notice to whatever the last active bubble is.
             if (ev.reason === 'max_turns') {
               chatList = chatList.map(c => {
                 if (c.id === activeChatId) {
-                  return { ...c, messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: m.content + '\n\n*Agent reached the 30-turn limit. Some optimisations may be incomplete.*' } : m) };
+                  return { ...c, messages: c.messages.map(m => m.id === currentTurnMsgId ? { ...m, content: m.content + '\n\n*Agent reached the 30-turn limit. Some optimisations may be incomplete.*' } : m) };
                 }
                 return c;
               });

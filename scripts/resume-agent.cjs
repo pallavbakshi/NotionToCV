@@ -61,7 +61,7 @@ for (let i = 0; i < args.length; i++) {
         '  --strict-capacity       Reject edits that overflow block capacity (non-zero exit if any rejected)',
         '  --help                  Show this message',
         '',
-        'Requires ANTHROPIC_API_KEY environment variable.',
+        'Requires ANTHROPIC_API_KEY or OPENROUTER_API_KEY environment variable.',
       ].join('\n'));
       process.exit(0);
     default:
@@ -108,11 +108,6 @@ if (opts.jd) {
 // ---------------------------------------------------------------
 
 async function main() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error('Missing required environment variable: ANTHROPIC_API_KEY');
-    process.exit(1);
-  }
-
   const { parseHTML } = require('linkedom');
   const { document } = parseHTML('<html><head></head><body></body></html>');
   globalThis.document = document;
@@ -122,15 +117,19 @@ async function main() {
   const SDK = await import('../src/sdk/index.js');
   await SDK.initSdkDomParser();
 
-  const { nodeModelProvider, nodeScreenshotProvider } = await import('../src/sdk/providers/node.js');
+  const { pickNodeModelProvider, nodeScreenshotProvider } = await import('../src/sdk/providers/node.js');
   const { computeLayout, blockRectMm, initFonts } = await import('../src/lib/layout/index.js');
+
+  // Auto-select Anthropic or OpenRouter based on available env var.
+  // pickNodeModelProvider() throws with a clear message if neither key is set.
+  const modelProvider = pickNodeModelProvider();
 
   // ---------------------------------------------------------------
   // 4. Instantiate engine & run
   // ---------------------------------------------------------------
 
   const engine = new SDK.ResumeAgentEngine({
-    modelProvider: nodeModelProvider,
+    modelProvider,
     screenshotProvider: nodeScreenshotProvider,
     model: opts.model
   });
