@@ -73,10 +73,7 @@ export function renderBlockSVG(laidOutBlock, opts = {}) {
   // overflow="visible": an SVG's UA default is overflow:hidden, which would clip a
   // faux-italic ascender skewed past the right edge — but pdf-lib never clips, so
   // clipping here would break screen/print parity. Parents are already overflow:visible.
-  // xml:space="preserve" prevents the browser from collapsing consecutive whitespace
-  // glyphs; without it, multiple spaces collapse to one and the per-glyph x-list
-  // desyncs from the visible character count, shifting all subsequent text leftward.
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible" xml:space="preserve">`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible">`);
 
   if (embedFonts) {
     // Embed font binaries as base64 data URLs for self-contained SVG
@@ -186,6 +183,13 @@ function renderLineText(parts, line) {
       };
     }
 
+    // Approach B: skip whitespace glyphs. Spaces carry no ink — their
+    // horizontal offset is already baked into the next visible glyph's xMm.
+    // Emitting them forces the browser's whitespace-collapsing behavior into
+    // play. The PDF renderer draws each visible glyph at its absolute x
+    // without spaces; SVG matches that model.
+    if (/\s/.test(g.char)) continue;
+
     currentSpan.glyphs.push(g);
     currentSpan.xList.push(g.xMm.toFixed(3));
     // SVG <text x="..."> assigns one x per UTF-16 code unit, not per glyph.
@@ -201,8 +205,10 @@ function renderLineText(parts, line) {
   if (currentSpan) spans.push(currentSpan);
 
   // Dev guard: verify that per-span x-list length equals the total UTF-16 code
-  // units of the glyph chars.  A mismatch means a multi-unit char slipped through
-  // and the browser will assign x-values to the wrong characters.
+  // units of the visible (non-whitespace) glyph chars.  Whitespace glyphs are
+  // skipped — both glyphs[] and xList[] exclude them, so the count stays in sync.
+  // A mismatch means a multi-unit visible char slipped through and the browser
+  // will assign x-values to the wrong characters.
   for (const s of spans) {
     const totalUnits = s.glyphs.reduce((n, g) => n + g.char.length, 0);
     if (totalUnits !== s.xList.length) {
@@ -241,12 +247,11 @@ function renderLineText(parts, line) {
     // explicit positions are honored verbatim — and so screen matches the PDF. The
     // PDF draws each glyph's char individually at the engine's absolute x (it does no
     // GSUB shaping), and the shaper now disables ligatures, so neither path ligates.
-    const NO_RESHAPE = ` font-kerning="none" style="white-space:pre;font-variant-ligatures:none;font-feature-settings:'liga' 0,'clig' 0,'dlig' 0,'calt' 0"`;
+    const NO_RESHAPE = ` font-kerning="none" style="font-variant-ligatures:none;font-feature-settings:'liga' 0,'clig' 0,'dlig' 0,'calt' 0"`;
 
     // Emit the span as a <text> with the given per-glyph x list.
-    // Must be a single parts.push() — no newlines between the opening tag and
-    // chars.  With xml:space="preserve", formatting whitespace inside <text>
-    // would be rendered as real characters, desyncing the x-list.
+    // Single parts.push() keeps the text content inline with the tag — no
+    // formatting whitespace that could be interpreted as renderable characters.
     const emit = (xs) => {
       parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${escapeXml(span.fontName)}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${escapeXml(span.color)}"${transform}${NO_RESHAPE}>${chars}</text>`);
     };
@@ -346,7 +351,7 @@ function renderPassthrough(laidOutBlock) {
   // overflow="visible": an SVG's UA default is overflow:hidden, which would clip a
   // faux-italic ascender skewed past the right edge — but pdf-lib never clips, so
   // clipping here would break screen/print parity. Parents are already overflow:visible.
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible" xml:space="preserve">`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible">`);
 
   if (pt.elementType === 'horizontal_divider' || pt.elementType === 'horizontal divider') {
     const y = blockHeightMm / 2;
