@@ -30,6 +30,10 @@ async function ensureEngine() {
 /** Interval ID for the poll loop. Set by start(), cleared by stop(). */
 let _pollInterval = null;
 
+/** Number of jobs currently running. Caps at MAX_CONCURRENT. */
+let _activeCount = 0;
+const MAX_CONCURRENT = 5;
+
 /**
  * Start the background worker poll loop.
  * @param {number} [intervalMs=2000] — poll interval
@@ -37,7 +41,7 @@ let _pollInterval = null;
 export function start(intervalMs = 2000) {
   if (_pollInterval) return;
   _pollInterval = setInterval(poll, intervalMs);
-  console.log('[worker] Started (poll interval: ' + intervalMs + 'ms)');
+  console.log('[worker] Started (poll interval: ' + intervalMs + 'ms, max concurrent: ' + MAX_CONCURRENT + ')');
 }
 
 /** Stop the background worker. */
@@ -50,32 +54,59 @@ export function stop() {
 }
 
 /**
- * Single poll cycle: purge expired, dequeue next job, run it.
+ * Single poll cycle: purge expired, dequeue next job, run it (non-blocking).
  */
 async function poll() {
   await purgeExpired();
 
+  // Fix #4: enforce concurrency cap — don't dequeue if already at the limit.
+  if (_activeCount >= MAX_CONCURRENT) return;
+
   const job = dequeueNext();
   if (!job) return; // nothing queued
 
-  console.log(`[worker] Picked up job ${job.id.slice(0, 8)}…`);
+  _activeCount++;
+  console.log(`[worker] Picked up job ${job.id.slice(0, 8)}… (active: ${_activeCount}/${MAX_CONCURRENT})`);
 
+  // Run the job without awaiting so the poll interval can pick up more jobs.
+  runJob(job).finally(() => { _activeCount--; });
+}
+
+/**
+ * Execute a single queued job.
+ * @param {Object} job
+ */
+async function runJob(job) {
   try {
     const { SDK, nodeModelProvider, nodeScreenshotProvider } = await ensureEngine();
     const { rehydrateState } = await import('./imageStore.js');
 
     const { state: dehydratedState, instruction, opts } = job.input;
-    const state = await rehydrateState(dehydratedState);
+
+    // Fix #8: only rehydrate if the state actually has file:// image URIs —
+    // text-only resumes skip disk I/O entirely, and a missing image file won't
+    // crash jobs that never request screenshots.
+    const hasImages = dehydratedState.blocks?.some(b => b.imageData?.startsWith('file://'));
+    const state = hasImages ? await rehydrateState(dehydratedState) : dehydratedState;
+
+    // Fix #9: only pass safe, known opts to the engine — never let the queue
+    // client inject messages/systemPrompt to override host-built context (FR2.8).
+    const safeOpts = {
+      model: opts.model,
+      maxTurns: opts.maxTurns,
+      strictCapacity: opts.strictCapacity
+    };
 
     const engine = new SDK.ResumeAgentEngine({
       modelProvider: nodeModelProvider,
       screenshotProvider: nodeScreenshotProvider,
-      model: opts.model
+      model: safeOpts.model,
+      maxTurns: safeOpts.maxTurns
     });
 
     const events = [];
     for await (const ev of engine.optimizeResume(state, instruction, {
-      ...opts,
+      ...safeOpts,
       mode: 'agent',       // always agent in background; spread after so it can't be overridden
       signal: job.abortController?.signal
     })) {
@@ -86,7 +117,7 @@ async function poll() {
     const transaction = doneEvent?.transaction || { stagedChanges: {} };
 
     markDone(job.id, transaction);
-    console.log(`[worker] Job ${job.id.slice(0, 8)} completed`);
+    console.log(`[worker] Job ${job.id.slice(0, 8)} completed (reason: ${doneEvent?.reason || 'unknown'})`);
 
   } catch (err) {
     if (err.name === 'AbortError') {

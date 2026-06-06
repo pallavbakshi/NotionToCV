@@ -57,6 +57,26 @@ if (typeof DOMParser !== 'undefined') {
   );
 }
 
+/**
+ * Shared capacity computation — single source of truth used by both
+ * update_block_content (in-loop check) and engine.validateBlockLayout
+ * (FR2.9: no duplicate logic).
+ *
+ * @param {Object} block - block with content already set to the proposed content
+ * @param {Object} rect  - { leftMm, topMm, widthMm, heightMm }
+ * @param {Object} layoutCtx - { templateName, paddingMm, themeColors }
+ * @returns {{ max_lines, current_lines_used, lines_remaining, is_overflowing }}
+ */
+export function computeBlockCapacity(block, rect, layoutCtx) {
+  const lo = computeLayout(block, rect, layoutCtx);
+  return {
+    max_lines: lo.maxLines,
+    current_lines_used: lo.lines.length,
+    lines_remaining: lo.linesRemaining,
+    is_overflowing: lo.overflow
+  };
+}
+
 /** Initialise the SDK's DOM parser AND the isomorphic message parser for Node. No-op in browser. */
 export async function initSdkDomParser() {
   if (!_parseDocument) {
@@ -285,16 +305,8 @@ export async function runAgentTool(name, args, ctx) {
     if (block.canvas) {
       const rect = blockRectMm(block.canvas, paddingMm);
       const layoutCtx = { templateName, paddingMm, themeColors };
-
       const proposedBlock = { ...block, content: proposedContent };
-      const lo = computeLayout(proposedBlock, rect, layoutCtx);
-
-      capacity = {
-        max_lines: lo.maxLines,
-        current_lines_used: lo.lines.length,
-        lines_remaining: lo.linesRemaining,
-        is_overflowing: lo.overflow
-      };
+      capacity = computeBlockCapacity(proposedBlock, rect, layoutCtx);
 
       // FR6.7: strictCapacity — reject changes that overflow the block budget.
       // The agent sees the capacity numbers and is expected to self-correct.

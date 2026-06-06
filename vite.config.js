@@ -842,7 +842,13 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
         } else if (req.url.startsWith('/api/agent/applications/') && req.method === 'DELETE') {
           try {
             const batchDir = req.url.slice('/api/agent/applications/'.length).split('?')[0];
-            const batchPath = path.join(process.cwd(), 'server/agent/results', batchDir);
+            const resultsRoot = path.resolve(process.cwd(), 'server/agent/results');
+            const batchPath = path.resolve(resultsRoot, batchDir);
+            if (!batchPath.startsWith(resultsRoot + path.sep)) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Invalid batch id' }));
+              return;
+            }
             if (!fs.existsSync(batchPath)) {
               res.statusCode = 404;
               res.end(JSON.stringify({ error: 'Batch not found' }));

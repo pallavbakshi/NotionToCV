@@ -684,7 +684,13 @@
       templateName,
       themeColors,
       pageCount: blocks.filter(b => b.canvas).reduce((max, b) => Math.max(max, b.canvas?.page || 1), 1),
-      blocks
+      // Strip inline imageData before sending — server dehydrates to file:// URIs,
+      // keeping the payload well below the 10 MB cap for image-heavy resumes.
+      blocks: blocks.map(b => {
+        if (!b.imageData) return b;
+        const { imageData: _stripped, ...rest } = b;
+        return rest;
+      })
     };
 
     const instruction = inputText;

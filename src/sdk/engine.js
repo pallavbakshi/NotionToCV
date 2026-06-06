@@ -7,8 +7,8 @@
 // Zero Svelte, zero browser globals, zero fetch. Everything host-specific
 // arrives through the injected modelProvider / screenshotProvider.
 
-import { runAgentTool, AGENT_TOOLS, getAgentSystemPrompt, getSystemPromptOutline } from './tools.js';
-import { computeLayout } from '../lib/layout/index.js';
+import { runAgentTool, AGENT_TOOLS, getAgentSystemPrompt, getSystemPromptOutline, computeBlockCapacity } from './tools.js';
+import { blockRectMm } from '../lib/layout/index.js';
 
 export class ResumeAgentEngine {
   /**
@@ -101,11 +101,13 @@ export class ResumeAgentEngine {
         }
       } catch (err) {
         if (err.name === 'AbortError') {
-          yield { type: 'done', reason: 'aborted' };
+          yield { type: 'done', reason: 'aborted', transaction: { stagedChanges } };
           return;
         }
+        // Emit error event then a single done that carries whatever was staged — fixes
+        // Fix #5 (staged work not lost) and Fix #11 (reason was misleadingly 'aborted').
         yield { type: 'error', error: `Model call failed: ${err.message}` };
-        yield { type: 'done', reason: 'aborted' };
+        yield { type: 'done', reason: 'error', transaction: { stagedChanges } };
         return;
       }
 
@@ -187,7 +189,8 @@ export class ResumeAgentEngine {
 
   /**
    * Validate whether content fits within a block's spatial budget.
-   * Runs the same computeLayout path the tools use internally.
+   * Delegates to the same computeBlockCapacity used by update_block_content
+   * so CLI/pipeline gating and in-loop checks always agree (FR2.9).
    *
    * @param {import('./types.js').Block} block
    * @param {Object} rect - { leftMm, topMm, widthMm, heightMm } or null
@@ -195,13 +198,6 @@ export class ResumeAgentEngine {
    * @returns {import('./types.js').LayoutCapacity}
    */
   validateBlockLayout(block, rect, layoutCtx) {
-    const lo = computeLayout(block, rect, layoutCtx);
-
-    return {
-      max_lines: lo.maxLines,
-      current_lines_used: lo.lines.length,
-      lines_remaining: lo.linesRemaining,
-      is_overflowing: lo.overflow
-    };
+    return computeBlockCapacity(block, rect, layoutCtx);
   }
 }

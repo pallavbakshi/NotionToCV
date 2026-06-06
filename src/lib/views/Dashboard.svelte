@@ -196,7 +196,9 @@
                               onclick={() => approveResult(batch, result)}>
                               {approving ? '⏳ Loading…' : '✓ Approve & Edit'}
                             </button>
-                            <a href={`/api/agent/applications/${batch._batchId || ''}?file=${encodeURIComponent(result.jd || '')}.pdf`} class="action-link" download>📄 PDF</a>
+                            {#if result.status === 'done'}
+                              <a href={`/api/agent/applications/${batch._batchId || ''}?file=${encodeURIComponent(result.jd || '')}.pdf`} class="action-link" download>📄 PDF</a>
+                            {/if}
                           {/if}
                         </span>
                       </div>

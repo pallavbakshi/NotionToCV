@@ -255,6 +255,9 @@ Output format (JSON only, no markdown):
   // 6. Fan-out: tailor each scoped resume via engine.optimizeResume
   // ---------------------------------------------------------------
 
+  // Declared here so both queued and direct modes can update it and the summary can read it.
+  let estimatedCost = 0;
+
   if (opts.queued) {
     if (opts.verbose) console.log('\n=== Queued mode — enqueuing jobs via Phase 5 API ===\n');
 
@@ -383,7 +386,6 @@ Output format (JSON only, no markdown):
   const pending = pipelineResults.filter(r => r.status === 'prepped');
   let activeCount = 0;
   let completedCount = 0;
-  let estimatedCost = 0;
 
   function processNext() {
     const next = pending.shift();
