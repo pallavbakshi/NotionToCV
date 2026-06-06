@@ -185,9 +185,31 @@ function renderLineText(parts, line) {
 
     currentSpan.glyphs.push(g);
     currentSpan.xList.push(g.xMm.toFixed(3));
+    // SVG <text x="..."> assigns one x per UTF-16 code unit, not per glyph.
+    // Pad the x-list so the count matches char.length for multi-unit glyphs
+    // (astral base characters, ZWJ sequences, combining marks not stripped
+    // by the shaper).  Repeating the same x is correct: every code unit of
+    // one glyph occupies the same pen position.
+    for (let j = 1; j < g.char.length; j++) {
+      currentSpan.xList.push(g.xMm.toFixed(3));
+    }
   }
 
   if (currentSpan) spans.push(currentSpan);
+
+  // Dev guard: verify that per-span x-list length equals the total UTF-16 code
+  // units of the glyph chars.  A mismatch means a multi-unit char slipped through
+  // and the browser will assign x-values to the wrong characters.
+  for (const s of spans) {
+    const totalUnits = s.glyphs.reduce((n, g) => n + g.char.length, 0);
+    if (totalUnits !== s.xList.length) {
+      console.warn(
+        '[render-svg] x-list desync — x entries:', s.xList.length,
+        'utf-16 units:', totalUnits,
+        'glyphs:', s.glyphs.map(g => [...g.char].map(c => 'U+' + c.codePointAt(0).toString(16).toUpperCase()).join('+')),
+      );
+    }
+  }
 
   for (const span of spans) {
     const xAttr = span.xList.join(' ');

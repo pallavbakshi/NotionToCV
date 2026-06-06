@@ -61,9 +61,18 @@ export function shapeRun(text, runStyle) {
   for (let i = 0; i < run.glyphs.length; i++) {
     const glyph = run.glyphs[i];
     const codePoints = glyph.codePoints;
-    const char = codePoints.length > 0
-      ? String.fromCodePoint(...codePoints)
-      : '';
+
+    // Strip trailing variation selectors / zero-width joiners so char is
+    // a single UTF-16 unit.  SVG <text x="..."> consumes one x per UTF-16
+    // code unit; a multi-unit char would desync the renderer's x-list.
+    const isVS = (cp) =>
+      (cp >= 0xFE00 && cp <= 0xFE0F) ||
+      (cp >= 0xE0100 && cp <= 0xE01EF) ||
+      cp === 0x200D;
+    const base = codePoints.filter(cp => !isVS(cp));
+    const char = base.length > 0
+      ? String.fromCodePoint(...base)
+      : (codePoints.length > 0 ? String.fromCodePoint(codePoints[0]) : '');
 
     // Use fontkit's GPOS-adjusted advance (kerning, ligatures, etc.)
     // run.positions[i].xAdvance is the shaped advance including kerning.
