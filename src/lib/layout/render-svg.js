@@ -73,7 +73,10 @@ export function renderBlockSVG(laidOutBlock, opts = {}) {
   // overflow="visible": an SVG's UA default is overflow:hidden, which would clip a
   // faux-italic ascender skewed past the right edge — but pdf-lib never clips, so
   // clipping here would break screen/print parity. Parents are already overflow:visible.
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible">`);
+  // xml:space="preserve" prevents the browser from collapsing consecutive whitespace
+  // glyphs; without it, multiple spaces collapse to one and the per-glyph x-list
+  // desyncs from the visible character count, shifting all subsequent text leftward.
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible" xml:space="preserve">`);
 
   if (embedFonts) {
     // Embed font binaries as base64 data URLs for self-contained SVG
@@ -238,13 +241,14 @@ function renderLineText(parts, line) {
     // explicit positions are honored verbatim — and so screen matches the PDF. The
     // PDF draws each glyph's char individually at the engine's absolute x (it does no
     // GSUB shaping), and the shaper now disables ligatures, so neither path ligates.
-    const NO_RESHAPE = ` font-kerning="none" style="font-variant-ligatures:none;font-feature-settings:'liga' 0,'clig' 0,'dlig' 0,'calt' 0"`;
+    const NO_RESHAPE = ` font-kerning="none" style="white-space:pre;font-variant-ligatures:none;font-feature-settings:'liga' 0,'clig' 0,'dlig' 0,'calt' 0"`;
 
     // Emit the span as a <text> with the given per-glyph x list.
+    // Must be a single parts.push() — no newlines between the opening tag and
+    // chars.  With xml:space="preserve", formatting whitespace inside <text>
+    // would be rendered as real characters, desyncing the x-list.
     const emit = (xs) => {
-      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${escapeXml(span.fontName)}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${escapeXml(span.color)}"${transform}${NO_RESHAPE}>`);
-      parts.push(chars);
-      parts.push('</text>');
+      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${escapeXml(span.fontName)}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${escapeXml(span.color)}"${transform}${NO_RESHAPE}>${chars}</text>`);
     };
 
     emit(xAttr);
@@ -342,7 +346,7 @@ function renderPassthrough(laidOutBlock) {
   // overflow="visible": an SVG's UA default is overflow:hidden, which would clip a
   // faux-italic ascender skewed past the right edge — but pdf-lib never clips, so
   // clipping here would break screen/print parity. Parents are already overflow:visible.
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible">`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${blockWidthMm}mm" height="${blockHeightMm}mm" viewBox="0 0 ${blockWidthMm} ${blockHeightMm}" overflow="visible" xml:space="preserve">`);
 
   if (pt.elementType === 'horizontal_divider' || pt.elementType === 'horizontal divider') {
     const y = blockHeightMm / 2;
