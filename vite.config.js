@@ -2,6 +2,9 @@ import { defineConfig, loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import fs from 'fs'
 import Anthropic from '@anthropic-ai/sdk'
+import { enqueue, getJob, canAccess, cancelJob } from './server/agent/queue.js'
+import { dehydrateState } from './server/agent/imageStore.js'
+import { start as startWorker } from './server/agent/worker.js'
 
 const printCache = new Map();
 
@@ -147,6 +150,8 @@ function mainPlugin(env) {
   return {
     name: 'vite-plugin-notion-cv',
     configureServer(server) {
+      startWorker();
+
       server.middlewares.use((req, res, next) => {
 
         // ── /api/print ──────────────────────────────────────────────────
@@ -859,6 +864,82 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
               }
             }
           });
+
+        // ── Agent queue routes (Phase 5) ───────────────────────────────────
+        } else if (req.url === '/api/agent/queue' && req.method === 'POST') {
+          let body = '';
+          const MAX_BODY = 10 * 1024 * 1024; // 10 MB (matches print endpoint cap)
+          req.on('data', chunk => {
+            body += chunk.toString();
+            if (body.length > MAX_BODY) {
+              res.statusCode = 413;
+              res.end(JSON.stringify({ error: 'Payload too large' }));
+              req.destroy();
+            }
+          });
+          req.on('end', async () => {
+            try {
+              const data = JSON.parse(body);
+              const userId = req.headers['x-user-id'] || 'anonymous';
+
+              // Validate ResumeState
+              if (!data.state || !data.state.title || !Array.isArray(data.state.blocks)) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Invalid ResumeState' }));
+                return;
+              }
+
+              // Dehydrate imageData before enqueue (FR5.8)
+              const dehydratedState = await dehydrateState(data.state);
+
+              const jobId = enqueue(userId, dehydratedState, data.instruction || 'Optimize my resume.', data.opts || {});
+
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ jobId }));
+            } catch (err) {
+              console.error('[agent/queue] Enqueue error:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+
+        } else if (req.url.startsWith('/api/agent/job/') && req.method === 'GET') {
+          const jobId = req.url.slice('/api/agent/job/'.length).split('?')[0];
+          const userId = req.headers['x-user-id'] || 'anonymous';
+
+          if (!canAccess(userId, jobId)) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Job not found' }));
+            return;
+          }
+
+          const job = getJob(jobId);
+          if (!job) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Job not found' }));
+            return;
+          }
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(job));
+
+        } else if (req.url.startsWith('/api/agent/job/') && req.method === 'DELETE') {
+          const jobId = req.url.slice('/api/agent/job/'.length).split('?')[0];
+          const userId = req.headers['x-user-id'] || 'anonymous';
+
+          if (!canAccess(userId, jobId)) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Job not found' }));
+            return;
+          }
+
+          const ok = cancelJob(jobId);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ cancelled: ok, jobId }));
 
         } else {
           next();

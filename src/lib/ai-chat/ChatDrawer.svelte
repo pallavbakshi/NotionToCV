@@ -38,6 +38,11 @@
 
   let fileInputEl = $state(null);
 
+  // Background job state (Phase 5)
+  let backgroundJobId = $state(null);
+  let backgroundJobStatus = $state('idle'); // 'idle' | 'polling' | 'done' | 'error'
+  let backgroundPollTimer = $state(null);
+
   // Resizable drawer width state and handler
   let drawerWidth = $state(400);
   let isResizing = $state(false);
@@ -131,6 +136,18 @@
       }
     } catch (e) {
       console.error('Error loading chats from localStorage', e);
+    }
+
+    // Restore background job polling across page reloads (FR5.5 DoD)
+    try {
+      const storedJobId = localStorage.getItem(`notionToCV_bgJob_${resumeId}`);
+      if (storedJobId) {
+        backgroundJobId = storedJobId;
+        backgroundJobStatus = 'polling';
+        pollJobResult();
+      }
+    } catch (e) {
+      console.error('Error restoring background job from localStorage', e);
     }
 
     if (chatList.length > 0) {
@@ -630,6 +647,115 @@
     }
   }
 
+  function getUserId() {
+    const key = 'ntcv_user_id';
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = 'u_' + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem(key, id);
+    }
+    return id;
+  }
+
+  async function handleRunInBackground() {
+    if (!inputText.trim()) return;
+    if (backgroundJobStatus === 'polling') return;
+
+    const state = {
+      title: pageTitle,
+      paddingMm,
+      templateName,
+      themeColors,
+      pageCount: blocks.filter(b => b.canvas).reduce((max, b) => Math.max(max, b.canvas?.page || 1), 1),
+      blocks
+    };
+
+    const instruction = inputText;
+    inputText = '';
+
+    try {
+      const res = await fetch('/api/agent/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': getUserId() },
+        body: JSON.stringify({ state, instruction })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        renderError = `Background job failed: ${err.error}`;
+        setTimeout(() => { renderError = ''; }, 4000);
+        return;
+      }
+
+      const { jobId } = await res.json();
+      backgroundJobId = jobId;
+      backgroundJobStatus = 'polling';
+      try { localStorage.setItem(`notionToCV_bgJob_${resumeId}`, jobId); } catch (_) {}
+      pollJobResult();
+    } catch (err) {
+      renderError = `Failed to start background job: ${err.message}`;
+      setTimeout(() => { renderError = ''; }, 4000);
+    }
+  }
+
+  function pollJobResult() {
+    if (!backgroundJobId) return;
+
+    backgroundPollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/agent/job/${backgroundJobId}`, {
+          headers: { 'X-User-Id': getUserId() }
+        });
+
+        if (!res.ok) {
+          clearPolling();
+          backgroundJobStatus = 'error';
+          return;
+        }
+
+        const job = await res.json();
+
+        if (job.status === 'done' && job.output?.transaction?.stagedChanges) {
+          clearPolling();
+          backgroundJobStatus = 'done';
+          try { localStorage.removeItem(`notionToCV_bgJob_${resumeId}`); } catch (_) {}
+          // Load transaction into stagedChanges store (same path as Phase 4 live agent)
+          const tx = job.output.transaction.stagedChanges;
+          stagedChanges.update(s => ({ ...s, ...tx }));
+        } else if (job.status === 'error' || job.status === 'cancelled') {
+          clearPolling();
+          backgroundJobStatus = job.status === 'cancelled' ? 'idle' : 'error';
+          try { localStorage.removeItem(`notionToCV_bgJob_${resumeId}`); } catch (_) {}
+          if (job.error) {
+            renderError = `Background job failed: ${job.error}`;
+            setTimeout(() => { renderError = ''; }, 4000);
+          }
+        }
+      } catch (_err) {
+        // Network error during poll — keep trying
+      }
+    }, 5000);
+  }
+
+  function clearPolling() {
+    if (backgroundPollTimer) {
+      clearInterval(backgroundPollTimer);
+      backgroundPollTimer = null;
+    }
+  }
+
+  function dismissBackgroundBanner() {
+    clearPolling();
+    try { localStorage.removeItem(`notionToCV_bgJob_${resumeId}`); } catch (_) {}
+    backgroundJobId = null;
+    backgroundJobStatus = 'idle';
+  }
+
+  // Cleanup poll timer on destroy
+  onDestroy(() => {
+    clearPolling();
+  });
+
   function renderMarkdown(text) {
     if (!text) return '';
     let escaped = text
@@ -765,6 +891,7 @@
     bind:fileInputEl
     bind:inputText
     {isGenerating}
+    {backgroundJobStatus}
     {blocks}
     {removeAttachment}
     {attachAllBlocks}
@@ -773,8 +900,24 @@
     {handleFileUpload}
     {sendMessage}
     {stopGeneration}
+    {handleRunInBackground}
   />
 </div>
+
+<!-- Background job banner (Phase 5) -->
+{#if backgroundJobStatus !== 'idle'}
+  <div class="bg-job-banner" class:bg-job-done={backgroundJobStatus === 'done'} class:bg-job-error={backgroundJobStatus === 'error'}>
+    {#if backgroundJobStatus === 'polling'}
+      <span class="bg-job-spinner"></span>
+      Optimisation running in background… (you can close this tab)
+    {:else if backgroundJobStatus === 'done'}
+      ✓ Optimisation complete — review the staged changes in the Notion pane
+    {:else if backgroundJobStatus === 'error'}
+      ✗ Background job failed
+    {/if}
+    <button class="bg-job-dismiss" onclick={dismissBackgroundBanner}>×</button>
+  </div>
+{/if}
 
 <style>
   .chat-drawer {
@@ -830,5 +973,58 @@
     .chat-drawer {
       display: none !important;
     }
+  }
+
+  /* Background job banner (Phase 5) */
+  .bg-job-banner {
+    position: absolute;
+    bottom: 72px;
+    left: 12px;
+    right: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 510;
+    background: #eef2ff;
+    color: #3730a3;
+    border: 1px solid #c7d2fe;
+  }
+  .bg-job-banner.bg-job-done {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+  }
+  .bg-job-banner.bg-job-error {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+  }
+  .bg-job-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #c7d2fe;
+    border-top-color: #3730a3;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  .bg-job-dismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.5;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .bg-job-dismiss:hover { opacity: 1; }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>

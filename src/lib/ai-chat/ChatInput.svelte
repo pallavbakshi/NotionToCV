@@ -8,6 +8,7 @@
     fileInputEl = $bindable(null),
     inputText = $bindable(''),
     isGenerating = false,
+    backgroundJobStatus = 'idle',
     blocks = [],
     removeAttachment,
     attachAllBlocks,
@@ -15,7 +16,8 @@
     triggerFileInput,
     handleFileUpload,
     sendMessage,
-    stopGeneration
+    stopGeneration,
+    handleRunInBackground
   } = $props();
 </script>
 
@@ -89,11 +91,20 @@
         }}
       ></textarea>
 
-      {#if isGenerating}
+      {#if isGenerating || backgroundJobStatus === 'polling'}
         <button type="button" class="btn-send-message btn-stop-message" onclick={stopGeneration} title="Stop Generating">
           ⏹
         </button>
       {:else}
+        <button
+          type="button"
+          class="btn-send-message btn-bg-job"
+          onclick={handleRunInBackground}
+          disabled={!inputText.trim() && stagedAttachments.length === 0}
+          title="Run in Background"
+        >
+          ⚡
+        </button>
         <button
           type="button"
           class="btn-send-message"
@@ -243,6 +254,18 @@
 
   .btn-send-message:hover:not(:disabled) {
     background-color: var(--chat-primary-hover);
+  }
+
+  .btn-bg-job {
+    background-color: transparent;
+    color: var(--chat-text-muted);
+    border: 1px solid var(--chat-border);
+    font-size: 12px;
+  }
+  .btn-bg-job:hover:not(:disabled) {
+    background-color: #eef2ff;
+    color: #3730a3;
+    border-color: #c7d2fe;
   }
 
   .btn-send-message:disabled {
