@@ -1,11 +1,35 @@
 // Pure functions for HTML ↔ Tiptap JSON conversion used by the AI chat subsystem.
-// No Svelte or DOM dependencies beyond DOMParser (browser built-in).
+// Isomorphic: works in browser (native DOMParser) and Node (linkedom, after initDomParser).
 
 import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { FontFamily } from '@tiptap/extension-font-family';
+
+// Internal DOM parser adapter — browser uses native DOMParser, Node uses linkedom.
+// In the browser this is set at module load time (synchronous, no init needed).
+// In Node the caller must await initDomParser() before any parse call.
+let _parseDocument;
+
+if (typeof DOMParser !== 'undefined') {
+  _parseDocument = (html) => new DOMParser().parseFromString(html, 'text/html');
+}
+
+/**
+ * Initialise the DOM parser for Node environments. No-op in the browser.
+ * Must be called before sanitizeHtmlWithoutCss() or parseHtmlToTiptapJson()
+ * when running under Node.
+ */
+export async function initDomParser() {
+  if (!_parseDocument) {
+    const { parseHTML } = await import('linkedom');
+    _parseDocument = (html) => {
+      const { document } = parseHTML('<html><body>' + (html || '') + '</body></html>');
+      return document;
+    };
+  }
+}
 
 export function escapeHtml(str) {
   return String(str)
@@ -82,7 +106,7 @@ export function parseTiptapJsonToHtml(content) {
 }
 
 export function sanitizeHtmlWithoutCss(input) {
-  const doc = new DOMParser().parseFromString(input || '', 'text/html');
+  const doc = _parseDocument(input || '');
   doc.body.querySelectorAll('*').forEach(el => {
     el.removeAttribute('style');
     el.removeAttribute('class');

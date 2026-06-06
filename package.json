@@ -28,6 +28,7 @@
     "@tiptap/pm": "^3.25.0",
     "@tiptap/starter-kit": "^3.25.0",
     "fontkit": "^2.0.4",
+    "linkedom": "^0.18.12",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.0.227",
     "svelte-awesome-color-picker": "^4.1.0"

@@ -1,0 +1,58 @@
+{
+  "title": "Master CV — Jane Doe",
+  "paddingMm": 15,
+  "templateName": "clean",
+  "themeColors": {
+    "h1Font": "Inter", "h2Font": "Inter", "h3Font": "Inter", "textFont": "Inter",
+    "h1Color": "#111111", "h2Color": "#333333", "h3Color": "#444444", "textColor": "#222222",
+    "backgroundColor": "#ffffff"
+  },
+  "pageCount": 1,
+  "blocks": [
+    {
+      "id": "b-summary", "type": "paragraph", "name": "summary",
+      "content": [{ "type": "text", "text": "Senior software engineer with 10+ years of full-stack experience. Strong background in cloud infrastructure, distributed systems, and team leadership. Passionate about developer experience and platform engineering." }],
+      "canvas": { "page": 1, "col": 0, "row": 0, "colSpan": 4, "rowSpan": 3 }, "locked": false, "source": "canvas"
+    },
+    {
+      "id": "b-exp-sr-staff", "type": "paragraph", "name": "senior-staff",
+      "content": [{ "type": "text", "text": "Staff Engineer at BigCo (2020–Present). Led platform architecture for a Kubernetes-based service mesh serving 10M+ requests/day. Reduced infrastructure costs by 40% through workload right-sizing. Mentored 12 engineers across 3 teams." }],
+      "canvas": { "page": 1, "col": 0, "row": 3, "colSpan": 4, "rowSpan": 4 }, "locked": false, "source": "canvas"
+    },
+    {
+      "id": "b-exp-senior", "type": "paragraph", "name": "senior-acme",
+      "content": [{ "type": "text", "text": "Senior Engineer at Acme Corp (2017–2020). Built microservice migration framework. Designed CI/CD pipelines adopted across 50+ repos. Shipped customer-facing analytics dashboard serving 100K DAU." }],
+      "canvas": { "page": 1, "col": 0, "row": 7, "colSpan": 4, "rowSpan": 4 }, "locked": false, "source": "canvas"
+    },
+    {
+      "id": "b-exp-mid", "type": "paragraph", "name": "mid-startup",
+      "content": [{ "type": "text", "text": "Software Engineer at StartupX (2015–2017). Core backend developer on a real-time collaboration platform. Built WebSocket infrastructure handling 50K concurrent connections. Implemented end-to-end encryption for document sharing." }],
+      "canvas": { "page": 1, "col": 0, "row": 11, "colSpan": 4, "rowSpan": 4 }, "locked": false, "source": "canvas"
+    },
+    {
+      "id": "b-exp-junior", "type": "paragraph", "name": "junior-dev",
+      "content": [{ "type": "text", "text": "Junior Developer at WebShop Inc (2013–2015). Maintained e-commerce platform. Fixed bugs and wrote unit tests. Contributed to frontend redesign in React." }],
+      "canvas": { "page": 1, "col": 0, "row": 15, "colSpan": 4, "rowSpan": 3 }, "locked": false, "source": "canvas"
+    },
+    {
+      "id": "b-skills", "type": "paragraph", "name": "skills",
+      "content": [{ "type": "text", "text": "Languages: TypeScript, Go, Python, Java, Rust. Infrastructure: Kubernetes, Docker, Terraform, AWS, GCP. Databases: PostgreSQL, MongoDB, Redis, Kafka. Tools: React, Node.js, GraphQL, gRPC." }],
+      "canvas": { "page": 1, "col": 0, "row": 18, "colSpan": 4, "rowSpan": 4 }, "locked": false, "source": "canvas"
+    },
+    {
+      "id": "b-side-projects", "type": "paragraph", "name": "side-projects",
+      "content": [{ "type": "text", "text": "Open source contributor to Kubernetes, Envoy, and Terraform. Author of 'go-resilience' library (2K GitHub stars). Conference speaker at KubeCon, QCon, and Strange Loop." }],
+      "canvas": { "page": 1, "col": 0, "row": 22, "colSpan": 4, "rowSpan": 3 }, "locked": false, "source": "canvas"
+    },
+    {
+      "id": "b-education", "type": "paragraph", "name": "education",
+      "content": [{ "type": "text", "text": "M.S. Computer Science, Stanford University (2013). B.S. Computer Engineering, UC Berkeley (2011)." }],
+      "canvas": { "page": 1, "col": 0, "row": 25, "colSpan": 4, "rowSpan": 2 }, "locked": true, "source": "canvas"
+    },
+    {
+      "id": "b-bonus-leadership", "type": "paragraph", "name": "leadership",
+      "content": [{ "type": "text", "text": "Engineering blog author (50+ articles). Founded internal mentorship program adopted company-wide. Volunteer coding instructor at local high school." }],
+      "canvas": { "page": 1, "col": 0, "row": 27, "colSpan": 4, "rowSpan": 3 }, "locked": false, "source": "canvas"
+    }
+  ]
+}

@@ -1,7 +1,11 @@
 import { defineConfig, loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import fs from 'fs'
+import path from 'path'
 import Anthropic from '@anthropic-ai/sdk'
+import { enqueue, getJob, canAccess, cancelJob } from './server/agent/queue.js'
+import { dehydrateState } from './server/agent/imageStore.js'
+import { start as startWorker } from './server/agent/worker.js'
 
 const printCache = new Map();
 
@@ -147,6 +151,8 @@ function mainPlugin(env) {
   return {
     name: 'vite-plugin-notion-cv',
     configureServer(server) {
+      startWorker();
+
       server.middlewares.use((req, res, next) => {
 
         // ── /api/print ──────────────────────────────────────────────────
@@ -757,7 +763,113 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                         }
                         res.write(value);
                       }
-                    } else {
+        // ── Agent applications (Phase 6 results surface) ──────────────────
+        } else if (req.url === '/api/agent/applications' && req.method === 'GET') {
+          try {
+            const resultsDir = path.join(process.cwd(), 'server/agent/results');
+            if (!fs.existsSync(resultsDir)) {
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify([]));
+              return;
+            }
+            const entries = fs.readdirSync(resultsDir, { withFileTypes: true });
+            const batches = [];
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                const batchResultsPath = path.join(resultsDir, entry.name, 'results.json');
+                if (fs.existsSync(batchResultsPath)) {
+                  try {
+                    const data = JSON.parse(fs.readFileSync(batchResultsPath, 'utf-8'));
+                    data._batchId = entry.name;
+                    batches.push(data);
+                  } catch (_) {}
+                }
+              }
+            }
+            // Newest batches first
+            batches.sort((a, b) => (b._batchId || '').localeCompare(a._batchId || ''));
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(batches));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+
+        } else if (req.url.startsWith('/api/agent/applications/') && req.method === 'GET') {
+          try {
+            const url = new URL(req.url, 'http://localhost');
+            const pathParts = req.url.slice('/api/agent/applications/'.length).split('?')[0].split('/');
+            const batchDir = pathParts[0];
+            const fileParam = url.searchParams.get('file');
+
+            if (fileParam) {
+              // Serve a specific file from the batch directory (PDF, JSON, fit report)
+              const resultsRoot = path.resolve(process.cwd(), 'server/agent/results');
+              const batchRoot = path.resolve(resultsRoot, batchDir);
+              // Guard batchDir itself against traversal before checking the file param.
+              if (!batchRoot.startsWith(resultsRoot + path.sep) && batchRoot !== resultsRoot) {
+                res.statusCode = 400;
+                res.end('Invalid batch id');
+                return;
+              }
+              const filePath = path.resolve(batchRoot, decodeURIComponent(fileParam));
+              // Guard against path traversal outside the batch directory.
+              if (!filePath.startsWith(batchRoot + path.sep) && filePath !== batchRoot) {
+                res.statusCode = 400;
+                res.end('Invalid file path');
+                return;
+              }
+              if (!fs.existsSync(filePath)) {
+                res.statusCode = 404;
+                res.end('File not found');
+                return;
+              }
+              const ext = path.extname(filePath).toLowerCase();
+              const mimeTypes = { '.pdf': 'application/pdf', '.json': 'application/json' };
+              res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+              res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
+              res.end(fs.readFileSync(filePath));
+              return;
+            }
+
+            const resultsPath = path.join(process.cwd(), 'server/agent/results', batchDir, 'results.json');
+            if (!fs.existsSync(resultsPath)) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: 'Batch not found' }));
+              return;
+            }
+            const data = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(data));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+
+        } else if (req.url.startsWith('/api/agent/applications/') && req.method === 'DELETE') {
+          try {
+            const batchDir = req.url.slice('/api/agent/applications/'.length).split('?')[0];
+            const resultsRoot = path.resolve(process.cwd(), 'server/agent/results');
+            const batchPath = path.resolve(resultsRoot, batchDir);
+            if (!batchPath.startsWith(resultsRoot + path.sep)) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Invalid batch id' }));
+              return;
+            }
+            if (!fs.existsSync(batchPath)) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: 'Batch not found' }));
+              return;
+            }
+            fs.rmSync(batchPath, { recursive: true, force: true });
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ deleted: true }));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+
+        } else {
                       for await (const chunk of response.body) {
                         if (controller.signal.aborted) {
                           break;
@@ -859,6 +971,82 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
               }
             }
           });
+
+        // ── Agent queue routes (Phase 5) ───────────────────────────────────
+        } else if (req.url === '/api/agent/queue' && req.method === 'POST') {
+          let body = '';
+          const MAX_BODY = 10 * 1024 * 1024; // 10 MB (matches print endpoint cap)
+          req.on('data', chunk => {
+            body += chunk.toString();
+            if (body.length > MAX_BODY) {
+              res.statusCode = 413;
+              res.end(JSON.stringify({ error: 'Payload too large' }));
+              req.destroy();
+            }
+          });
+          req.on('end', async () => {
+            try {
+              const data = JSON.parse(body);
+              const userId = req.headers['x-user-id'] || 'anonymous';
+
+              // Validate ResumeState
+              if (!data.state || !data.state.title || !Array.isArray(data.state.blocks)) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Invalid ResumeState' }));
+                return;
+              }
+
+              // Dehydrate imageData before enqueue (FR5.8)
+              const dehydratedState = await dehydrateState(data.state);
+
+              const jobId = enqueue(userId, dehydratedState, data.instruction || 'Optimize my resume.', data.opts || {});
+
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ jobId }));
+            } catch (err) {
+              console.error('[agent/queue] Enqueue error:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+
+        } else if (req.url.startsWith('/api/agent/job/') && req.method === 'GET') {
+          const jobId = req.url.slice('/api/agent/job/'.length).split('?')[0];
+          const userId = req.headers['x-user-id'] || 'anonymous';
+
+          if (!canAccess(userId, jobId)) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Job not found' }));
+            return;
+          }
+
+          const job = getJob(jobId);
+          if (!job) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Job not found' }));
+            return;
+          }
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(job));
+
+        } else if (req.url.startsWith('/api/agent/job/') && req.method === 'DELETE') {
+          const jobId = req.url.slice('/api/agent/job/'.length).split('?')[0];
+          const userId = req.headers['x-user-id'] || 'anonymous';
+
+          if (!canAccess(userId, jobId)) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Job not found' }));
+            return;
+          }
+
+          const ok = cancelJob(jobId);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ cancelled: ok, jobId }));
 
         } else {
           next();

@@ -1,9 +1,8 @@
 // Pure spatial helpers used by the AI agent's read_block tool.
-// No Svelte dependencies — just plain geometry over block canvas coords.
-// Grid constants imported from the layout engine to prevent silent drift
-// when the grid is reconfigured.
+// Zero Svelte or browser dependencies — just geometry over block canvas coords.
+// Grid constants imported from the layout engine (single source of truth).
 
-import { GUTTER_MM, ROW_MM } from '../layout/index.js';
+import { GUTTER_MM, ROW_MM } from '../lib/layout/index.js';
 
 export function canvasToRect(canvas, colWidth, paddingMm) {
   let left, width;

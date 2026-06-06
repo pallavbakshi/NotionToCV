@@ -1,6 +1,6 @@
 <!-- ChatDrawer.svelte — AI chat sidebar shell. -->
 <!-- Sub-components in ./: ChatHeader, ModeToggle, ChatHistoryList, ChatMessageList, ChatInput -->
-<!-- Logic modules in ./: agentTools.js, messageParser.js, spatialUtils.js -->
+<!-- Agent loop delegated to src/sdk/engine.js — this component is a thin event consumer. -->
 <script>
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import ChatHeader from './ChatHeader.svelte';
@@ -9,7 +9,7 @@
   import ChatMessageList from './ChatMessageList.svelte';
   import ChatInput from './ChatInput.svelte';
   import { initFonts } from '../layout/index.js';
-  import { AGENT_TOOLS, runAgentTool, getAgentSystemPrompt, getSystemPromptOutline } from './agentTools.js';
+  import { ResumeAgentEngine, browserModelProvider, browserScreenshotProvider, getAgentSystemPrompt, getSystemPromptOutline } from '../../sdk/index.js';
   import { stagedChanges, stagedChatBlockIds, stagedAttachments } from '../shared/stagingStore.js';
 
   let {
@@ -37,6 +37,11 @@
   let messageListEl = $state(null);
 
   let fileInputEl = $state(null);
+
+  // Background job state (Phase 5)
+  let backgroundJobId = $state(null);
+  let backgroundJobStatus = $state('idle'); // 'idle' | 'polling' | 'done' | 'error'
+  let backgroundPollTimer = $state(null);
 
   // Resizable drawer width state and handler
   let drawerWidth = $state(400);
@@ -131,6 +136,18 @@
       }
     } catch (e) {
       console.error('Error loading chats from localStorage', e);
+    }
+
+    // Restore background job polling across page reloads (FR5.5 DoD)
+    try {
+      const storedJobId = localStorage.getItem(`notionToCV_bgJob_${resumeId}`);
+      if (storedJobId) {
+        backgroundJobId = storedJobId;
+        backgroundJobStatus = 'polling';
+        pollJobResult();
+      }
+    } catch (e) {
+      console.error('Error restoring background job from localStorage', e);
     }
 
     if (chatList.length > 0) {
@@ -447,203 +464,177 @@
       }
     }
 
-    async function runGeneration(currentHistory) {
-      if (abortController?.signal?.aborted) return;
+    const resumeState = {
+      title: pageTitle,
+      paddingMm,
+      templateName,
+      themeColors,
+      pageCount: blocks.filter(b => b.canvas).reduce((max, b) => Math.max(max, b.canvas?.page || 1), 1),
+      blocks
+    };
 
-      const requestPayload = {
-        messages: currentHistory,
-        systemPrompt,
-        model: activeModel
-      };
+    const engine = new ResumeAgentEngine({
+      modelProvider: browserModelProvider,
+      screenshotProvider: browserScreenshotProvider
+    });
 
-      if (chatMode === 'agent') {
-        requestPayload.tools = AGENT_TOOLS;
+    let contentAccumulated = ''; // first-turn content — used by done handler to detect empty opener
+    let hadToolCalls = false;
+    let stepMsgIdMap = {};
+
+    // Per-turn tracking: each assistant speaking turn gets its own message bubble.
+    // After every tool_result, needNewBubble=true so the next text event inserts
+    // a fresh bubble rather than appending to the opener.
+    const assistantMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+    let currentTurnMsgId = assistantMsgId;
+    let currentTurnContent = '';
+    let needNewBubble = false;
+
+    const assistantMsg = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString()
+    };
+
+    chatList = chatList.map(c => {
+      if (c.id === activeChatId) {
+        return { ...c, messages: [...c.messages, assistantMsg] };
       }
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
-        signal: abortController.signal
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      let contentAccumulated = '';
-      let toolCallsAccumulated = [];
-
-      const assistantMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
-      const assistantMsg = {
-        id: assistantMsgId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date().toISOString()
-      };
-
-      chatList = chatList.map(c => {
-        if (c.id === activeChatId) {
-          return { ...c, messages: [...c.messages, assistantMsg] };
-        }
-        return c;
-      });
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (!cleanLine) continue;
-          if (cleanLine.startsWith('data: ')) {
-            const dataStr = cleanLine.substring(6);
-            if (dataStr === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(dataStr);
-              const delta = parsed.choices?.[0]?.delta;
-
-              const text = delta?.content || '';
-              if (text) {
-                contentAccumulated += text;
-                chatList = chatList.map(c => {
-                  if (c.id === activeChatId) {
-                    return { ...c, messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: contentAccumulated } : m) };
-                  }
-                  return c;
-                });
-              }
-
-              if (delta?.tool_calls) {
-                for (const tc of delta.tool_calls) {
-                  const idx = tc.index;
-                  if (!toolCallsAccumulated[idx]) {
-                    toolCallsAccumulated[idx] = { id: tc.id || '', type: 'function', function: { name: tc.function?.name || '', arguments: '' } };
-                  }
-                  if (tc.id) toolCallsAccumulated[idx].id = tc.id;
-                  if (tc.function?.name) toolCallsAccumulated[idx].function.name = tc.function.name;
-                  if (tc.function?.arguments) toolCallsAccumulated[idx].function.arguments += tc.function.arguments;
-                }
-              }
-            } catch (e) {
-              // Ignore partial parsing errors
-            }
-          }
-        }
-      }
-
-      if (!contentAccumulated && toolCallsAccumulated.length > 0) {
-        chatList = chatList.map(c => {
-          if (c.id === activeChatId) {
-            return { ...c, messages: c.messages.filter(m => m.id !== assistantMsgId) };
-          }
-          return c;
-        });
-      }
-
-      saveChats();
-
-      const completedToolCalls = toolCallsAccumulated.filter(Boolean);
-
-      if (completedToolCalls.length > 0) {
-        const assistantToolCallMsg = {
-          role: 'assistant',
-          content: contentAccumulated || null,
-          tool_calls: completedToolCalls
-        };
-
-        const nextHistory = [...currentHistory, assistantToolCallMsg];
-
-        const toolCallStatusMsg = {
-          id: 'msg_' + Math.random().toString(36).substring(2, 9),
-          role: 'tool_call',
-          content: `Running agent tools: ${completedToolCalls.map(t => t.function?.name).join(', ')}...`,
-          timestamp: new Date().toISOString()
-        };
-
-        chatList = chatList.map(c => {
-          if (c.id === activeChatId) {
-            return { ...c, messages: [...c.messages, toolCallStatusMsg] };
-          }
-          return c;
-        });
-
-        const toolResultMessagesForHistory = [];
-
-        for (const tc of completedToolCalls) {
-          const tcName = tc.function?.name || '';
-          let parsedArgs = {};
-          try { parsedArgs = JSON.parse(tc.function?.arguments || '{}'); } catch (e) {}
-
-          const stepMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
-          const stepMsg = {
-            id: stepMsgId,
-            role: 'tool_call',
-            tool_call_id: tc.id,
-            name: tcName,
-            content: `⚙️ Tool use: ${tcName}(${Object.keys(parsedArgs).length ? JSON.stringify(parsedArgs) : ''})...`,
-            timestamp: new Date().toISOString()
-          };
-
-          chatList = chatList.map(c => {
-            if (c.id === activeChatId) {
-              return { ...c, messages: [...c.messages, stepMsg] };
-            }
-            return c;
-          });
-
-          const { result, stagedChangesUpdate } = await runAgentTool(tcName, parsedArgs, {
-            blocks, paddingMm, templateName, themeColors, stagedChanges: $stagedChanges, pageTitle
-          });
-
-          if (stagedChangesUpdate) {
-            stagedChanges.set(stagedChangesUpdate);
-          }
-
-          const toolResultMsg = {
-            id: 'msg_' + Math.random().toString(36).substring(2, 9),
-            role: 'tool',
-            isToolResult: true,
-            tool_call_id: tc.id,
-            name: tcName,
-            content: JSON.stringify(result),
-            timestamp: new Date().toISOString()
-          };
-
-          chatList = chatList.map(c => {
-            if (c.id === activeChatId) {
-              return {
-                ...c,
-                messages: [
-                  ...c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${tcName}` } : m),
-                  toolResultMsg
-                ]
-              };
-            }
-            return c;
-          });
-
-          toolResultMessagesForHistory.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            name: tcName,
-            content: JSON.stringify(result)
-          });
-        }
-
-        saveChats();
-        await runGeneration([...nextHistory, ...toolResultMessagesForHistory]);
-      }
-    }
+      return c;
+    });
 
     try {
-      await runGeneration(historyPayload);
+      for await (const ev of engine.optimizeResume(resumeState, queryText, {
+        messages: historyPayload,
+        systemPrompt,
+        model: activeModel,
+        signal: abortController.signal,
+        mode: chatMode === 'agent' ? 'agent' : 'coach'
+      })) {
+        switch (ev.type) {
+          case 'text': {
+            // After a tool_result, open a fresh assistant bubble for this turn's text.
+            if (needNewBubble) {
+              needNewBubble = false;
+              currentTurnMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+              currentTurnContent = '';
+              chatList = chatList.map(c => {
+                if (c.id === activeChatId) {
+                  return { ...c, messages: [...c.messages, { id: currentTurnMsgId, role: 'assistant', content: '', timestamp: new Date().toISOString() }] };
+                }
+                return c;
+              });
+            }
+            currentTurnContent += ev.delta;
+            // Track first-turn content separately so done handler can detect an empty opener.
+            if (currentTurnMsgId === assistantMsgId) contentAccumulated = currentTurnContent;
+            chatList = chatList.map(c => {
+              if (c.id === activeChatId) {
+                return { ...c, messages: c.messages.map(m => m.id === currentTurnMsgId ? { ...m, content: currentTurnContent } : m) };
+              }
+              return c;
+            });
+            break;
+          }
+
+          case 'tool_call': {
+            hadToolCalls = true;
+            const stepMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+            stepMsgIdMap[ev.name + '_' + ev.id] = stepMsgId;
+            const stepMsg = {
+              id: stepMsgId,
+              role: 'tool_call',
+              tool_call_id: ev.id,
+              name: ev.name,
+              content: `⚙️ Tool use: ${ev.name}(${Object.keys(ev.args).length ? JSON.stringify(ev.args) : ''})...`,
+              timestamp: new Date().toISOString()
+            };
+            chatList = chatList.map(c => {
+              if (c.id === activeChatId) {
+                return { ...c, messages: [...c.messages, stepMsg] };
+              }
+              return c;
+            });
+            break;
+          }
+
+          case 'tool_result': {
+            const toolResultMsg = {
+              id: 'msg_' + Math.random().toString(36).substring(2, 9),
+              role: 'tool',
+              isToolResult: true,
+              tool_call_id: ev.id,
+              name: ev.name,
+              content: JSON.stringify(ev.result),
+              timestamp: new Date().toISOString()
+            };
+            const stepKey = ev.name + '_' + ev.id;
+            const stepMsgId = stepMsgIdMap[stepKey];
+            chatList = chatList.map(c => {
+              if (c.id === activeChatId) {
+                return {
+                  ...c,
+                  messages: [
+                    ...c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${ev.name}` } : m),
+                    toolResultMsg
+                  ]
+                };
+              }
+              return c;
+            });
+            // Next text event belongs to a new assistant turn — open a fresh bubble.
+            needNewBubble = true;
+            break;
+          }
+
+          case 'staged_change':
+            // Merge delta into store — earlier staged blocks from the same run are preserved
+            stagedChanges.update(s => ({ ...s, [ev.blockId]: ev.change }));
+            break;
+
+          case 'error':
+            // Append error to whichever bubble is currently active.
+            chatList = chatList.map(c => {
+              if (c.id === activeChatId) {
+                return { ...c, messages: c.messages.map(m => m.id === currentTurnMsgId ? { ...m, content: m.content + `\n\n*Error: ${ev.error}*` } : m) };
+              }
+              return c;
+            });
+            break;
+
+          case 'done':
+            // Remove the opener bubble if it was empty (agent started straight with a tool call).
+            if (!contentAccumulated && hadToolCalls) {
+              chatList = chatList.map(c => {
+                if (c.id === activeChatId) {
+                  return { ...c, messages: c.messages.filter(m => m.id !== assistantMsgId) };
+                }
+                return c;
+              });
+            }
+
+            // Append the turn-limit notice to whatever the last active bubble is.
+            if (ev.reason === 'max_turns') {
+              chatList = chatList.map(c => {
+                if (c.id === activeChatId) {
+                  return { ...c, messages: c.messages.map(m => m.id === currentTurnMsgId ? { ...m, content: m.content + '\n\n*Agent reached the 30-turn limit. Some optimisations may be incomplete.*' } : m) };
+                }
+                return c;
+              });
+            }
+
+            // Merge final transaction — catches blocks updated more than once during
+            // the run (second update to same block skips the staged_change event).
+            if (ev.transaction?.stagedChanges) {
+              stagedChanges.update(s => ({ ...s, ...ev.transaction.stagedChanges }));
+            }
+
+            saveChats();
+            break;
+        }
+      }
+
     } catch (err) {
       if (err.name === 'AbortError') {
         console.log('Stream generation aborted');
@@ -654,8 +645,6 @@
             const updatedMessages = [...c.messages];
             const lastMsg = updatedMessages[updatedMessages.length - 1];
             if (lastMsg && lastMsg.role === 'assistant') {
-              // Replace the last message with a new object instead of mutating the
-              // original reference (which is shared with the shallow array copy).
               updatedMessages[updatedMessages.length - 1] = {
                 ...lastMsg,
                 content: lastMsg.content + `\n\n*Error: Failed to fetch response. (${err.message})*`
@@ -687,7 +676,133 @@
       isGenerating = false;
       abortController = null;
     }
+    // Also cancel any running background job
+    if (backgroundJobStatus === 'polling' && backgroundJobId) {
+      fetch(`/api/agent/job/${backgroundJobId}`, {
+        method: 'DELETE',
+        headers: { 'X-User-Id': getUserId() }
+      }).catch(() => {});
+      clearPolling();
+      try { localStorage.removeItem(`notionToCV_bgJob_${resumeId}`); } catch (_) {}
+      backgroundJobId = null;
+      backgroundJobStatus = 'idle';
+    }
   }
+
+  function getUserId() {
+    const key = 'ntcv_user_id';
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = 'u_' + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem(key, id);
+    }
+    return id;
+  }
+
+  async function handleRunInBackground() {
+    if (!inputText.trim()) return;
+    if (backgroundJobStatus === 'polling') return;
+
+    const state = {
+      title: pageTitle,
+      paddingMm,
+      templateName,
+      themeColors,
+      pageCount: blocks.filter(b => b.canvas).reduce((max, b) => Math.max(max, b.canvas?.page || 1), 1),
+      // Strip inline imageData before sending — server dehydrates to file:// URIs,
+      // keeping the payload well below the 10 MB cap for image-heavy resumes.
+      blocks: blocks.map(b => {
+        if (!b.imageData) return b;
+        const { imageData: _stripped, ...rest } = b;
+        return rest;
+      })
+    };
+
+    const instruction = inputText;
+    inputText = '';
+
+    try {
+      const res = await fetch('/api/agent/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': getUserId() },
+        body: JSON.stringify({ state, instruction })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        renderError = `Background job failed: ${err.error}`;
+        setTimeout(() => { renderError = ''; }, 4000);
+        return;
+      }
+
+      const { jobId } = await res.json();
+      backgroundJobId = jobId;
+      backgroundJobStatus = 'polling';
+      try { localStorage.setItem(`notionToCV_bgJob_${resumeId}`, jobId); } catch (_) {}
+      pollJobResult();
+    } catch (err) {
+      renderError = `Failed to start background job: ${err.message}`;
+      setTimeout(() => { renderError = ''; }, 4000);
+    }
+  }
+
+  function pollJobResult() {
+    if (!backgroundJobId) return;
+
+    backgroundPollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/agent/job/${backgroundJobId}`, {
+          headers: { 'X-User-Id': getUserId() }
+        });
+
+        if (!res.ok) {
+          clearPolling();
+          backgroundJobStatus = 'error';
+          return;
+        }
+
+        const job = await res.json();
+
+        if (job.status === 'done' && job.output?.transaction?.stagedChanges) {
+          clearPolling();
+          backgroundJobStatus = 'done';
+          try { localStorage.removeItem(`notionToCV_bgJob_${resumeId}`); } catch (_) {}
+          // Load transaction into stagedChanges store (same path as Phase 4 live agent)
+          const tx = job.output.transaction.stagedChanges;
+          stagedChanges.update(s => ({ ...s, ...tx }));
+        } else if (job.status === 'error' || job.status === 'cancelled') {
+          clearPolling();
+          backgroundJobStatus = job.status === 'cancelled' ? 'idle' : 'error';
+          try { localStorage.removeItem(`notionToCV_bgJob_${resumeId}`); } catch (_) {}
+          if (job.error) {
+            renderError = `Background job failed: ${job.error}`;
+            setTimeout(() => { renderError = ''; }, 4000);
+          }
+        }
+      } catch (_err) {
+        // Network error during poll — keep trying
+      }
+    }, 5000);
+  }
+
+  function clearPolling() {
+    if (backgroundPollTimer) {
+      clearInterval(backgroundPollTimer);
+      backgroundPollTimer = null;
+    }
+  }
+
+  function dismissBackgroundBanner() {
+    clearPolling();
+    try { localStorage.removeItem(`notionToCV_bgJob_${resumeId}`); } catch (_) {}
+    backgroundJobId = null;
+    backgroundJobStatus = 'idle';
+  }
+
+  // Cleanup poll timer on destroy
+  onDestroy(() => {
+    clearPolling();
+  });
 
   function renderMarkdown(text) {
     if (!text) return '';
@@ -824,6 +939,7 @@
     bind:fileInputEl
     bind:inputText
     {isGenerating}
+    {backgroundJobStatus}
     {blocks}
     {removeAttachment}
     {attachAllBlocks}
@@ -832,8 +948,24 @@
     {handleFileUpload}
     {sendMessage}
     {stopGeneration}
+    {handleRunInBackground}
   />
 </div>
+
+<!-- Background job banner (Phase 5) -->
+{#if backgroundJobStatus !== 'idle'}
+  <div class="bg-job-banner" class:bg-job-done={backgroundJobStatus === 'done'} class:bg-job-error={backgroundJobStatus === 'error'}>
+    {#if backgroundJobStatus === 'polling'}
+      <span class="bg-job-spinner"></span>
+      Optimisation running in background… (you can close this tab)
+    {:else if backgroundJobStatus === 'done'}
+      ✓ Optimisation complete — review the staged changes in the Notion pane
+    {:else if backgroundJobStatus === 'error'}
+      ✗ Background job failed
+    {/if}
+    <button class="bg-job-dismiss" onclick={dismissBackgroundBanner}>×</button>
+  </div>
+{/if}
 
 <style>
   .chat-drawer {
@@ -889,5 +1021,58 @@
     .chat-drawer {
       display: none !important;
     }
+  }
+
+  /* Background job banner (Phase 5) */
+  .bg-job-banner {
+    position: absolute;
+    bottom: 72px;
+    left: 12px;
+    right: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 510;
+    background: #eef2ff;
+    color: #3730a3;
+    border: 1px solid #c7d2fe;
+  }
+  .bg-job-banner.bg-job-done {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+  }
+  .bg-job-banner.bg-job-error {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+  }
+  .bg-job-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #c7d2fe;
+    border-top-color: #3730a3;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  .bg-job-dismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.5;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .bg-job-dismiss:hover { opacity: 1; }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>
