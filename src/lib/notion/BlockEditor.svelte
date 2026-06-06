@@ -8,6 +8,7 @@
   import { FontFamily } from '@tiptap/extension-font-family';
   import { Placeholder } from '@tiptap/extension-placeholder';
   import BlockRenderer from '../polished/BlockRenderer.svelte';
+  import { stagedChanges } from '../shared/stagingStore.js';
 
   // Svelte 5 props
   let {
@@ -33,7 +34,6 @@
     deleteSelectedBlocks,
     duplicateSelectedBlocks,
     onAskAI = null,
-    stagedChanges = $bindable({}),
     acceptStagedChange = null,
     denyStagedChange = null,
     toggleBlockLock = null
@@ -44,7 +44,7 @@
   let editor = $state();
 
   let current = $derived({ index, block, blocks });
-  let stagedInfo = $derived(stagedChanges[block.id]);
+  let stagedInfo = $derived($stagedChanges[block.id]);
   let hasStagedChange = $derived(!!stagedInfo);
   
   // Custom bubble menu element bindings

@@ -2,7 +2,8 @@
 <script>
   import { onMount } from 'svelte';
   import BlockEditor from './BlockEditor.svelte';
-  import { templateDefaultFonts, normalizeTemplateName } from '../polished/templateFonts.js';
+  import { templateDefaultFonts, normalizeTemplateName } from '../shared/templateFonts.js';
+  import { stagedChanges } from '../shared/stagingStore.js';
 
   // Svelte 5 props
   let { 
@@ -17,7 +18,6 @@
     historyPastLength = 0,
     historyFutureLength = 0,
     onAskAI = null,
-    stagedChanges = $bindable({}),
     acceptStagedChange = null,
     denyStagedChange = null,
     acceptAllStagedChanges = null,
@@ -27,7 +27,7 @@
 
   let fileInput;
   let focusTarget = $state({ index: null, position: 'end', timestamp: 0 });
-  let hasAnyStagedChanges = $derived(Object.keys(stagedChanges).length > 0);
+  let hasAnyStagedChanges = $derived(Object.keys($stagedChanges).length > 0);
 
   // Canvas-sourced elements (hr, vbar, headshot) are managed on the canvas side only
   let notionBlocks = $derived(blocks.filter(b => b.source !== 'canvas'));
@@ -704,7 +704,7 @@
     <div style="width: 1px; height: 16px; background-color: var(--notion-border); margin: 0 4px; align-self: center;"></div>
     {#if hasAnyStagedChanges}
       <button type="button" class="btn btn-accept-all" onclick={acceptAllStagedChanges} title="Accept all proposed changes">
-        ✓ Accept All ({Object.keys(stagedChanges).length})
+        ✓ Accept All ({Object.keys($stagedChanges).length})
       </button>
       <button type="button" class="btn btn-deny-all" onclick={denyAllStagedChanges} title="Deny all proposed changes">
         ✕ Deny All
@@ -774,7 +774,6 @@
             deleteSelectedBlocks={deleteMultipleBlocks}
             duplicateSelectedBlocks={duplicateMultipleBlocks}
             onAskAI={onAskAI}
-            bind:stagedChanges={stagedChanges}
             {acceptStagedChange}
             {denyStagedChange}
             {toggleBlockLock}

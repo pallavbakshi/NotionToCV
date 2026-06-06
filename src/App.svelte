@@ -2,14 +2,15 @@
   import { onMount, onDestroy } from 'svelte';
   import NotionPane from './lib/notion/NotionPane.svelte';
   import PolishedPane from './lib/polished/PolishedPane.svelte';
-  import TemplateGallery from './lib/polished/TemplateGallery.svelte';
-  import Dashboard from './lib/polished/Dashboard.svelte';
+  import TemplateGallery from './lib/views/TemplateGallery.svelte';
+  import Dashboard from './lib/views/Dashboard.svelte';
   import './lib/polished/templates/clean.css';
   import './lib/polished/templates/modern.css';
   import './lib/polished/templates/elegant.css';
   import './lib/polished/templates/compact.css';
   import { initFonts } from './lib/layout/index.js';
-  import { templateDefaultFonts, normalizeTemplateName } from './lib/polished/templateFonts.js';
+  import { templateDefaultFonts, normalizeTemplateName } from './lib/shared/templateFonts.js';
+  import { stagedChanges, stagedChatBlockIds, stagedAttachments } from './lib/shared/stagingStore.js';
 
   // Load resumes list from localStorage
   let initialResumes = [];
@@ -25,7 +26,7 @@
   let resumes = $state(initialResumes);
 
   // templateDefaultFonts + normalizeTemplateName now live in a shared module
-  // (./lib/polished/templateFonts.js) so NotionPane's JSON import defaults to the
+  // (./lib/shared/templateFonts.js) so NotionPane's JSON import defaults to the
   // same per-template fonts instead of a blanket Inter.
 
   // Router state
@@ -57,77 +58,72 @@
 
   // Phase 3 AI Chat Drawer states
   let isChatDrawerOpen = $state(false);
-  let stagedChatBlockIds = $state([]);
-  let stagedChanges = $state({});
-  let stagedAttachments = $state([]);
 
   function handleAskAI(blockIds) {
     isChatDrawerOpen = true;
-    stagedChatBlockIds = blockIds;
+    stagedChatBlockIds.set(blockIds);
   }
 
   // Agent Mode Action Helpers
   function acceptStagedChange(blockId) {
-    const change = stagedChanges[blockId];
+    let change;
+    stagedChanges.update(s => {
+      change = s[blockId];
+      if (!change) return s;
+      const updated = { ...s };
+      delete updated[blockId];
+      return updated;
+    });
     if (!change) return;
     blocks = blocks.map(b => b.id === blockId ? { ...b, content: change.proposedContent } : b);
-    const updated = { ...stagedChanges };
-    delete updated[blockId];
-    stagedChanges = updated;
   }
 
   function denyStagedChange(blockId) {
-    const change = stagedChanges[blockId];
+    let change;
+    stagedChanges.update(s => {
+      change = s[blockId];
+      if (!change) return s;
+      const updated = { ...s };
+      delete updated[blockId];
+      return updated;
+    });
     if (!change) return;
-    const updated = { ...stagedChanges };
-    delete updated[blockId];
-    stagedChanges = updated;
     const block = blocks.find(b => b.id === blockId);
     if (block) {
       const nameOrType = block.name ? `@${block.name}` : block.type;
       const label = `Block: ${nameOrType} — Denied`;
-      const exists = stagedAttachments.some(a => a.type === 'denied' && a.blockId === blockId);
-      if (!exists) {
-        stagedAttachments = [
-          ...stagedAttachments,
-          {
-            type: 'denied',
-            blockId,
-            label
-          }
-        ];
-      }
+      stagedAttachments.update(a => {
+        const exists = a.some(x => x.type === 'denied' && x.blockId === blockId);
+        if (!exists) return [...a, { type: 'denied', blockId, label }];
+        return a;
+      });
     }
   }
 
   function acceptAllStagedChanges() {
+    let currentChanges;
+    stagedChanges.update(s => { currentChanges = s; return {}; });
     blocks = blocks.map(b => {
-      const change = stagedChanges[b.id];
+      const change = currentChanges[b.id];
       return change ? { ...b, content: change.proposedContent } : b;
     });
-    stagedChanges = {};
   }
 
   function denyAllStagedChanges() {
-    Object.keys(stagedChanges).forEach(blockId => {
+    let currentChanges;
+    stagedChanges.update(s => { currentChanges = s; return {}; });
+    Object.keys(currentChanges).forEach(blockId => {
       const block = blocks.find(b => b.id === blockId);
       if (block) {
         const nameOrType = block.name ? `@${block.name}` : block.type;
         const label = `Block: ${nameOrType} — Denied`;
-        const exists = stagedAttachments.some(a => a.type === 'denied' && a.blockId === blockId);
-        if (!exists) {
-          stagedAttachments = [
-            ...stagedAttachments,
-            {
-              type: 'denied',
-              blockId,
-              label
-            }
-          ];
-        }
+        stagedAttachments.update(a => {
+          const exists = a.some(x => x.type === 'denied' && x.blockId === blockId);
+          if (!exists) return [...a, { type: 'denied', blockId, label }];
+          return a;
+        });
       }
     });
-    stagedChanges = {};
   }
 
   // Central Undo/Redo History states
@@ -372,8 +368,9 @@
   // Helper to parse path and load CV data
   function handleRouteChange(path) {
     // Reset staged agent artifacts when switching context
-    stagedChanges = {};
-    stagedAttachments = [];
+    stagedChanges.set({});
+    stagedAttachments.set([]);
+    stagedChatBlockIds.set([]);
 
     // Reset history when switching resumes
     historyPast = [];
@@ -701,7 +698,6 @@
             historyPastLength={historyPast.length}
             historyFutureLength={historyFuture.length}
             onAskAI={handleAskAI}
-            bind:stagedChanges={stagedChanges}
             {acceptStagedChange}
             {denyStagedChange}
             {acceptAllStagedChanges}
@@ -741,9 +737,6 @@
             historyFutureLength={historyFuture.length}
             activeResumeId={activeResumeId}
             bind:isChatDrawerOpen={isChatDrawerOpen}
-            bind:stagedChatBlockIds={stagedChatBlockIds}
-            bind:stagedChanges={stagedChanges}
-            bind:stagedAttachments={stagedAttachments}
             {toggleBlockLock}
           />
         </div>
