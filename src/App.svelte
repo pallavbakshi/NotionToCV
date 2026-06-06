@@ -313,7 +313,11 @@
   // The layout engine (SVG + PDF) is the sole visual authority; templates supply
   // geometry only, and color/font/background come from themeColors (below).
 
-  // Inject theme-color-overrides CSS variables
+  // Inject the page background color as a CSS variable.
+  // The engine (SVG/PDF) bakes per-block color + font into the rendered output, so the
+  // old per-block-type color/font overrides here were dead no-ops on the SVG-containing
+  // wrappers and have been removed. Only the page/block BACKGROUND is still CSS-driven
+  // (--cv-bg-color, consumed by .canvas-block and the page below).
   $effect(() => {
     let styleEl = document.getElementById('theme-color-overrides');
     if (!styleEl) {
@@ -321,56 +325,17 @@
       styleEl.id = 'theme-color-overrides';
       document.head.appendChild(styleEl);
     }
-    // Helper function to format font stack
-    function getFontStack(f) {
-      const serif = ['Noto Serif', 'Lora', 'Playfair Display'];
-      const mono = ['Fira Code'];
-      const generic = serif.includes(f) ? 'serif' : mono.includes(f) ? 'monospace' : 'sans-serif';
-      return `'${f}', ${generic}`;
-    }
 
     styleEl.textContent = `
       .tmpl-${activeTemplate}, [class*="tmpl-"], .polished-container {
-        --cv-h1-color: ${themeColors.h1Color};
-        --cv-h2-color: ${themeColors.h2Color};
-        --cv-h3-color: ${themeColors.h3Color};
         --cv-text-color: ${themeColors.textColor};
         --cv-bg-color: ${themeColors.backgroundColor};
-        --cv-h1-font: ${getFontStack(themeColors.h1Font ?? 'Inter')};
-        --cv-h2-font: ${getFontStack(themeColors.h2Font ?? 'Inter')};
-        --cv-h3-font: ${getFontStack(themeColors.h3Font ?? 'Inter')};
-        --cv-text-font: ${getFontStack(themeColors.textFont ?? 'Inter')};
       }
-      
+
       .polished-container .cv-page-container,
       .polished-container .cv-page {
         color: var(--cv-text-color) !important;
         background-color: var(--cv-bg-color) !important;
-      }
-      
-      .polished-container .block-type-h1 {
-        color: var(--cv-h1-color) !important;
-        font-family: var(--cv-h1-font);
-        background-color: transparent !important;
-      }
-      .polished-container .block-type-h2 {
-        color: var(--cv-h2-color) !important;
-        font-family: var(--cv-h2-font);
-        background-color: transparent !important;
-      }
-      .polished-container .block-type-h3 {
-        color: var(--cv-h3-color) !important;
-        font-family: var(--cv-h3-font);
-        background-color: transparent !important;
-      }
-      
-      .polished-container .block-type-paragraph,
-      .polished-container .block-type-todo,
-      .polished-container .block-type-bullet,
-      .polished-container .block-type-number {
-        color: var(--cv-text-color) !important;
-        font-family: var(--cv-text-font);
-        background-color: transparent !important;
       }
     `;
   });

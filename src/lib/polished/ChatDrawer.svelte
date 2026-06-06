@@ -6,7 +6,7 @@
   import { TextStyle } from '@tiptap/extension-text-style';
   import { Color } from '@tiptap/extension-color';
   import { FontFamily } from '@tiptap/extension-font-family';
-  import { computeLayout, blockRectMm, initFonts } from '../layout/index.js';
+  import { computeLayout, blockRectMm, initFonts, effectiveBaseStyle } from '../layout/index.js';
 
   let {
     resumeId,
@@ -596,20 +596,26 @@
       }
       
       const plaintext = block.content?.map(node => node.text || '').join('') || '';
-      const contentHtmlEl = document.querySelector(`[data-block-id="${block.id}"] .block-content-container`);
-      const renderedHtml = contentHtmlEl ? contentHtmlEl.innerHTML : '';
-      
-      let appliedStyles = {};
-      if (contentHtmlEl) {
-        const computed = window.getComputedStyle(contentHtmlEl);
+
+      // Style facts come from the layout ENGINE, not the DOM. Text blocks now render
+      // an <svg> (with colors/fonts baked in), so reading .block-content-container
+      // innerHTML/getComputedStyle would hand the agent serialized SVG markup and the
+      // reset wrapper's styles — meaningless. effectiveBaseStyle is the same authority
+      // the renderers and capacity checks use.
+      const isTextBlock = ['paragraph', 'h1', 'h2', 'h3'].includes(block.type);
+      let appliedStyles = null;
+      if (isTextBlock) {
+        const bs = effectiveBaseStyle(templateName, block.type, themeColors);
         appliedStyles = {
-          fontFamily: computed.fontFamily,
-          fontSize: computed.fontSize,
-          lineHeight: computed.lineHeight,
-          padding: computed.padding
+          fontFamily: bs.fontFamily,
+          fontSizeMm: bs.fontSizeMm,
+          lineHeightMm: bs.lineHeightMm,
+          color: bs.color,
+          textTransform: bs.textTransform,
+          fontWeight: bs.fontWeight
         };
       }
-      
+
       const isPlaced = !!block.canvas;
       let capacity = null;
       let widthMm = 0;
@@ -645,8 +651,7 @@
         heightMm: isPlaced ? heightMm : null,
         plaintext,
         capacity: isPlaced ? capacity : 'N/A — block is unplaced; no spatial budget to check against. You may still propose content edits but cannot verify fit until the block is placed on the canvas.',
-        rendered_html_reference: renderedHtml || null,
-        applied_styles: Object.keys(appliedStyles).length > 0 ? appliedStyles : null,
+        applied_styles: appliedStyles,
         neighbors: isPlaced ? neighbors : 'N/A — unplaced blocks have no canvas neighbors'
       };
       
@@ -749,17 +754,11 @@
       return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}] - Content: "${textContent}"`;
     }).join('\n');
 
-    let cleanHtml = '';
-    const pagesEl = document.querySelector('.pages-list');
-    if (pagesEl) {
-      const clone = pagesEl.cloneNode(true);
-      clone.querySelectorAll('.floating-toolbar, .hover-drag-handle, .resize-handle, .grid-overlay').forEach(el => el.remove());
-      cleanHtml = clone.innerHTML;
-    }
-
-    const themeStyleEl = document.getElementById('theme-color-overrides');
-    const themeStyles = themeStyleEl ? themeStyleEl.textContent : '';
-
+    // We deliberately do NOT dump the rendered DOM or theme CSS here anymore. Text
+    // blocks render as <svg> (the layout engine bakes in colors/fonts/positions), so
+    // that markup is opaque SVG soup and the theme CSS no longer drives text geometry.
+    // The engine-derived `outline` above (IDs, types, positions, content) plus the
+    // per-block facts from read_block are the authoritative context for the agent.
     return `You are Antigravity CV Editor Agent, an expert AI resume editor.
 You are helping the user edit their resume using tools to read and propose changes to blocks.
 
@@ -768,15 +767,8 @@ Title: ${pageTitle || 'Untitled Resume'}
 Outline & Content:
 ${outline}
 
-Here is the clean rendered HTML structure of the A4 polished CV pages (reflecting committed blocks):
-\`\`\`html
-${cleanHtml}
-\`\`\`
-
-Here are the custom CSS overrides applied to the pages:
-\`\`\`css
-${themeStyles}
-\`\`\`
+Use 'read_block' for a block's authoritative styling (engine-resolved font/size/color)
+and spatial capacity — the on-screen text is rendered by the layout engine, not CSS.
 
 Guidelines:
 1. You are in Agent Mode. You have tools to read, update block content, and take screenshots.

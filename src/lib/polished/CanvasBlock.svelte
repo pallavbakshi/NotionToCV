@@ -36,7 +36,6 @@
   let fontsDone = $state(fontsReady);
   onMount(() => { initFonts().then(() => { fontsDone = true; }); });
 
-  let contentEl = $state(null);
   let isDraggingThis = $state(false);
   let resizeState = $state(null);
   let nameError = $state('');
@@ -486,15 +485,17 @@
   <div
     class="block-content-container block-type-{block.type}"
     class:canvas-element={isCanvasElement}
-    bind:this={contentEl}
   >
     {#if isCanvasElement}
       <BlockRenderer content={block.content} block={block} />
     {:else if svgContent}
       {@html svgContent}
-    {:else}
-      <BlockRenderer content={block.content} block={block} />
     {/if}
+    <!-- No legacy BlockRenderer fallback for text: it shapes with the browser +
+         template CSS (different metrics), so it would flash a mismatched layout
+         before fonts load, then snap to the SVG. The engine SVG is the sole text
+         authority; render nothing until it's ready (fontsDone is near-instant). -->
+
   </div>
 
   <!-- Resize handles — gutter elements: vertical only; canvas elements: no horizontal -->
