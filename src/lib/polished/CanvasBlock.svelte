@@ -3,6 +3,7 @@
   import { onMount, onDestroy } from 'svelte';
   import BlockRenderer from './BlockRenderer.svelte';
   import { anyOverlap } from './canvasUtils.js';
+  import { computeLayout, blockRectMm, renderBlockSVG, initFonts, fontsReady } from '../layout/index.js';
 
   let {
     block,
@@ -19,6 +20,7 @@
     removeCanvasElement = null,
     draggedBlockId = $bindable(),
     templateName = 'clean',
+    themeColors = {},
     onAskAI = null
   } = $props();
 
@@ -28,9 +30,12 @@
 
   const PX_PER_MM = 96 / 25.4;
 
-  let contentEl = $state(null);
-  let overflowing = $state(false);
-  let resizeObserver;
+  // Guard computeLayout: the font registry must be populated before layout runs.
+  // fontsReady is a plain boolean; we mirror it into a local $state so Svelte
+  // re-runs the $derived below once initFonts() completes.
+  let fontsDone = $state(fontsReady);
+  onMount(() => { initFonts().then(() => { fontsDone = true; }); });
+
   let isDraggingThis = $state(false);
   let resizeState = $state(null);
   let nameError = $state('');
@@ -54,6 +59,26 @@
   );
   let heightMm = $derived(block.canvas ? block.canvas.rowSpan * 5 : 0);
 
+  // Layout engine: compute deterministic layout for text blocks.
+  // Gated on fontsDone so we never call computeLayout before initFonts() resolves —
+  // getFont() throws if the registry is empty (intentional guard against misuse).
+  let blockLayout = $derived(
+    fontsDone && block.canvas && !isCanvasElement
+      ? computeLayout(block, blockRectMm(block.canvas, paddingMm), {
+          templateName,
+          paddingMm,
+          themeColors,
+        })
+      : null
+  );
+  let svgContent = $derived(
+    blockLayout && blockLayout.kind === 'text'
+      ? renderBlockSVG(blockLayout, { glyphMode: 'text' })
+      : null
+  );
+  // Use layout engine overflow (same authority as agent measurement)
+  let overflowing = $derived(blockLayout ? blockLayout.overflow : false);
+
   function handleCanvasNameInput(e) {
     const val = e.target.value;
     const trimmed = val.trim();
@@ -75,29 +100,8 @@
     }
   }
 
-  // Check content overflow (skip for canvas elements)
-  function checkOverflow() {
-    if (!contentEl || !block.canvas || isCanvasElement) return;
-    const allocatedHeightPx = block.canvas.rowSpan * 5 * PX_PER_MM;
-    overflowing = contentEl.scrollHeight > (allocatedHeightPx + 1);
-  }
-
-  $effect(() => {
-    if (contentEl) {
-      if (resizeObserver) resizeObserver.disconnect();
-      resizeObserver = new ResizeObserver(() => checkOverflow());
-      resizeObserver.observe(contentEl);
-    }
-    return () => { if (resizeObserver) resizeObserver.disconnect(); };
-  });
-
-  $effect(() => {
-    if (block.canvas) {
-      block.canvas.rowSpan;
-      block.content;
-      checkOverflow();
-    }
-  });
+  // Overflow is now derived from layout engine (blockLayout.overflow)
+  // No browser ResizeObserver needed — same authority as agent measurement
 
   function handleCanvasDragStart(e) {
     isDraggingThis = true;
@@ -226,6 +230,14 @@
     onSelect(block.id, e.ctrlKey || e.metaKey || e.shiftKey);
   }
 
+  function handleBlockKeydown(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect(block.id, e.ctrlKey || e.metaKey || e.shiftKey);
+    }
+  }
+
   function handleDeleteClick(e) {
     e.stopPropagation();
     if (selected && selectedBlockIds.length > 1) {
@@ -274,7 +286,31 @@
       return;
     }
     const reader = new FileReader();
-    reader.onload = (ev) => { if (updateBlockImageData) updateBlockImageData(block.id, ev.target.result); };
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      // The PDF exporter (pdf-lib) only embeds PNG/JPEG. Browsers happily produce
+      // webp/avif/etc., which would render on screen but silently drop from the PDF.
+      // Normalize anything that isn't PNG/JPEG to PNG so screen and print stay in sync.
+      if (file.type === 'image/png' || file.type === 'image/jpeg') {
+        if (updateBlockImageData) updateBlockImageData(block.id, dataUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        // Cap dimensions: a small webp decodes lossless to a much larger PNG, and a
+        // headshot never needs more than ~1200px. Keeps the exported PDF lean.
+        const MAX_W = 1200;
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (w > MAX_W) { h = Math.round((h * MAX_W) / w); w = MAX_W; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        if (updateBlockImageData) updateBlockImageData(block.id, canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => { if (updateBlockImageData) updateBlockImageData(block.id, dataUrl); };
+      img.src = dataUrl;
+    };
     reader.readAsDataURL(file);
     e.target.value = '';
   }
@@ -291,16 +327,26 @@
   class:is-overlapping={isOverlapping}
   style="left:{leftMm}mm;top:{topMm}mm;width:{widthMm}mm;height:{heightMm}mm;"
   onclick={handleBlockClick}
+  onkeydown={handleBlockKeydown}
   data-block-id={block.id}
   role="button"
   tabindex="0"
 >
   <!-- Floating Action Toolbar -->
   {#if selected && showToolbar}
-    <div class="floating-toolbar" contenteditable="false" onclick={(e) => e.stopPropagation()}>
+    <div
+      class="floating-toolbar"
+      contenteditable="false"
+      role="toolbar"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       <div
         class="toolbar-drag-handle"
         draggable="true"
+        role="button"
+        tabindex="0"
         ondragstart={handleCanvasDragStart}
         ondragend={handleCanvasDragEnd}
       >
@@ -437,12 +483,19 @@
 
   <!-- Content -->
   <div
-    class="block-content-container tmpl-{templateName} block-type-{block.type}"
+    class="block-content-container block-type-{block.type}"
     class:canvas-element={isCanvasElement}
-    bind:this={contentEl}
-    style="text-align: {block.canvas?.align || 'left'};"
   >
-    <BlockRenderer content={block.content} block={block} />
+    {#if isCanvasElement}
+      <BlockRenderer content={block.content} block={block} />
+    {:else if svgContent}
+      {@html svgContent}
+    {/if}
+    <!-- No legacy BlockRenderer fallback for text: it shapes with the browser +
+         template CSS (different metrics), so it would flash a mismatched layout
+         before fonts load, then snap to the SVG. The engine SVG is the sole text
+         authority; render nothing until it's ready (fontsDone is near-instant). -->
+
   </div>
 
   <!-- Resize handles — gutter elements: vertical only; canvas elements: no horizontal -->
@@ -515,6 +568,16 @@
     height: 100%;
     overflow: visible;
     word-break: break-word;
+    /* The layout engine (SVG/PDF) is the sole visual authority. The wrapper must
+       never contribute its own box model — a border/padding/background here would
+       appear on screen but not in the engine-rendered PDF. The `tmpl-*` class is
+       deliberately NOT applied to this wrapper (only `block-type-*`), so template
+       CSS like `.tmpl-modern.block-type-h2 { border-left; padding-left }` can't
+       match it and double-draw the H2 accent bar or shift the SVG right. The resets
+       below are a belt-and-suspenders guard against any future single-class leak. */
+    border: 0;
+    padding: 0;
+    background: transparent;
   }
 
   .block-content-container.canvas-element {
@@ -548,22 +611,34 @@
   /* Resize Handles */
   .resize-handle {
     position: absolute;
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     background-color: var(--color-imperial-blue);
     border: 1px solid var(--color-ghost-white);
     border-radius: 1px;
     z-index: 100;
   }
 
-  .tl { top: -3px; left: -3px; cursor: nwse-resize; }
-  .t  { top: -3px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-  .tr { top: -3px; right: -3px; cursor: nesw-resize; }
-  .r  { top: 50%; right: -3px; transform: translateY(-50%); cursor: ew-resize; }
-  .br { bottom: -3px; right: -3px; cursor: nwse-resize; }
-  .b  { bottom: -3px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-  .bl { bottom: -3px; left: -3px; cursor: nesw-resize; }
-  .l  { top: 50%; left: -3px; transform: translateY(-50%); cursor: ew-resize; }
+  /* Expand hit target area to 20px for easier hovering/dragging */
+  .resize-handle::after {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: -6px;
+    width: 20px;
+    height: 20px;
+    background: transparent;
+    z-index: 101;
+  }
+
+  .tl { top: -4px; left: -4px; cursor: nwse-resize; }
+  .t  { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+  .tr { top: -4px; right: -4px; cursor: nesw-resize; }
+  .r  { top: 50%; right: -4px; transform: translateY(-50%); cursor: ew-resize; }
+  .br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+  .b  { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+  .bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+  .l  { top: 50%; left: -4px; transform: translateY(-50%); cursor: ew-resize; }
 
   /* Floating Action Toolbar */
   .floating-toolbar {

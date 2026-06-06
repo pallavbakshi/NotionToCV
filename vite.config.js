@@ -1,6 +1,5 @@
 import { defineConfig, loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import puppeteer from 'puppeteer'
 import fs from 'fs'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -151,6 +150,8 @@ function mainPlugin(env) {
       server.middlewares.use((req, res, next) => {
 
         // ── /api/print ──────────────────────────────────────────────────
+        // Canonical PDF generation: uses the layout engine's renderResumePDF
+        // directly (no headless browser). Same code path as agent measurement.
         if (req.url === '/api/print' && req.method === 'POST') {
           let body = '';
           const MAX_BODY_SIZE = 10 * 1024 * 1024;
@@ -165,36 +166,23 @@ function mainPlugin(env) {
           req.on('end', async () => {
             try {
               const data = JSON.parse(body);
-              const printId = Math.random().toString(36).substring(2, 9);
-              printCache.set(printId, data);
+              // Dynamic import of the layout engine (Node-only server context)
+              const layout = await import('./src/lib/layout/index.js');
+              await layout.initFonts();
 
-              const browser = await puppeteer.launch({
-                headless: 'new',
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-              });
-              const page = await browser.newPage();
+              const ctx = {
+                templateName: data.templateName || 'clean',
+                paddingMm: data.paddingMm || 15,
+                themeColors: data.themeColors || {},
+                // Honor manually-added blank trailing pages (pages with no blocks).
+                pageCount: data.pageCount || 1,
+              };
 
-              const address = server.httpServer.address();
-              const url = `http://127.0.0.1:${address.port}/?export=true&printId=${printId}`;
-
-              await page.goto(url, { waitUntil: 'networkidle0' });
-
-              const pdfBuffer = await page.pdf({
-                format: 'A4',
-                printBackground: true,
-                preferCSSPageSize: true,
-                margin: { top: '0px', bottom: '0px', left: '0px', right: '0px' }
-              });
-
-              try {
-                await browser.close();
-              } finally {
-                printCache.delete(printId);
-              }
+              const pdfBytes = await layout.renderResumePDF(data.blocks || [], ctx);
 
               res.setHeader('Content-Type', 'application/pdf');
               res.setHeader('Content-Disposition', `attachment; filename="${data.pageTitle || 'resume'}.pdf"`);
-              res.end(pdfBuffer);
+              res.end(Buffer.from(pdfBytes));
             } catch (err) {
               console.error('Error generating PDF:', err);
               res.statusCode = 500;
@@ -820,6 +808,9 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
               const data = JSON.parse(body);
               printCache.set(printId, data);
 
+              // Dynamic import (Node-only, on demand) — keeps puppeteer out of the
+              // module top-level and fixes the missing-import ReferenceError.
+              const puppeteer = (await import('puppeteer')).default;
               browser = await puppeteer.launch({
                 headless: 'new',
                 args: ['--no-sandbox', '--disable-setuid-sandbox']

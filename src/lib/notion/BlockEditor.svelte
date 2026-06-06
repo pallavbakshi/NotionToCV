@@ -1071,7 +1071,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="name-modal-backdrop" onclick={closeModal} role="presentation">
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="name-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div class="name-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
       <div class="name-modal-header">
         <h3 class="name-modal-title">Name Block</h3>
         <button type="button" class="name-modal-close-icon" onclick={closeModal}>×</button>

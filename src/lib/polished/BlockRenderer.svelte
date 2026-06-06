@@ -85,7 +85,9 @@
     height: 100%;
     display: flex;
     align-items: center;
-    padding: 0 2px;
+    /* No inset: the PDF (drawDividerLine) draws the line edge-to-edge across the
+       cell, so the on-screen line must run full-width too or it would print longer
+       than it appears on screen. */
   }
   .ce-horizontal-divider .divider-line {
     width: 100%;
@@ -99,7 +101,7 @@
     height: 100%;
     display: flex;
     justify-content: center;
-    padding: 2px 0;
+    /* No inset — see .ce-horizontal-divider: match the full-height PDF line. */
   }
   .ce-vertical-divider .divider-line {
     width: 0;

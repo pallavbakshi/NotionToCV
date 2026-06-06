@@ -19,7 +19,6 @@
     isExportMode = false,
     pageTitle = '',
     templateName = 'clean',
-    customTemplates = {},
     themeColors = $bindable(),
     onGoToDashboard,
     onChangeTemplate,
@@ -324,8 +323,10 @@
           pageTitle,
           paddingMm,
           templateName,
-          customTemplates,
-          themeColors
+          themeColors,
+          // Manually-added blank trailing pages have no blocks; without this the
+          // PDF would stop at the last page that contains content.
+          pageCount: totalPages
         })
       });
 
@@ -719,7 +720,6 @@
       {pageTitle}
       {paddingMm}
       templateName={templateName}
-      {customTemplates}
       {themeColors}
       {selectedBlockIds}
       bind:stagedChatBlockIds={stagedChatBlockIds}
@@ -783,6 +783,7 @@
             {overlappingBlockIds}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
+            themeColors={themeColors}
             onAskAI={handleAskAI}
           />
           {#if !isExportMode && pageNum > totalPages}

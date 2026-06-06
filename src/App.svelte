@@ -8,6 +8,8 @@
   import './lib/polished/templates/modern.css';
   import './lib/polished/templates/elegant.css';
   import './lib/polished/templates/compact.css';
+  import { initFonts } from './lib/layout/index.js';
+  import { templateDefaultFonts, normalizeTemplateName } from './lib/polished/templateFonts.js';
 
   // Load resumes list from localStorage
   let initialResumes = [];
@@ -22,13 +24,9 @@
 
   let resumes = $state(initialResumes);
 
-  // Default font mapping for each template
-  const templateDefaultFonts = {
-    clean: { h1: 'Inter', h2: 'Inter', h3: 'Inter', text: 'Inter' },
-    modern: { h1: 'Space Grotesk', h2: 'Space Grotesk', h3: 'Space Grotesk', text: 'Space Grotesk' },
-    elegant: { h1: 'Playfair Display', h2: 'Playfair Display', h3: 'Playfair Display', text: 'Lora' },
-    compact: { h1: 'Outfit', h2: 'Outfit', h3: 'Outfit', text: 'Outfit' }
-  };
+  // templateDefaultFonts + normalizeTemplateName now live in a shared module
+  // (./lib/polished/templateFonts.js) so NotionPane's JSON import defaults to the
+  // same per-template fonts instead of a blanket Inter.
 
   // Router state
   let currentPath = $state('/dashboard');
@@ -39,7 +37,6 @@
   let pageTitle = $state('');
   let paddingMm = $state(15);
   let activeTemplate = $state('clean');
-  let customTemplates = $state({}); // { [id]: cssString }
   let themeColors = $state({
     h1Color: '#0a2463',
     h2Color: '#0a2463',
@@ -312,19 +309,15 @@
     localStorage.setItem('notionToCV_paneWidth', paneWidth.toString());
   });
 
-  // Inject custom template CSS
-  $effect(() => {
-    const allCss = Object.values(customTemplates).join('\n');
-    let styleEl = document.getElementById('custom-template-styles');
-    if (!styleEl) {
-      styleEl = document.createElement('style');
-      styleEl.id = 'custom-template-styles';
-      document.head.appendChild(styleEl);
-    }
-    styleEl.textContent = allCss;
-  });
+  // NOTE: We intentionally do NOT inject raw template CSS into the DOM anymore.
+  // The layout engine (SVG + PDF) is the sole visual authority; templates supply
+  // geometry only, and color/font/background come from themeColors (below).
 
-  // Inject theme-color-overrides CSS variables
+  // Inject the page background color as a CSS variable.
+  // The engine (SVG/PDF) bakes per-block color + font into the rendered output, so the
+  // old per-block-type color/font overrides here were dead no-ops on the SVG-containing
+  // wrappers and have been removed. Only the page/block BACKGROUND is still CSS-driven
+  // (--cv-bg-color, consumed by .canvas-block and the page below).
   $effect(() => {
     let styleEl = document.getElementById('theme-color-overrides');
     if (!styleEl) {
@@ -332,57 +325,17 @@
       styleEl.id = 'theme-color-overrides';
       document.head.appendChild(styleEl);
     }
-    // Helper function to format font stack
-    function getFontStack(f) {
-      const serif = ['Noto Serif', 'Lora', 'Playfair Display'];
-      const mono = ['Fira Code'];
-      const generic = serif.includes(f) ? 'serif' : mono.includes(f) ? 'monospace' : 'sans-serif';
-      return `'${f}', ${generic}`;
-    }
 
     styleEl.textContent = `
       .tmpl-${activeTemplate}, [class*="tmpl-"], .polished-container {
-        --cv-h1-color: ${themeColors.h1Color};
-        --cv-h2-color: ${themeColors.h2Color};
-        --cv-h3-color: ${themeColors.h3Color};
         --cv-text-color: ${themeColors.textColor};
         --cv-bg-color: ${themeColors.backgroundColor};
-        --cv-h1-font: ${getFontStack(themeColors.h1Font ?? 'Inter')};
-        --cv-h2-font: ${getFontStack(themeColors.h2Font ?? 'Inter')};
-        --cv-h3-font: ${getFontStack(themeColors.h3Font ?? 'Inter')};
-        --cv-text-font: ${getFontStack(themeColors.textFont ?? 'Inter')};
       }
-      
+
       .polished-container .cv-page-container,
       .polished-container .cv-page {
         color: var(--cv-text-color) !important;
         background-color: var(--cv-bg-color) !important;
-      }
-      
-      .polished-container .block-type-h1 {
-        color: var(--cv-h1-color) !important;
-        font-family: var(--cv-h1-font);
-        background-color: transparent !important;
-      }
-      .polished-container .block-type-h2 {
-        color: var(--cv-h2-color) !important;
-        border-color: var(--cv-h2-color) !important;
-        font-family: var(--cv-h2-font);
-        background-color: transparent !important;
-      }
-      .polished-container .block-type-h3 {
-        color: var(--cv-h3-color) !important;
-        font-family: var(--cv-h3-font);
-        background-color: transparent !important;
-      }
-      
-      .polished-container .block-type-paragraph,
-      .polished-container .block-type-todo,
-      .polished-container .block-type-bullet,
-      .polished-container .block-type-number {
-        color: var(--cv-text-color) !important;
-        font-family: var(--cv-text-font);
-        background-color: transparent !important;
       }
     `;
   });
@@ -399,7 +352,6 @@
           currentResume.pageTitle !== pageTitle ||
           currentResume.paddingMm !== paddingMm ||
           currentResume.templateName !== activeTemplate ||
-          JSON.stringify(currentResume.customTemplates) !== JSON.stringify(customTemplates) ||
           JSON.stringify(currentResume.themeColors) !== JSON.stringify(themeColors)
         ) {
           resumes[idx] = {
@@ -408,7 +360,6 @@
             pageTitle,
             paddingMm,
             templateName: activeTemplate,
-            customTemplates,
             themeColors: { ...themeColors },
             updatedAt: new Date().toISOString()
           };
@@ -447,18 +398,20 @@
         blocks = JSON.parse(JSON.stringify(resume.blocks));
         pageTitle = resume.pageTitle;
         paddingMm = resume.paddingMm;
-        activeTemplate = resume.templateName;
-        customTemplates = JSON.parse(JSON.stringify(resume.customTemplates || {}));
+        // Migrate any custom-template id to a built-in preset (geometry is ours).
+        const normalizedTemplate = normalizeTemplateName(resume.templateName);
+        activeTemplate = normalizedTemplate;
+        const tdf = templateDefaultFonts[normalizedTemplate];
         themeColors = {
           h1Color: resume.themeColors?.h1Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
           h2Color: resume.themeColors?.h2Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
           h3Color: resume.themeColors?.h3Color ?? resume.themeColors?.textColor ?? '#1e1b18',
           textColor: resume.themeColors?.textColor ?? '#1e1b18',
           backgroundColor: resume.themeColors?.backgroundColor ?? '#ffffff',
-          h1Font: resume.themeColors?.h1Font ?? templateDefaultFonts[resume.templateName]?.h1 ?? 'Inter',
-          h2Font: resume.themeColors?.h2Font ?? templateDefaultFonts[resume.templateName]?.h2 ?? 'Inter',
-          h3Font: resume.themeColors?.h3Font ?? templateDefaultFonts[resume.templateName]?.h3 ?? 'Inter',
-          textFont: resume.themeColors?.textFont ?? templateDefaultFonts[resume.templateName]?.text ?? 'Inter'
+          h1Font: resume.themeColors?.h1Font ?? tdf?.h1 ?? 'Inter',
+          h2Font: resume.themeColors?.h2Font ?? tdf?.h2 ?? 'Inter',
+          h3Font: resume.themeColors?.h3Font ?? tdf?.h3 ?? 'Inter',
+          textFont: resume.themeColors?.textFont ?? tdf?.text ?? 'Inter'
         };
       }
     } else {
@@ -481,6 +434,9 @@
   });
 
   onMount(async () => {
+    // Initialize layout engine fonts (cached — no-op after first call)
+    initFonts().catch(e => console.error('Font init error:', e));
+
     const params = new URLSearchParams(window.location.search);
     const hasExport = params.has('export');
     const printId = params.get('printId');
@@ -499,19 +455,20 @@
             blocks = data.blocks;
             pageTitle = data.pageTitle ?? '';
             paddingMm = data.paddingMm ?? 15;
-            if (data.templateName) activeTemplate = data.templateName;
-            if (data.customTemplates) customTemplates = data.customTemplates;
+            const normalizedTemplate = normalizeTemplateName(data.templateName);
+            if (data.templateName) activeTemplate = normalizedTemplate;
             if (data.themeColors) {
+              const tdf = templateDefaultFonts[normalizedTemplate];
               themeColors = {
                 h1Color: data.themeColors.h1Color ?? data.themeColors.primaryColor ?? '#0a2463',
                 h2Color: data.themeColors.h2Color ?? data.themeColors.primaryColor ?? '#0a2463',
                 h3Color: data.themeColors.h3Color ?? data.themeColors.textColor ?? '#1e1b18',
                 textColor: data.themeColors.textColor ?? '#1e1b18',
                 backgroundColor: data.themeColors.backgroundColor ?? '#ffffff',
-                h1Font: data.themeColors.h1Font ?? templateDefaultFonts[data.templateName]?.h1 ?? 'Inter',
-                h2Font: data.themeColors.h2Font ?? templateDefaultFonts[data.templateName]?.h2 ?? 'Inter',
-                h3Font: data.themeColors.h3Font ?? templateDefaultFonts[data.templateName]?.h3 ?? 'Inter',
-                textFont: data.themeColors.textFont ?? templateDefaultFonts[data.templateName]?.text ?? 'Inter'
+                h1Font: data.themeColors.h1Font ?? tdf?.h1 ?? 'Inter',
+                h2Font: data.themeColors.h2Font ?? tdf?.h2 ?? 'Inter',
+                h3Font: data.themeColors.h3Font ?? tdf?.h3 ?? 'Inter',
+                textFont: data.themeColors.textFont ?? tdf?.text ?? 'Inter'
               };
             }
           }
@@ -601,8 +558,7 @@
       pageTitle: 'Untitled CV',
       blocks: [{ id: 'b_initial', type: 'paragraph', content: [], canvas: null, name: null }],
       paddingMm: 15,
-      templateName: templateId,
-      customTemplates: {},
+      templateName: normalizeTemplateName(templateId),
       themeColors: {
         h1Color: '#0a2463',
         h2Color: '#0a2463',
@@ -621,24 +577,30 @@
     navigate('/resume/' + newResume.id);
   }
 
-  function handleNewImport({ blocks: importedBlocks, css, templateId, themeColors: importedColors }) {
+  // Import carries text (blocks) + a seeded color palette only. Geometry is ours
+  // (a built-in preset); any imported CSS/templateId is intentionally ignored.
+  function handleNewImport({ blocks: importedBlocks, templateId, themeColors: importedColors }) {
+    const normalized = normalizeTemplateName(templateId);
+    const tdf = templateDefaultFonts[normalized];
     const newResume = {
       id: 'res_' + Math.random().toString(36).substring(2, 9),
       pageTitle: 'Imported CV',
       blocks: importedBlocks,
       paddingMm: 15,
-      templateName: templateId,
-      customTemplates: { [templateId]: css },
+      templateName: normalized,
       themeColors: {
         h1Color: importedColors?.h1Color ?? '#0a2463',
         h2Color: importedColors?.h2Color ?? '#0a2463',
         h3Color: importedColors?.h3Color ?? '#1e1b18',
         textColor: importedColors?.textColor ?? '#1e1b18',
         backgroundColor: importedColors?.backgroundColor ?? '#ffffff',
-        h1Font: importedColors?.h1Font ?? 'Inter',
-        h2Font: importedColors?.h2Font ?? 'Inter',
-        h3Font: importedColors?.h3Font ?? 'Inter',
-        textFont: importedColors?.textFont ?? 'Inter'
+        // Default to the normalized template's fonts (e.g. elegant → Playfair/Lora),
+        // not a blanket Inter — matches handleRouteChange so an imported resume looks
+        // like its template instead of falling back to the wrong family.
+        h1Font: importedColors?.h1Font ?? tdf?.h1 ?? 'Inter',
+        h2Font: importedColors?.h2Font ?? tdf?.h2 ?? 'Inter',
+        h3Font: importedColors?.h3Font ?? tdf?.h3 ?? 'Inter',
+        textFont: importedColors?.textFont ?? tdf?.text ?? 'Inter'
       },
       updatedAt: new Date().toISOString()
     };
@@ -652,10 +614,9 @@
     activeTemplate = templateId;
   }
 
-  function handleEditImport({ blocks: importedBlocks, css, templateId }) {
-    customTemplates = { ...customTemplates, [templateId]: css };
+  function handleEditImport({ blocks: importedBlocks, templateId }) {
     blocks = importedBlocks;
-    activeTemplate = templateId;
+    activeTemplate = normalizeTemplateName(templateId);
   }
 
   function handleChangeTemplate() {
@@ -686,7 +647,6 @@
         isExportMode={true}
         pageTitle={pageTitle}
         templateName={activeTemplate ?? 'clean'}
-        customTemplates={customTemplates}
         bind:themeColors={themeColors}
       />
     </div>
@@ -714,7 +674,6 @@
             bind:draggedBlockId={draggedBlockId}
             bind:paddingMm={paddingMm}
             bind:activeTemplate={activeTemplate}
-            bind:customTemplates={customTemplates}
             bind:themeColors={themeColors}
             undo={undo}
             redo={redo}
@@ -751,7 +710,6 @@
             isExportMode={false}
             pageTitle={pageTitle}
             templateName={activeTemplate ?? 'clean'}
-            customTemplates={customTemplates}
             bind:themeColors={themeColors}
             onGoToDashboard={() => navigate('/dashboard')}
             onChangeTemplate={handleChangeTemplate}

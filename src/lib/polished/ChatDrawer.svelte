@@ -6,6 +6,7 @@
   import { TextStyle } from '@tiptap/extension-text-style';
   import { Color } from '@tiptap/extension-color';
   import { FontFamily } from '@tiptap/extension-font-family';
+  import { computeLayout, blockRectMm, initFonts, effectiveBaseStyle } from '../layout/index.js';
 
   let {
     resumeId,
@@ -13,7 +14,6 @@
     pageTitle,
     paddingMm,
     templateName,
-    customTemplates,
     themeColors,
     selectedBlockIds = [],
     stagedChatBlockIds = $bindable([]),
@@ -123,6 +123,9 @@
   }
 
   onMount(() => {
+    // Initialize layout engine fonts (no-op if already loaded)
+    initFonts().catch(e => console.error('Font init error:', e));
+
     // Load chats from localStorage
     try {
       const stored = localStorage.getItem(`notionToCV_chats_${resumeId}`);
@@ -288,7 +291,6 @@
           pageTitle,
           paddingMm,
           templateName,
-          customTemplates,
           themeColors
         })
       });
@@ -395,7 +397,7 @@
             },
             html_without_css: {
               type: "string",
-              description: "The proposed text content as standard semantic HTML (e.g. using <p>, <strong>, <em>, <ul>, <li>). Do not include any styles, classes, inline CSS, or font declarations."
+              description: "The proposed text content as plain inline HTML: text with <strong>, <em>, <u>, <s>, and <br>. Multiple <p> paragraphs are allowed (each becomes a line break). Do NOT use <ul>, <ol>, <li>, tables, headings, styles, classes, inline CSS, or font declarations — lists are unsupported and will be flattened to plain text."
             }
           },
           required: ["id", "html_without_css"]
@@ -457,9 +459,21 @@
     
     const json = tempEditor.getJSON();
     tempEditor.destroy();
-    
-    const firstChild = json.content?.[0];
-    return firstChild?.content ?? [];
+
+    // Tiptap may parse the proposal into MULTIPLE top-level block nodes (several
+    // <p>s, or a list whose items get demoted to paragraphs). The engine stores a
+    // block's text as ONE flat inline array with hardBreak separators, so previously
+    // returning only content[0].content silently dropped everything after the first
+    // block. Flatten every block's inline content into one array, joining blocks with
+    // a hardBreak (a paragraph break maps to a line break within the canvas block).
+    const blockNodes = json.content ?? [];
+    const inline = [];
+    for (let i = 0; i < blockNodes.length; i++) {
+      const childContent = blockNodes[i].content ?? [];
+      if (i > 0 && childContent.length > 0) inline.push({ type: 'hardBreak' });
+      inline.push(...childContent);
+    }
+    return inline;
   }
 
   function parseTiptapJsonToHtml(content) {
@@ -491,27 +505,6 @@
       el.removeAttribute('id');
     });
     return doc.body.innerHTML;
-  }
-
-  function measureHtmlHeight(html, blockType, widthMm, templateName) {
-    const tempDiv = document.createElement('div');
-    tempDiv.className = `polished-container tmpl-${templateName} block-type-${blockType}`;
-    tempDiv.style.position = 'absolute';
-    tempDiv.style.visibility = 'hidden';
-    tempDiv.style.top = '-9999px';
-    tempDiv.style.left = '-9999px';
-    tempDiv.style.width = `${widthMm}mm`;
-    tempDiv.style.boxSizing = 'border-box';
-    tempDiv.style.wordBreak = 'break-word';
-    tempDiv.style.whiteSpace = 'pre-wrap';
-    tempDiv.innerHTML = html;
-    
-    const parent = document.querySelector('.polished-container') || document.body;
-    parent.appendChild(tempDiv);
-    const heightPx = tempDiv.scrollHeight;
-    parent.removeChild(tempDiv);
-    
-    return heightPx;
   }
 
   function canvasToRect(canvas, colWidth, paddingMm) {
@@ -587,6 +580,12 @@
   }
 
   async function runAgentTool(name, args) {
+    // Agent tools call computeLayout → getFont, which throws if the font registry
+    // is empty. onMount kicks off initFonts() but doesn't await it; if the user
+    // fires Agent Mode before that resolves we'd crash. initFonts() is idempotent
+    // and resolves instantly once loaded, so awaiting here is a cheap, race-free gate.
+    await initFonts();
+
     const PX_PER_MM = 96 / 25.4;
     const cw = (210 - 2 * paddingMm - 12) / 4;
     
@@ -597,55 +596,44 @@
       }
       
       const plaintext = block.content?.map(node => node.text || '').join('') || '';
-      const contentHtmlEl = document.querySelector(`[data-block-id="${block.id}"] .block-content-container`);
-      const renderedHtml = contentHtmlEl ? contentHtmlEl.innerHTML : '';
-      
-      let appliedStyles = {};
-      if (contentHtmlEl) {
-        const computed = window.getComputedStyle(contentHtmlEl);
+
+      // Style facts come from the layout ENGINE, not the DOM. Text blocks now render
+      // an <svg> (with colors/fonts baked in), so reading .block-content-container
+      // innerHTML/getComputedStyle would hand the agent serialized SVG markup and the
+      // reset wrapper's styles — meaningless. effectiveBaseStyle is the same authority
+      // the renderers and capacity checks use.
+      const isTextBlock = ['paragraph', 'h1', 'h2', 'h3'].includes(block.type);
+      let appliedStyles = null;
+      if (isTextBlock) {
+        const bs = effectiveBaseStyle(templateName, block.type, themeColors);
         appliedStyles = {
-          fontFamily: computed.fontFamily,
-          fontSize: computed.fontSize,
-          lineHeight: computed.lineHeight,
-          padding: computed.padding
+          fontFamily: bs.fontFamily,
+          fontSizeMm: bs.fontSizeMm,
+          lineHeightMm: bs.lineHeightMm,
+          color: bs.color,
+          textTransform: bs.textTransform,
+          fontWeight: bs.fontWeight
         };
       }
-      
+
       const isPlaced = !!block.canvas;
       let capacity = null;
       let widthMm = 0;
       let heightMm = 0;
 
       if (isPlaced) {
-        widthMm = block.canvas.colSpan === 0 ? 4 : block.canvas.colSpan * cw + (block.canvas.colSpan - 1) * 4;
-        heightMm = block.canvas.rowSpan * 5;
-        
-        let lineHeightMm = 5;
-        if (block.type === 'h1') lineHeightMm = 20;
-        else if (block.type === 'h2') lineHeightMm = 15;
-        else if (block.type === 'h3') lineHeightMm = 10;
-        
-        const maxLines = Math.floor(heightMm / lineHeightMm);
-        
-        let charsPerLine = 20;
-        if (block.type === 'h1') charsPerLine = Math.round(widthMm / 7);
-        else if (block.type === 'h2') charsPerLine = Math.round(widthMm / 5);
-        else if (block.type === 'h3') charsPerLine = Math.round(widthMm / 3.5);
-        else charsPerLine = Math.round(widthMm / 1.8);
-        
-        // Measure current lines using real canvas styling via measureHtmlHeight
-        const blockHtml = contentHtmlEl ? contentHtmlEl.innerHTML : parseTiptapJsonToHtml(block.content);
-        const proposedHeightPx = measureHtmlHeight(blockHtml, block.type, widthMm, templateName);
-        const lineHeightPx = lineHeightMm * PX_PER_MM;
-        const currentLines = Math.max(1, Math.round(proposedHeightPx / lineHeightPx));
-        const isOverflowing = proposedHeightPx > (heightMm * PX_PER_MM + 1);
-        
+        const rect = blockRectMm(block.canvas, paddingMm);
+        widthMm = rect.widthMm;
+        heightMm = rect.heightMm;
+        const ctx = { templateName, paddingMm, themeColors };
+        const lo = computeLayout(block, rect, ctx);
+
         capacity = {
-          max_lines: maxLines,
-          approx_characters_per_line: charsPerLine,
-          current_lines_used: currentLines,
-          lines_remaining: maxLines - currentLines,
-          is_overflowing: isOverflowing
+          max_lines: lo.maxLines,
+          approx_characters_per_line: null,
+          current_lines_used: lo.lines.length,
+          lines_remaining: lo.linesRemaining,
+          is_overflowing: lo.overflow
         };
       }
       
@@ -663,8 +651,7 @@
         heightMm: isPlaced ? heightMm : null,
         plaintext,
         capacity: isPlaced ? capacity : 'N/A — block is unplaced; no spatial budget to check against. You may still propose content edits but cannot verify fit until the block is placed on the canvas.',
-        rendered_html_reference: renderedHtml || null,
-        applied_styles: Object.keys(appliedStyles).length > 0 ? appliedStyles : null,
+        applied_styles: appliedStyles,
         neighbors: isPlaced ? neighbors : 'N/A — unplaced blocks have no canvas neighbors'
       };
       
@@ -695,25 +682,18 @@
       };
       
       if (block.canvas) {
-        const widthMm = block.canvas.colSpan === 0 ? 4 : block.canvas.colSpan * cw + (block.canvas.colSpan - 1) * 4;
-        const heightMm = block.canvas.rowSpan * 5;
+        const rect = blockRectMm(block.canvas, paddingMm);
+        const ctx = { templateName, paddingMm, themeColors };
         
-        let lineHeightMm = 5;
-        if (block.type === 'h1') lineHeightMm = 20;
-        else if (block.type === 'h2') lineHeightMm = 15;
-        else if (block.type === 'h3') lineHeightMm = 10;
-        
-        const maxLines = Math.floor(heightMm / lineHeightMm);
-        const proposedHeightPx = measureHtmlHeight(sanitizedHtml, block.type, widthMm, templateName);
-        const lineHeightPx = lineHeightMm * PX_PER_MM;
-        const currentLines = Math.max(1, Math.round(proposedHeightPx / lineHeightPx));
-        const isOverflowing = proposedHeightPx > (heightMm * PX_PER_MM + 1);
+        // Build a temporary block with proposed content to measure fit
+        const proposedBlock = { ...block, content: proposedContent };
+        const lo = computeLayout(proposedBlock, rect, ctx);
         
         capacity = {
-          max_lines: maxLines,
-          current_lines_used: currentLines,
-          lines_remaining: maxLines - currentLines,
-          is_overflowing: isOverflowing
+          max_lines: lo.maxLines,
+          current_lines_used: lo.lines.length,
+          lines_remaining: lo.linesRemaining,
+          is_overflowing: lo.overflow
         };
       }
       
@@ -740,7 +720,6 @@
             pageTitle,
             paddingMm,
             templateName,
-            customTemplates,
             themeColors,
             blockId: block.id
           })
@@ -775,17 +754,11 @@
       return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}] - Content: "${textContent}"`;
     }).join('\n');
 
-    let cleanHtml = '';
-    const pagesEl = document.querySelector('.pages-list');
-    if (pagesEl) {
-      const clone = pagesEl.cloneNode(true);
-      clone.querySelectorAll('.floating-toolbar, .hover-drag-handle, .resize-handle, .grid-overlay').forEach(el => el.remove());
-      cleanHtml = clone.innerHTML;
-    }
-
-    const themeStyleEl = document.getElementById('theme-color-overrides');
-    const themeStyles = themeStyleEl ? themeStyleEl.textContent : '';
-
+    // We deliberately do NOT dump the rendered DOM or theme CSS here anymore. Text
+    // blocks render as <svg> (the layout engine bakes in colors/fonts/positions), so
+    // that markup is opaque SVG soup and the theme CSS no longer drives text geometry.
+    // The engine-derived `outline` above (IDs, types, positions, content) plus the
+    // per-block facts from read_block are the authoritative context for the agent.
     return `You are Antigravity CV Editor Agent, an expert AI resume editor.
 You are helping the user edit their resume using tools to read and propose changes to blocks.
 
@@ -794,20 +767,13 @@ Title: ${pageTitle || 'Untitled Resume'}
 Outline & Content:
 ${outline}
 
-Here is the clean rendered HTML structure of the A4 polished CV pages (reflecting committed blocks):
-\`\`\`html
-${cleanHtml}
-\`\`\`
-
-Here are the custom CSS overrides applied to the pages:
-\`\`\`css
-${themeStyles}
-\`\`\`
+Use 'read_block' for a block's authoritative styling (engine-resolved font/size/color)
+and spatial capacity — the on-screen text is rendered by the layout engine, not CSS.
 
 Guidelines:
 1. You are in Agent Mode. You have tools to read, update block content, and take screenshots.
 2. Use 'read_block' to get full details of a block including styling, spatial capacity, and neighbors.
-3. Use 'update_block_content' to propose modifications to block text. Specify semantic HTML (e.g. <p>, <strong>, <em>, <ul>, <li>). Do not include any styles or CSS.
+3. Use 'update_block_content' to propose modifications to block text. Use plain inline HTML only: text with <strong>, <em>, <u>, <s>, and <br> for line breaks. Multiple <p> paragraphs are allowed (each becomes a line break). Do NOT use <ul>, <ol>, <li>, tables, headings, or any styles/CSS — lists are not supported and will be flattened to plain text.
 4. Your proposed changes will be STAGED as red/green inline diffs in the Notion pane. The user will accept or deny them.
 5. Respect the block spatial budget! Always check capacity numbers returned by update_block_content or read_block to ensure your revisions fit. Avoid overflowing blocks.
 6. When referencing blocks, use their ID or name (e.g. @contact-section).
@@ -1186,7 +1152,7 @@ Guidelines:
           toolResultMessagesForHistory.push({
             role: 'tool',
             tool_call_id: tc.id,
-            name: tc.name,
+            name: tcName, // tc.name is undefined — the name lives at tc.function.name (tcName)
             content: JSON.stringify(result)
           });
         }
@@ -1343,11 +1309,16 @@ Guidelines:
   }
 </script>
 
-<div 
-  class="chat-drawer" 
-  style="width: {drawerWidth}px;" 
+<div
+  class="chat-drawer"
+  style="width: {drawerWidth}px;"
+  role="dialog"
+  aria-modal="false"
+  aria-label="Chat drawer"
+  tabindex="-1"
   onclick={(e) => e.stopPropagation()}
   onpointerdown={(e) => e.stopPropagation()}
+  onkeydown={(e) => e.stopPropagation()}
 >
   <!-- Resize handle: positioned absolutely on the left edge of the drawer -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
