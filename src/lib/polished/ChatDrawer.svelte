@@ -652,7 +652,8 @@
         plaintext,
         capacity: isPlaced ? capacity : 'N/A — block is unplaced; no spatial budget to check against. You may still propose content edits but cannot verify fit until the block is placed on the canvas.',
         applied_styles: appliedStyles,
-        neighbors: isPlaced ? neighbors : 'N/A — unplaced blocks have no canvas neighbors'
+        neighbors: isPlaced ? neighbors : 'N/A — unplaced blocks have no canvas neighbors',
+        locked: !!block.locked
       };
       
     } else if (name === 'update_block_content') {
@@ -660,7 +661,12 @@
       if (!block) {
         return { error: `Block ${args.id} not found` };
       }
-      
+
+      if (block.locked) {
+        return {
+          error: `Block "${block.name || block.id}" is locked. You cannot modify locked blocks. The user must unlock this block first before you can propose changes to it.`
+        };
+      }
       const sanitizedHtml = sanitizeHtmlWithoutCss(args.html_without_css);
       const proposedContent = parseHtmlToTiptapJson(sanitizedHtml, block.type);
       
@@ -751,7 +757,8 @@
         ? `Page ${b.canvas.page}, Col ${b.canvas.col}, Row ${b.canvas.row} (Span ${b.canvas.colSpan}x${b.canvas.rowSpan})`
         : 'Unplaced';
       const textContent = b.content?.map(node => node.text || '').join('') || '';
-      return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}] - Content: "${textContent}"`;
+      const lockText = b.locked ? 'LOCKED' : 'UNLOCKED';
+      return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}] - [${lockText}] - Content: "${textContent}"`;
     }).join('\n');
 
     // We deliberately do NOT dump the rendered DOM or theme CSS here anymore. Text
@@ -772,12 +779,13 @@ and spatial capacity — the on-screen text is rendered by the layout engine, no
 
 Guidelines:
 1. You are in Agent Mode. You have tools to read, update block content, and take screenshots.
-2. Use 'read_block' to get full details of a block including styling, spatial capacity, and neighbors.
+2. Use 'read_block' to get full details of a block including styling, spatial capacity, neighbors, and lock state.
 3. Use 'update_block_content' to propose modifications to block text. Use plain inline HTML only: text with <strong>, <em>, <u>, <s>, and <br> for line breaks. Multiple <p> paragraphs are allowed (each becomes a line break). Do NOT use <ul>, <ol>, <li>, tables, headings, or any styles/CSS — lists are not supported and will be flattened to plain text.
-4. Your proposed changes will be STAGED as red/green inline diffs in the Notion pane. The user will accept or deny them.
-5. Respect the block spatial budget! Always check capacity numbers returned by update_block_content or read_block to ensure your revisions fit. Avoid overflowing blocks.
-6. When referencing blocks, use their ID or name (e.g. @contact-section).
-7. Respond to the user with a summary of the edits you proposed or explanation of why you made them.`;
+4. You CANNOT modify locked blocks. Check the outline (LOCKED/UNLOCKED per block) or use read_block (locked field) before proposing changes. If a block is locked, inform the user they must unlock it first.
+5. Your proposed changes will be STAGED as red/green inline diffs in the Notion pane. The user will accept or deny them.
+6. Respect the block spatial budget! Always check capacity numbers returned by update_block_content or read_block to ensure your revisions fit. Avoid overflowing blocks.
+7. When referencing blocks, use their ID or name (e.g. @contact-section).
+8. Respond to the user with a summary of the edits you proposed or explanation of why you made them.`;
   }
 
   // Generate system prompt context outline
@@ -787,7 +795,7 @@ Guidelines:
       const posText = isPlaced 
         ? `Page ${b.canvas.page}, Col ${b.canvas.col}, Row ${b.canvas.row} (Span ${b.canvas.colSpan}x${b.canvas.rowSpan})`
         : 'Unplaced';
-      return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}]`;
+      return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}]${b.locked ? ' - [LOCKED]' : ''}`;
     }).join('\n');
 
     return `You are Antigravity CV Assistant, an expert career document reviewer and career coach.

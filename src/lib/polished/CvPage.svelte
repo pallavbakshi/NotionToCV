@@ -17,7 +17,8 @@
     draggedBlockId = $bindable(),
     templateName = 'clean',
     themeColors = {},
-    onAskAI = null
+    onAskAI = null,
+    toggleBlockLock = null
   } = $props();
 
   const templatesConfig = {
@@ -62,7 +63,7 @@
     const pxY = e.clientY - pageRect.top;
 
     const draggedBlock = blocks.find(b => b.id === draggedBlockId);
-    if (!draggedBlock) return;
+    if (!draggedBlock || draggedBlock.locked) return;
 
     const activeConfig = templatesConfig[templateName] || templatesConfig.clean;
     const defaultSpans = activeConfig.defaultSpans[draggedBlock.type] || { colSpan: 2, rowSpan: 1 };
@@ -185,6 +186,9 @@
     isDraggingOver = false;
     if (!draggedBlockId || !dragOverCoords) return;
 
+    const draggedBlock = blocks.find(b => b.id === draggedBlockId);
+    if (!draggedBlock || draggedBlock.locked) return;
+
     const { isValid, candidates } = dragOverCoords;
     if (isValid) {
       if (candidates && candidates.length > 0) {
@@ -282,6 +286,7 @@
           templateName={templateName}
           themeColors={themeColors}
           onAskAI={onAskAI}
+          {toggleBlockLock}
         />
       {/if}
     {/each}
