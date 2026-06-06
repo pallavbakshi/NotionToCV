@@ -42,7 +42,7 @@ export { renderResumePDF } from './render-pdf.js';
  *
  * @param {Object} block
  * @param {{leftMm:number,topMm:number,widthMm:number,heightMm:number}|null} blockRect
- * @param {Object} ctx — { templateName, customTemplates, paddingMm, themeColors }
+ * @param {Object} ctx — { templateName, paddingMm, themeColors }
  * @returns {LaidOutBlock}
  */
 export function computeLayout(block, blockRect, ctx) {

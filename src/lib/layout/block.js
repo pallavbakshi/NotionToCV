@@ -59,13 +59,13 @@ import { EPSILON } from './model.js';
  *
  * @param {Object} block — the app's block object
  * @param {{leftMm:number,topMm:number,widthMm:number,heightMm:number}} blockRect
- * @param {Object} ctx — { templateName, customTemplates, paddingMm, themeColors }
+ * @param {Object} ctx — { templateName, paddingMm, themeColors }
  * @returns {LaidOutBlock}
  */
 export function composeBlock(block, blockRect, ctx) {
-  const { templateName, customTemplates, themeColors } = ctx;
+  const { templateName, themeColors } = ctx;
   const blockType = block.type;
-  const baseStyle = effectiveBaseStyle(templateName, blockType, themeColors, customTemplates);
+  const baseStyle = effectiveBaseStyle(templateName, blockType, themeColors);
 
   // Split content by hardBreak nodes
   const segments = splitByHardBreak(block.content || []);
@@ -246,13 +246,13 @@ export function passthroughBlock(block, blockRect) {
  * Produce an unplaced LaidOutBlock laid out at unconstrained width.
  *
  * @param {Object} block
- * @param {Object} ctx — { templateName, customTemplates, themeColors }
+ * @param {Object} ctx — { templateName, themeColors }
  * @returns {LaidOutBlock}
  */
 export function unplacedBlock(block, ctx) {
-  const { templateName, customTemplates, themeColors } = ctx;
+  const { templateName, themeColors } = ctx;
   const blockType = block.type;
-  const baseStyle = effectiveBaseStyle(templateName, blockType, themeColors, customTemplates);
+  const baseStyle = effectiveBaseStyle(templateName, blockType, themeColors);
 
   // Split by hardBreak, lay out each segment at unconstrained width
   const segments = splitByHardBreak(block.content || []);

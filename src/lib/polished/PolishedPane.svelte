@@ -19,7 +19,6 @@
     isExportMode = false,
     pageTitle = '',
     templateName = 'clean',
-    customTemplates = {},
     themeColors = $bindable(),
     onGoToDashboard,
     onChangeTemplate,
@@ -324,7 +323,6 @@
           pageTitle,
           paddingMm,
           templateName,
-          customTemplates,
           themeColors
         })
       });
@@ -719,7 +717,6 @@
       {pageTitle}
       {paddingMm}
       templateName={templateName}
-      {customTemplates}
       {themeColors}
       {selectedBlockIds}
       bind:stagedChatBlockIds={stagedChatBlockIds}
@@ -783,7 +780,6 @@
             {overlappingBlockIds}
             bind:draggedBlockId={draggedBlockId}
             templateName={templateName}
-            customTemplates={customTemplates}
             themeColors={themeColors}
             onAskAI={handleAskAI}
           />

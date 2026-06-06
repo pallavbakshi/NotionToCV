@@ -31,6 +31,13 @@
     compact: { h1: 'Outfit', h2: 'Outfit', h3: 'Outfit', text: 'Outfit' }
   };
 
+  // Geometry is engine-owned: only the built-in presets are valid templates.
+  // Older/imported resumes may reference a custom template id — normalize those
+  // to a built-in preset (default `clean`). Colors/fonts are preserved via themeColors.
+  function normalizeTemplateName(name) {
+    return templateDefaultFonts[name] ? name : 'clean';
+  }
+
   // Router state
   let currentPath = $state('/dashboard');
   let activeResumeId = $state(null);
@@ -40,7 +47,6 @@
   let pageTitle = $state('');
   let paddingMm = $state(15);
   let activeTemplate = $state('clean');
-  let customTemplates = $state({}); // { [id]: cssString }
   let themeColors = $state({
     h1Color: '#0a2463',
     h2Color: '#0a2463',
@@ -313,23 +319,9 @@
     localStorage.setItem('notionToCV_paneWidth', paneWidth.toString());
   });
 
-  // Inject custom template CSS
-  $effect(() => {
-    const allCss = Object.values(customTemplates).join('\n');
-    // Headings never auto-underline: strip any `border-bottom` declared in
-    // imported/custom template CSS (e.g. a section rule under h2). The only
-    // underline is user-driven — the `underline` text mark on a selection.
-    // Targets the exact `border-bottom:` property only, leaving border-bottom-*
-    // longhands (e.g. -radius) and other borders intact.
-    const sanitizedCss = allCss.replace(/border-bottom\s*:[^;}]*;?/gi, '');
-    let styleEl = document.getElementById('custom-template-styles');
-    if (!styleEl) {
-      styleEl = document.createElement('style');
-      styleEl.id = 'custom-template-styles';
-      document.head.appendChild(styleEl);
-    }
-    styleEl.textContent = sanitizedCss;
-  });
+  // NOTE: We intentionally do NOT inject raw template CSS into the DOM anymore.
+  // The layout engine (SVG + PDF) is the sole visual authority; templates supply
+  // geometry only, and color/font/background come from themeColors (below).
 
   // Inject theme-color-overrides CSS variables
   $effect(() => {
@@ -373,7 +365,6 @@
       }
       .polished-container .block-type-h2 {
         color: var(--cv-h2-color) !important;
-        border-color: var(--cv-h2-color) !important;
         font-family: var(--cv-h2-font);
         background-color: transparent !important;
       }
@@ -406,7 +397,6 @@
           currentResume.pageTitle !== pageTitle ||
           currentResume.paddingMm !== paddingMm ||
           currentResume.templateName !== activeTemplate ||
-          JSON.stringify(currentResume.customTemplates) !== JSON.stringify(customTemplates) ||
           JSON.stringify(currentResume.themeColors) !== JSON.stringify(themeColors)
         ) {
           resumes[idx] = {
@@ -415,7 +405,6 @@
             pageTitle,
             paddingMm,
             templateName: activeTemplate,
-            customTemplates,
             themeColors: { ...themeColors },
             updatedAt: new Date().toISOString()
           };
@@ -454,8 +443,8 @@
         blocks = JSON.parse(JSON.stringify(resume.blocks));
         pageTitle = resume.pageTitle;
         paddingMm = resume.paddingMm;
-        activeTemplate = resume.templateName;
-        customTemplates = JSON.parse(JSON.stringify(resume.customTemplates || {}));
+        // Migrate any custom-template id to a built-in preset (geometry is ours).
+        activeTemplate = normalizeTemplateName(resume.templateName);
         themeColors = {
           h1Color: resume.themeColors?.h1Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
           h2Color: resume.themeColors?.h2Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
@@ -509,8 +498,7 @@
             blocks = data.blocks;
             pageTitle = data.pageTitle ?? '';
             paddingMm = data.paddingMm ?? 15;
-            if (data.templateName) activeTemplate = data.templateName;
-            if (data.customTemplates) customTemplates = data.customTemplates;
+            if (data.templateName) activeTemplate = normalizeTemplateName(data.templateName);
             if (data.themeColors) {
               themeColors = {
                 h1Color: data.themeColors.h1Color ?? data.themeColors.primaryColor ?? '#0a2463',
@@ -611,8 +599,7 @@
       pageTitle: 'Untitled CV',
       blocks: [{ id: 'b_initial', type: 'paragraph', content: [], canvas: null, name: null }],
       paddingMm: 15,
-      templateName: templateId,
-      customTemplates: {},
+      templateName: normalizeTemplateName(templateId),
       themeColors: {
         h1Color: '#0a2463',
         h2Color: '#0a2463',
@@ -631,14 +618,15 @@
     navigate('/resume/' + newResume.id);
   }
 
-  function handleNewImport({ blocks: importedBlocks, css, templateId, themeColors: importedColors }) {
+  // Import carries text (blocks) + a seeded color palette only. Geometry is ours
+  // (a built-in preset); any imported CSS/templateId is intentionally ignored.
+  function handleNewImport({ blocks: importedBlocks, templateId, themeColors: importedColors }) {
     const newResume = {
       id: 'res_' + Math.random().toString(36).substring(2, 9),
       pageTitle: 'Imported CV',
       blocks: importedBlocks,
       paddingMm: 15,
-      templateName: templateId,
-      customTemplates: { [templateId]: css },
+      templateName: normalizeTemplateName(templateId),
       themeColors: {
         h1Color: importedColors?.h1Color ?? '#0a2463',
         h2Color: importedColors?.h2Color ?? '#0a2463',
@@ -662,10 +650,9 @@
     activeTemplate = templateId;
   }
 
-  function handleEditImport({ blocks: importedBlocks, css, templateId }) {
-    customTemplates = { ...customTemplates, [templateId]: css };
+  function handleEditImport({ blocks: importedBlocks, templateId }) {
     blocks = importedBlocks;
-    activeTemplate = templateId;
+    activeTemplate = normalizeTemplateName(templateId);
   }
 
   function handleChangeTemplate() {
@@ -696,7 +683,6 @@
         isExportMode={true}
         pageTitle={pageTitle}
         templateName={activeTemplate ?? 'clean'}
-        customTemplates={customTemplates}
         bind:themeColors={themeColors}
       />
     </div>
@@ -724,7 +710,6 @@
             bind:draggedBlockId={draggedBlockId}
             bind:paddingMm={paddingMm}
             bind:activeTemplate={activeTemplate}
-            bind:customTemplates={customTemplates}
             bind:themeColors={themeColors}
             undo={undo}
             redo={redo}
@@ -761,7 +746,6 @@
             isExportMode={false}
             pageTitle={pageTitle}
             templateName={activeTemplate ?? 'clean'}
-            customTemplates={customTemplates}
             bind:themeColors={themeColors}
             onGoToDashboard={() => navigate('/dashboard')}
             onChangeTemplate={handleChangeTemplate}

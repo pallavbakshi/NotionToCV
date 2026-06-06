@@ -16,7 +16,6 @@
     overlappingBlockIds = new Set(),
     draggedBlockId = $bindable(),
     templateName = 'clean',
-    customTemplates = {},
     themeColors = {},
     onAskAI = null
   } = $props();
@@ -281,7 +280,6 @@
           removeCanvasElement={removeCanvasElement}
           bind:draggedBlockId={draggedBlockId}
           templateName={templateName}
-          customTemplates={customTemplates}
           themeColors={themeColors}
           onAskAI={onAskAI}
         />

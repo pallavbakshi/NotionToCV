@@ -315,11 +315,10 @@ export function fontCategory(blockType) {
  * @param {string} templateName
  * @param {string} blockType
  * @param {Object} themeColors
- * @param {Record<string, string>} [customTemplates]
  * @returns {BaseStyle}
  */
-export function effectiveBaseStyle(templateName, blockType, themeColors, customTemplates) {
-  const raw = getTypeStyle(templateName, blockType, customTemplates);
+export function effectiveBaseStyle(templateName, blockType, themeColors) {
+  const raw = getTypeStyle(templateName, blockType);
   const cat = fontCategory(blockType);
 
   // Resolve font family from themeColors — sole authority, template CSS is dead

@@ -23,7 +23,7 @@ import { getFontBufferForFont } from './fonts.js';
  * Generate a canonical PDF for the given blocks.
  *
  * @param {Array<Object>} blocks
- * @param {Object} ctx — { templateName, customTemplates, paddingMm, themeColors }
+ * @param {Object} ctx — { templateName, paddingMm, themeColors }
  * @returns {Promise<Uint8Array>}
  */
 export async function renderResumePDF(blocks, ctx) {
@@ -32,6 +32,8 @@ export async function renderResumePDF(blocks, ctx) {
   // but the runtime object is compatible.
   pdfDoc.registerFontkit(pdfLibFontkit);
   const { paddingMm } = ctx;
+  // Page background is engine-owned (parity with the on-screen .cv-page fill).
+  const pageBgColor = hexToRgb((ctx.themeColors && ctx.themeColors.backgroundColor) || '#ffffff');
 
   // Track embedded fonts: key = `${family}__${style}` -> pdf-lib PDFFont
   const embeddedFonts = new Map();
@@ -79,6 +81,16 @@ export async function renderResumePDF(blocks, ctx) {
   for (const pageNum of sortedPages) {
     const pageBlocks = pagesMap.get(pageNum);
     const page = pdfDoc.addPage([mmToPt(PAGE_W_MM), mmToPt(PAGE_H_MM)]);
+
+    // Fill the whole page with the theme background before drawing anything,
+    // so a non-white page color prints identically to the screen.
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: mmToPt(PAGE_W_MM),
+      height: mmToPt(PAGE_H_MM),
+      color: pageBgColor,
+    });
 
     for (const { rect, lo } of pageBlocks) {
       if (lo.kind === 'passthrough') {

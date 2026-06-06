@@ -14,7 +14,6 @@
     pageTitle,
     paddingMm,
     templateName,
-    customTemplates,
     themeColors,
     selectedBlockIds = [],
     stagedChatBlockIds = $bindable([]),
@@ -292,7 +291,6 @@
           pageTitle,
           paddingMm,
           templateName,
-          customTemplates,
           themeColors
         })
       });
@@ -603,7 +601,7 @@
         const rect = blockRectMm(block.canvas, paddingMm);
         widthMm = rect.widthMm;
         heightMm = rect.heightMm;
-        const ctx = { templateName, customTemplates, paddingMm, themeColors };
+        const ctx = { templateName, paddingMm, themeColors };
         const lo = computeLayout(block, rect, ctx);
 
         capacity = {
@@ -662,7 +660,7 @@
       
       if (block.canvas) {
         const rect = blockRectMm(block.canvas, paddingMm);
-        const ctx = { templateName, customTemplates, paddingMm, themeColors };
+        const ctx = { templateName, paddingMm, themeColors };
         
         // Build a temporary block with proposed content to measure fit
         const proposedBlock = { ...block, content: proposedContent };
@@ -699,7 +697,6 @@
             pageTitle,
             paddingMm,
             templateName,
-            customTemplates,
             themeColors,
             blockId: block.id
           })

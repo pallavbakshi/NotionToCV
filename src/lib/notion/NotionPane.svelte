@@ -10,7 +10,6 @@
     draggedBlockId = $bindable(),
     paddingMm = $bindable(15),
     activeTemplate = $bindable('clean'),
-    customTemplates = $bindable({}),
     themeColors = $bindable(),
     undo = null,
     redo = null,
@@ -227,7 +226,6 @@
       blocks,
       paddingMm,
       templateName: activeTemplate,
-      customTemplates,
       themeColors
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -256,7 +254,6 @@
           pageTitle = data.pageTitle || '';
           if (data.paddingMm !== undefined) paddingMm = data.paddingMm;
           if (data.templateName) activeTemplate = data.templateName;
-          if (data.customTemplates) customTemplates = data.customTemplates;
           if (data.themeColors) {
             themeColors = {
               primaryColor: data.themeColors.primaryColor ?? '#0a2463',

@@ -172,7 +172,6 @@ function mainPlugin(env) {
 
               const ctx = {
                 templateName: data.templateName || 'clean',
-                customTemplates: data.customTemplates || {},
                 paddingMm: data.paddingMm || 15,
                 themeColors: data.themeColors || {},
               };

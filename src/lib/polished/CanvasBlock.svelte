@@ -20,7 +20,6 @@
     removeCanvasElement = null,
     draggedBlockId = $bindable(),
     templateName = 'clean',
-    customTemplates = {},
     themeColors = {},
     onAskAI = null
   } = $props();
@@ -60,7 +59,6 @@
     block.canvas && !isCanvasElement
       ? computeLayout(block, blockRectMm(block.canvas, paddingMm), {
           templateName,
-          customTemplates,
           paddingMm,
           themeColors,
         })
@@ -561,6 +559,11 @@
     height: 100%;
     overflow: visible;
     word-break: break-word;
+    /* The layout engine (SVG/PDF) is the sole visual authority. The wrapper must
+       never paint its own border/background — those would appear on screen but
+       not in the engine-rendered PDF. Guard against any future leak. */
+    border: 0;
+    background: transparent;
   }
 
   .block-content-container.canvas-element {
