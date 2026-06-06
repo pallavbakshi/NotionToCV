@@ -1,6 +1,6 @@
 <!-- ChatDrawer.svelte — AI chat sidebar shell. -->
 <!-- Sub-components in ./: ChatHeader, ModeToggle, ChatHistoryList, ChatMessageList, ChatInput -->
-<!-- Logic modules in ./: agentTools.js, messageParser.js, spatialUtils.js -->
+<!-- Agent loop delegated to src/sdk/engine.js — this component is a thin event consumer. -->
 <script>
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import ChatHeader from './ChatHeader.svelte';
@@ -9,7 +9,7 @@
   import ChatMessageList from './ChatMessageList.svelte';
   import ChatInput from './ChatInput.svelte';
   import { initFonts } from '../layout/index.js';
-  import { AGENT_TOOLS, runAgentTool, getAgentSystemPrompt, getSystemPromptOutline } from './agentTools.js';
+  import { ResumeAgentEngine, browserModelProvider, browserScreenshotProvider, getAgentSystemPrompt, getSystemPromptOutline } from '../../sdk/index.js';
   import { stagedChanges, stagedChatBlockIds, stagedAttachments } from '../shared/stagingStore.js';
 
   let {
@@ -447,203 +447,146 @@
       }
     }
 
-    async function runGeneration(currentHistory) {
-      if (abortController?.signal?.aborted) return;
+    const resumeState = {
+      title: pageTitle,
+      paddingMm,
+      templateName,
+      themeColors,
+      pageCount: blocks.filter(b => b.canvas).reduce((max, b) => Math.max(max, b.canvas?.page || 1), 1),
+      blocks
+    };
 
-      const requestPayload = {
-        messages: currentHistory,
-        systemPrompt,
-        model: activeModel
-      };
+    const engine = new ResumeAgentEngine({
+      modelProvider: browserModelProvider,
+      screenshotProvider: browserScreenshotProvider
+    });
 
-      if (chatMode === 'agent') {
-        requestPayload.tools = AGENT_TOOLS;
+    let contentAccumulated = '';
+    let hadToolCalls = false;
+    let stepMsgIdMap = {};
+
+    const assistantMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+    const assistantMsg = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString()
+    };
+
+    chatList = chatList.map(c => {
+      if (c.id === activeChatId) {
+        return { ...c, messages: [...c.messages, assistantMsg] };
       }
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
-        signal: abortController.signal
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      let contentAccumulated = '';
-      let toolCallsAccumulated = [];
-
-      const assistantMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
-      const assistantMsg = {
-        id: assistantMsgId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date().toISOString()
-      };
-
-      chatList = chatList.map(c => {
-        if (c.id === activeChatId) {
-          return { ...c, messages: [...c.messages, assistantMsg] };
-        }
-        return c;
-      });
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (!cleanLine) continue;
-          if (cleanLine.startsWith('data: ')) {
-            const dataStr = cleanLine.substring(6);
-            if (dataStr === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(dataStr);
-              const delta = parsed.choices?.[0]?.delta;
-
-              const text = delta?.content || '';
-              if (text) {
-                contentAccumulated += text;
-                chatList = chatList.map(c => {
-                  if (c.id === activeChatId) {
-                    return { ...c, messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: contentAccumulated } : m) };
-                  }
-                  return c;
-                });
-              }
-
-              if (delta?.tool_calls) {
-                for (const tc of delta.tool_calls) {
-                  const idx = tc.index;
-                  if (!toolCallsAccumulated[idx]) {
-                    toolCallsAccumulated[idx] = { id: tc.id || '', type: 'function', function: { name: tc.function?.name || '', arguments: '' } };
-                  }
-                  if (tc.id) toolCallsAccumulated[idx].id = tc.id;
-                  if (tc.function?.name) toolCallsAccumulated[idx].function.name = tc.function.name;
-                  if (tc.function?.arguments) toolCallsAccumulated[idx].function.arguments += tc.function.arguments;
-                }
-              }
-            } catch (e) {
-              // Ignore partial parsing errors
-            }
-          }
-        }
-      }
-
-      if (!contentAccumulated && toolCallsAccumulated.length > 0) {
-        chatList = chatList.map(c => {
-          if (c.id === activeChatId) {
-            return { ...c, messages: c.messages.filter(m => m.id !== assistantMsgId) };
-          }
-          return c;
-        });
-      }
-
-      saveChats();
-
-      const completedToolCalls = toolCallsAccumulated.filter(Boolean);
-
-      if (completedToolCalls.length > 0) {
-        const assistantToolCallMsg = {
-          role: 'assistant',
-          content: contentAccumulated || null,
-          tool_calls: completedToolCalls
-        };
-
-        const nextHistory = [...currentHistory, assistantToolCallMsg];
-
-        const toolCallStatusMsg = {
-          id: 'msg_' + Math.random().toString(36).substring(2, 9),
-          role: 'tool_call',
-          content: `Running agent tools: ${completedToolCalls.map(t => t.function?.name).join(', ')}...`,
-          timestamp: new Date().toISOString()
-        };
-
-        chatList = chatList.map(c => {
-          if (c.id === activeChatId) {
-            return { ...c, messages: [...c.messages, toolCallStatusMsg] };
-          }
-          return c;
-        });
-
-        const toolResultMessagesForHistory = [];
-
-        for (const tc of completedToolCalls) {
-          const tcName = tc.function?.name || '';
-          let parsedArgs = {};
-          try { parsedArgs = JSON.parse(tc.function?.arguments || '{}'); } catch (e) {}
-
-          const stepMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
-          const stepMsg = {
-            id: stepMsgId,
-            role: 'tool_call',
-            tool_call_id: tc.id,
-            name: tcName,
-            content: `⚙️ Tool use: ${tcName}(${Object.keys(parsedArgs).length ? JSON.stringify(parsedArgs) : ''})...`,
-            timestamp: new Date().toISOString()
-          };
-
-          chatList = chatList.map(c => {
-            if (c.id === activeChatId) {
-              return { ...c, messages: [...c.messages, stepMsg] };
-            }
-            return c;
-          });
-
-          const { result, stagedChangesUpdate } = await runAgentTool(tcName, parsedArgs, {
-            blocks, paddingMm, templateName, themeColors, stagedChanges: $stagedChanges, pageTitle
-          });
-
-          if (stagedChangesUpdate) {
-            stagedChanges.set(stagedChangesUpdate);
-          }
-
-          const toolResultMsg = {
-            id: 'msg_' + Math.random().toString(36).substring(2, 9),
-            role: 'tool',
-            isToolResult: true,
-            tool_call_id: tc.id,
-            name: tcName,
-            content: JSON.stringify(result),
-            timestamp: new Date().toISOString()
-          };
-
-          chatList = chatList.map(c => {
-            if (c.id === activeChatId) {
-              return {
-                ...c,
-                messages: [
-                  ...c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${tcName}` } : m),
-                  toolResultMsg
-                ]
-              };
-            }
-            return c;
-          });
-
-          toolResultMessagesForHistory.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            name: tcName,
-            content: JSON.stringify(result)
-          });
-        }
-
-        saveChats();
-        await runGeneration([...nextHistory, ...toolResultMessagesForHistory]);
-      }
-    }
+      return c;
+    });
 
     try {
-      await runGeneration(historyPayload);
+      for await (const ev of engine.optimizeResume(resumeState, queryText, {
+        messages: historyPayload,
+        systemPrompt,
+        model: activeModel,
+        signal: abortController.signal,
+        mode: chatMode === 'agent' ? 'agent' : 'coach'
+      })) {
+        switch (ev.type) {
+          case 'text':
+            contentAccumulated += ev.delta;
+            chatList = chatList.map(c => {
+              if (c.id === activeChatId) {
+                return { ...c, messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: contentAccumulated } : m) };
+              }
+              return c;
+            });
+            break;
+
+          case 'tool_call': {
+            hadToolCalls = true;
+            const stepMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+            stepMsgIdMap[ev.name + '_' + ev.id] = stepMsgId;
+            const stepMsg = {
+              id: stepMsgId,
+              role: 'tool_call',
+              tool_call_id: ev.id,
+              name: ev.name,
+              content: `⚙️ Tool use: ${ev.name}(${Object.keys(ev.args).length ? JSON.stringify(ev.args) : ''})...`,
+              timestamp: new Date().toISOString()
+            };
+            chatList = chatList.map(c => {
+              if (c.id === activeChatId) {
+                return { ...c, messages: [...c.messages, stepMsg] };
+              }
+              return c;
+            });
+            break;
+          }
+
+          case 'tool_result': {
+            const toolResultMsg = {
+              id: 'msg_' + Math.random().toString(36).substring(2, 9),
+              role: 'tool',
+              isToolResult: true,
+              tool_call_id: ev.id,
+              name: ev.name,
+              content: JSON.stringify(ev.result),
+              timestamp: new Date().toISOString()
+            };
+            const stepKey = ev.name + '_' + ev.id;
+            const stepMsgId = stepMsgIdMap[stepKey];
+            chatList = chatList.map(c => {
+              if (c.id === activeChatId) {
+                return {
+                  ...c,
+                  messages: [
+                    ...c.messages.map(m => m.id === stepMsgId ? { ...m, content: `⚙️ Executed tool ${ev.name}` } : m),
+                    toolResultMsg
+                  ]
+                };
+              }
+              return c;
+            });
+            break;
+          }
+
+          case 'staged_change':
+            // Merge delta into store — earlier staged blocks from the same run are preserved
+            stagedChanges.update(s => ({ ...s, [ev.blockId]: ev.change }));
+            break;
+
+          case 'error':
+            chatList = chatList.map(c => {
+              if (c.id === activeChatId) {
+                return { ...c, messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: m.content + `\n\n*Error: ${ev.error}*` } : m) };
+              }
+              return c;
+            });
+            break;
+
+          case 'done':
+            // Remove empty assistant message if no content AND tool calls happened
+            // (tool status messages convey the action)
+            if (!contentAccumulated && hadToolCalls) {
+              chatList = chatList.map(c => {
+                if (c.id === activeChatId) {
+                  return { ...c, messages: c.messages.filter(m => m.id !== assistantMsgId) };
+                }
+                return c;
+              });
+            }
+
+            if (ev.reason === 'max_turns') {
+              chatList = chatList.map(c => {
+                if (c.id === activeChatId) {
+                  return { ...c, messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, content: m.content + '\n\n*Agent reached the 30-turn limit. Some optimisations may be incomplete.*' } : m) };
+                }
+                return c;
+              });
+            }
+
+            saveChats();
+            break;
+        }
+      }
+
     } catch (err) {
       if (err.name === 'AbortError') {
         console.log('Stream generation aborted');
@@ -654,8 +597,6 @@
             const updatedMessages = [...c.messages];
             const lastMsg = updatedMessages[updatedMessages.length - 1];
             if (lastMsg && lastMsg.role === 'assistant') {
-              // Replace the last message with a new object instead of mutating the
-              // original reference (which is shared with the shallow array copy).
               updatedMessages[updatedMessages.length - 1] = {
                 ...lastMsg,
                 content: lastMsg.content + `\n\n*Error: Failed to fetch response. (${err.message})*`
