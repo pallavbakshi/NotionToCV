@@ -35,7 +35,11 @@ export async function renderResumePDF(blocks, ctx) {
   // Page background is engine-owned (parity with the on-screen .cv-page fill).
   const pageBgColor = hexToRgb((ctx.themeColors && ctx.themeColors.backgroundColor) || '#ffffff');
 
-  // Track embedded fonts: key = `${family}__${style}` -> pdf-lib PDFFont
+  // Track embedded fonts keyed by the fontkit font OBJECT (reference identity),
+  // not a reconstructed `${family}__${style}` string. Within one render every glyph
+  // carries the live REGISTRY font object, and getFontBufferForFont already matches
+  // by identity — so this is collision-proof against binaries that share a
+  // familyName/subfamilyName (e.g. weight-in-name fonts) with no brittle parsing.
   const embeddedFonts = new Map();
 
   // Pre-compute layouts for all placed blocks to know which fonts we need
@@ -57,15 +61,14 @@ export async function renderResumePDF(blocks, ctx) {
     if (lo.kind !== 'text') continue;
     for (const line of lo.lines) {
       for (const glyph of line.glyphs) {
-        const key = `${glyph.font.familyName}__${glyph.font.subfamilyName || 'normal'}`;
-        if (!embeddedFonts.has(key)) {
+        if (!embeddedFonts.has(glyph.font)) {
           // Pull the binary from the engine's font registry by reference identity —
           // robust to fonts whose familyName embeds the weight (e.g. "Fira Code
           // Medium"), which broke filename reconstruction.
           const fontBuffer = getFontBufferForFont(glyph.font);
           if (fontBuffer) {
             const pdfFont = await pdfDoc.embedFont(fontBuffer, { subset: false });
-            embeddedFonts.set(key, pdfFont);
+            embeddedFonts.set(glyph.font, pdfFont);
           }
         }
       }
@@ -105,8 +108,7 @@ export async function renderResumePDF(blocks, ctx) {
       // Draw text lines
       for (const line of lo.lines) {
         for (const glyph of line.glyphs) {
-          const key = `${glyph.font.familyName}__${glyph.font.subfamilyName || 'normal'}`;
-          const pdfFont = embeddedFonts.get(key);
+          const pdfFont = embeddedFonts.get(glyph.font);
           if (!pdfFont) continue;
 
           const xPt = mmToPt(rect.leftMm + glyph.xMm);
