@@ -333,8 +333,8 @@ export function unplacedPassthrough(block) {
     passthrough: {
       elementType: block.elementType || block.type,
       imageData: block.imageData,
-      barStyle: block.barStyle,
-      barColor: block.barColor,
+      barStyle: block.canvas?.barStyle || block.barStyle,
+      barColor: block.canvas?.barColor || block.barColor,
     },
   };
 }

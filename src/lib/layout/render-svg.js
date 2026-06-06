@@ -265,6 +265,40 @@ function renderLinePath(parts, line) {
 }
 
 /**
+ * Build an SVG <line> (or pair of lines for double) that mirrors drawDividerLine
+ * in render-pdf.js — solid/dashed/dotted/double, matching the CSS border the
+ * BlockRenderer renders on screen.
+ * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+ * @param {string} [barStyle]
+ * @param {string} [barColor]
+ * @returns {string}
+ */
+function svgDividerLine(x1, y1, x2, y2, barStyle, barColor) {
+  const style = barStyle || 'solid';
+  const color = escapeXml(barColor || '#000000');
+  const w = 0.265; // 1 CSS px @96dpi in mm
+
+  const baseAttrs = `stroke="${color}" stroke-width="${w}" fill="none"`;
+
+  if (style === 'double') {
+    const isH = y1 === y2;
+    const off = w * 2;
+    const [a1, a2] = isH
+      ? [`x1="${x1}" y1="${y1 - off}" x2="${x2}" y2="${y2 - off}"`,
+         `x1="${x1}" y1="${y1 + off}" x2="${x2}" y2="${y2 + off}"`]
+      : [`x1="${x1 - off}" y1="${y1}" x2="${x2 - off}" y2="${y2}"`,
+         `x1="${x1 + off}" y1="${y1}" x2="${x2 + off}" y2="${y2}"`];
+    return `<line ${a1} ${baseAttrs} /><line ${a2} ${baseAttrs} />`;
+  }
+
+  let dashAttr = '';
+  if (style === 'dashed') dashAttr = ` stroke-dasharray="${w * 3.4} ${w * 2.3}"`;
+  else if (style === 'dotted') dashAttr = ` stroke-dasharray="${w} ${w * 1.9}"`;
+
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${baseAttrs}${dashAttr} />`;
+}
+
+/**
  * Render a pass-through block (divider / headshot).
  * @param {LaidOutBlock} laidOutBlock
  * @returns {string}
@@ -281,14 +315,10 @@ function renderPassthrough(laidOutBlock) {
 
   if (pt.elementType === 'horizontal_divider' || pt.elementType === 'horizontal divider') {
     const y = blockHeightMm / 2;
-    const color = pt.barColor || '#000000';
-    const width = pt.barStyle === 'thick' ? 0.5 : 0.25;
-    parts.push(`<line x1="0" y1="${y}" x2="${blockWidthMm}" y2="${y}" stroke="${escapeXml(color)}" stroke-width="${width}" />`);
+    parts.push(svgDividerLine(0, y, blockWidthMm, y, pt.barStyle, pt.barColor));
   } else if (pt.elementType === 'vertical_divider' || pt.elementType === 'vertical divider') {
     const x = blockWidthMm / 2;
-    const color = pt.barColor || '#000000';
-    const width = pt.barStyle === 'thick' ? 0.5 : 0.25;
-    parts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${blockHeightMm}" stroke="${escapeXml(color)}" stroke-width="${width}" />`);
+    parts.push(svgDividerLine(x, 0, x, blockHeightMm, pt.barStyle, pt.barColor));
   } else if (pt.elementType === 'headshot') {
     // Only allow data: image URLs — never an arbitrary (e.g. javascript:) href.
     if (pt.imageData && /^data:image\//i.test(pt.imageData)) {

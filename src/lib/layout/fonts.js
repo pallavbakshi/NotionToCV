@@ -441,7 +441,9 @@ export function resolveRunStyle(baseStyle, marks = []) {
   for (const mark of marks) {
     switch (mark.type) {
       case 'bold':
-        weight = 700;
+        // Step up to 700 minimum, but never below the base weight — avoids
+        // ironically lightening an 800-weight heading when bolding a word inside it.
+        weight = Math.max(weight, 700);
         break;
       case 'italic':
         style = 'italic';
