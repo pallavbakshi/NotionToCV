@@ -320,14 +320,17 @@ function escapeXml(str) {
  * @returns {string}
  */
 function arrayBufferToBase64(buffer) {
+  // Node: Buffer.from is O(1) copy + native base64 encode — much faster than looping.
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(buffer).toString('base64');
+  }
+  // Browser: chunked apply avoids call-stack overflow on large (300KB+) font binaries
+  // while still being significantly faster than string concatenation in a loop.
   const bytes = new Uint8Array(buffer);
   let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const CHUNK = 0x8000; // 32KB — safe well below V8's argument-count limit
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
   }
-  if (typeof btoa !== 'undefined') {
-    return btoa(binary);
-  }
-  // Node.js fallback
-  return Buffer.from(binary, 'binary').toString('base64');
+  return btoa(binary);
 }

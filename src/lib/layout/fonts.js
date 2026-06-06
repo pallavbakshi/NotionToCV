@@ -88,6 +88,23 @@ const FONT_BUFFERS = new Map();
 
 let warnedUnknownFamily = new Set();
 
+// ---------------------------------------------------------------------------
+// Init latch — ensures a single load regardless of how many callers invoke
+// initFonts() concurrently or sequentially.
+// ---------------------------------------------------------------------------
+
+/** @type {Promise<void>|null} */
+let _initPromise = null;
+/** @type {boolean} */
+let _initDone = false;
+
+/**
+ * True once initFonts() has successfully completed at least once.
+ * Components can read this to avoid triggering computeLayout before fonts exist.
+ * @type {boolean}
+ */
+export let fontsReady = false;
+
 /**
  * Build a filename slug for the vendored binary.
  * @param {string} family
@@ -103,8 +120,18 @@ function binarySlug(family, weight, italic) {
 
 /**
  * Async load all vendored font binaries. Works in browser (fetch) and Node (fs).
+ * Idempotent: concurrent or repeated calls share one in-flight load and resolve
+ * immediately once the first load completes.
  */
 export async function initFonts() {
+  if (_initDone) return;
+  if (_initPromise) return _initPromise;
+
+  _initPromise = _doInit();
+  return _initPromise;
+}
+
+async function _doInit() {
   const isNode = typeof window === 'undefined';
   // In the browser we must also hand the binaries to the CSS font system, or the
   // on-screen SVG <text font-family="Inter"> falls back to a system font whose
@@ -120,6 +147,9 @@ export async function initFonts() {
     for (const w of weights) {
       const slug = binarySlug(family, w, italic);
       const key = `${family}__${w}__${italic ? 'italic' : 'normal'}`;
+
+      // Already loaded (should not happen with the latch, but be defensive)
+      if (REGISTRY.has(key)) continue;
 
       let buffer;
       const fontUrl = new URL(`../../assets/fonts/vendor/${slug}`, import.meta.url);
@@ -168,6 +198,9 @@ export async function initFonts() {
   if (fontFaceLoads.length > 0) {
     await Promise.allSettled(fontFaceLoads);
   }
+
+  _initDone = true;
+  fontsReady = true;
 }
 
 // ---------------------------------------------------------------------------

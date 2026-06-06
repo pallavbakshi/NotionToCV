@@ -26,7 +26,7 @@ import { composeBlock, passthroughBlock, unplacedBlock, unplacedPassthrough } fr
  * @property {Object} passthrough
  */
 
-export { initFonts, getFont, resolveRunStyle, effectiveBaseStyle, fontCategory } from './fonts.js';
+export { initFonts, fontsReady, getFont, resolveRunStyle, effectiveBaseStyle, fontCategory } from './fonts.js';
 export { getTypeStyle } from './template-metrics.js';
 export { blockRectMm, colWidthMm, mmToPt, mmToPx, ptToMm, advanceToMm, PAGE_W_MM, PAGE_H_MM, COLUMNS, GUTTER_MM, ROW_MM } from './units.js';
 export { emptyBlock, EPSILON } from './model.js';

@@ -3,7 +3,7 @@
   import { onMount, onDestroy } from 'svelte';
   import BlockRenderer from './BlockRenderer.svelte';
   import { anyOverlap } from './canvasUtils.js';
-  import { computeLayout, blockRectMm, renderBlockSVG } from '../layout/index.js';
+  import { computeLayout, blockRectMm, renderBlockSVG, initFonts, fontsReady } from '../layout/index.js';
 
   let {
     block,
@@ -30,6 +30,12 @@
 
   const PX_PER_MM = 96 / 25.4;
 
+  // Guard computeLayout: the font registry must be populated before layout runs.
+  // fontsReady is a plain boolean; we mirror it into a local $state so Svelte
+  // re-runs the $derived below once initFonts() completes.
+  let fontsDone = $state(fontsReady);
+  onMount(() => { initFonts().then(() => { fontsDone = true; }); });
+
   let contentEl = $state(null);
   let isDraggingThis = $state(false);
   let resizeState = $state(null);
@@ -54,9 +60,11 @@
   );
   let heightMm = $derived(block.canvas ? block.canvas.rowSpan * 5 : 0);
 
-  // Layout engine: compute deterministic layout for text blocks
+  // Layout engine: compute deterministic layout for text blocks.
+  // Gated on fontsDone so we never call computeLayout before initFonts() resolves —
+  // getFont() throws if the registry is empty (intentional guard against misuse).
   let blockLayout = $derived(
-    block.canvas && !isCanvasElement
+    fontsDone && block.canvas && !isCanvasElement
       ? computeLayout(block, blockRectMm(block.canvas, paddingMm), {
           templateName,
           paddingMm,
