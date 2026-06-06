@@ -1,8 +1,9 @@
 /**
  * shape.js — Shape a single styled run with fontkit.
  *
- * Applies text-transform, shapes with real GPOS kerning/ligatures,
- * converts advances to mm, adds letter-spacing, and marks break opportunities.
+ * Applies text-transform, shapes with real GPOS kerning (ligatures deliberately
+ * disabled — see shapeRun), converts advances to mm, adds letter-spacing, and
+ * marks break opportunities.
  */
 
 import { advanceToMm } from './units.js';
@@ -44,8 +45,17 @@ export function shapeRun(text, runStyle) {
     ? text.toUpperCase()
     : text;
 
-  // 2. Shape with fontkit — this applies real GPOS kerning and ligatures
-  const run = runStyle.font.layout(transformedText);
+  // 2. Shape with fontkit. Apply real GPOS kerning, but DISABLE ligature/contextual
+  // GSUB features. The engine's contract is one shaped glyph per codepoint: render-svg
+  // emits one absolute x per glyph and render-pdf draws one char per glyph. If fontkit
+  // formed a ligature (e.g. "ffl" → one glyph carrying 3 codePoints), the SVG <text>
+  // would hold 3 chars against 1 x value and the browser (which we tell NOT to re-ligate)
+  // would auto-advance the extras, desyncing every subsequent glyph; the PDF would draw a
+  // 3-char string at a single point. Inter never ligates, but Lora/Playfair/Outfit/Space
+  // Grotesk all form fi/fl/ff ligatures by default — so this guard is load-bearing for
+  // every template except `clean`. Disabling these GSUB features leaves GPOS kerning
+  // untouched (verified: AV/To/Wa advances are identical with the features off).
+  const run = runStyle.font.layout(transformedText, { liga: false, clig: false, dlig: false, calt: false });
 
   const glyphs = [];
   for (let i = 0; i < run.glyphs.length; i++) {

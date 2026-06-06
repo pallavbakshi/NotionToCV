@@ -174,6 +174,8 @@ function mainPlugin(env) {
                 templateName: data.templateName || 'clean',
                 paddingMm: data.paddingMm || 15,
                 themeColors: data.themeColors || {},
+                // Honor manually-added blank trailing pages (pages with no blocks).
+                pageCount: data.pageCount || 1,
               };
 
               const pdfBytes = await layout.renderResumePDF(data.blocks || [], ctx);

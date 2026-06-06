@@ -413,7 +413,11 @@ export function effectiveBaseStyle(templateName, blockType, themeColors) {
     letterSpacingPt: raw.letterSpacingPt,
     textTransform: raw.textTransform,
     borderBottom: raw.borderBottom,
-    borderLeft: raw.borderLeft,
+    // The left accent bar (e.g. modern H2) is conceptually the heading's color, so it
+    // must follow the themed category color — otherwise changing h2Color leaves the bar
+    // frozen at the template default. Screen (SVG) and PDF both read this, so they stay
+    // in sync; this only makes the decoration track the theme.
+    borderLeft: raw.borderLeft ? { ...raw.borderLeft, color } : null,
     paddingLeftMm: raw.paddingLeftMm,
   };
 }

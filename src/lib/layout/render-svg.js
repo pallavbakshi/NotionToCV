@@ -1,8 +1,12 @@
 /**
  * render-svg.js — Render a LaidOutBlock as an SVG element (string).
  *
- * glyphMode:'text' (default): <text> per line with explicit per-glyph x list.
- * glyphMode:'path': <path> per glyph for pixel-identical rendering.
+ * glyphMode:'text' (default): <text> per line with explicit per-glyph x list. This
+ *   is the only mode the app uses and the one that supports faux bold/italic,
+ *   underline, and strike.
+ * glyphMode:'path': <path> per glyph (true glyph outlines, no font needed). NOTE:
+ *   this mode does not currently emit faux bold/italic skew, underline, or strike —
+ *   it is not wired into the app and exists for outline export experiments only.
  */
 
 import { getFontBufferForFont } from './fonts.js';
@@ -209,8 +213,9 @@ function renderLineText(parts, line) {
     // re-shapes <text> content by default: if it forms a ligature (e.g. "fl"),
     // two characters collapse into one glyph and the per-character x list desyncs,
     // shifting every glyph after it. Disable browser kerning/ligatures so our
-    // explicit positions are honored verbatim — and so screen matches the PDF,
-    // which draws by glyph id and never ligates.
+    // explicit positions are honored verbatim — and so screen matches the PDF. The
+    // PDF draws each glyph's char individually at the engine's absolute x (it does no
+    // GSUB shaping), and the shaper now disables ligatures, so neither path ligates.
     const NO_RESHAPE = ` font-kerning="none" style="font-variant-ligatures:none;font-feature-settings:'liga' 0,'clig' 0,'dlig' 0,'calt' 0"`;
 
     // Emit the span as a <text> with the given per-glyph x list.
@@ -245,7 +250,9 @@ function renderLineText(parts, line) {
 }
 
 /**
- * Render one line using <path> per glyph (pixel-identical).
+ * Render one line using <path> per glyph (true glyph outlines). NOTE: does not emit
+ * faux bold/italic, underline, or strike — see the glyphMode note in the file header.
+ * Unused by the app (the 'text' mode is authoritative); kept for outline export.
  * @param {string[]} parts
  * @param {LaidOutLine} line
  */
@@ -282,7 +289,9 @@ function svgDividerLine(x1, y1, x2, y2, barStyle, barColor) {
 
   if (style === 'double') {
     const isH = y1 === y2;
-    const off = w * 2;
+    // Two 1px strokes offset by ±1px (≈3px total), identical to drawDividerLine in
+    // render-pdf.js (off = onePx). Was w*2, which spaced the SVG twins wider than the PDF.
+    const off = w;
     const [a1, a2] = isH
       ? [`x1="${x1}" y1="${y1 - off}" x2="${x2}" y2="${y2 - off}"`,
          `x1="${x1}" y1="${y1 + off}" x2="${x2}" y2="${y2 + off}"`]

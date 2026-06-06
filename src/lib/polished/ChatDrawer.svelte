@@ -397,7 +397,7 @@
             },
             html_without_css: {
               type: "string",
-              description: "The proposed text content as standard semantic HTML (e.g. using <p>, <strong>, <em>, <ul>, <li>). Do not include any styles, classes, inline CSS, or font declarations."
+              description: "The proposed text content as plain inline HTML: text with <strong>, <em>, <u>, <s>, and <br>. Multiple <p> paragraphs are allowed (each becomes a line break). Do NOT use <ul>, <ol>, <li>, tables, headings, styles, classes, inline CSS, or font declarations — lists are unsupported and will be flattened to plain text."
             }
           },
           required: ["id", "html_without_css"]
@@ -459,9 +459,21 @@
     
     const json = tempEditor.getJSON();
     tempEditor.destroy();
-    
-    const firstChild = json.content?.[0];
-    return firstChild?.content ?? [];
+
+    // Tiptap may parse the proposal into MULTIPLE top-level block nodes (several
+    // <p>s, or a list whose items get demoted to paragraphs). The engine stores a
+    // block's text as ONE flat inline array with hardBreak separators, so previously
+    // returning only content[0].content silently dropped everything after the first
+    // block. Flatten every block's inline content into one array, joining blocks with
+    // a hardBreak (a paragraph break maps to a line break within the canvas block).
+    const blockNodes = json.content ?? [];
+    const inline = [];
+    for (let i = 0; i < blockNodes.length; i++) {
+      const childContent = blockNodes[i].content ?? [];
+      if (i > 0 && childContent.length > 0) inline.push({ type: 'hardBreak' });
+      inline.push(...childContent);
+    }
+    return inline;
   }
 
   function parseTiptapJsonToHtml(content) {
@@ -568,6 +580,12 @@
   }
 
   async function runAgentTool(name, args) {
+    // Agent tools call computeLayout → getFont, which throws if the font registry
+    // is empty. onMount kicks off initFonts() but doesn't await it; if the user
+    // fires Agent Mode before that resolves we'd crash. initFonts() is idempotent
+    // and resolves instantly once loaded, so awaiting here is a cheap, race-free gate.
+    await initFonts();
+
     const PX_PER_MM = 96 / 25.4;
     const cw = (210 - 2 * paddingMm - 12) / 4;
     
@@ -763,7 +781,7 @@ ${themeStyles}
 Guidelines:
 1. You are in Agent Mode. You have tools to read, update block content, and take screenshots.
 2. Use 'read_block' to get full details of a block including styling, spatial capacity, and neighbors.
-3. Use 'update_block_content' to propose modifications to block text. Specify semantic HTML (e.g. <p>, <strong>, <em>, <ul>, <li>). Do not include any styles or CSS.
+3. Use 'update_block_content' to propose modifications to block text. Use plain inline HTML only: text with <strong>, <em>, <u>, <s>, and <br> for line breaks. Multiple <p> paragraphs are allowed (each becomes a line break). Do NOT use <ul>, <ol>, <li>, tables, headings, or any styles/CSS — lists are not supported and will be flattened to plain text.
 4. Your proposed changes will be STAGED as red/green inline diffs in the Notion pane. The user will accept or deny them.
 5. Respect the block spatial budget! Always check capacity numbers returned by update_block_content or read_block to ensure your revisions fit. Avoid overflowing blocks.
 6. When referencing blocks, use their ID or name (e.g. @contact-section).
@@ -1142,7 +1160,7 @@ Guidelines:
           toolResultMessagesForHistory.push({
             role: 'tool',
             tool_call_id: tc.id,
-            name: tc.name,
+            name: tcName, // tc.name is undefined — the name lives at tc.function.name (tcName)
             content: JSON.stringify(result)
           });
         }

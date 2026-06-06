@@ -9,6 +9,7 @@
   import './lib/polished/templates/elegant.css';
   import './lib/polished/templates/compact.css';
   import { initFonts } from './lib/layout/index.js';
+  import { templateDefaultFonts, normalizeTemplateName } from './lib/polished/templateFonts.js';
 
   // Load resumes list from localStorage
   let initialResumes = [];
@@ -23,20 +24,9 @@
 
   let resumes = $state(initialResumes);
 
-  // Default font mapping for each template
-  const templateDefaultFonts = {
-    clean: { h1: 'Inter', h2: 'Inter', h3: 'Inter', text: 'Inter' },
-    modern: { h1: 'Space Grotesk', h2: 'Space Grotesk', h3: 'Space Grotesk', text: 'Space Grotesk' },
-    elegant: { h1: 'Playfair Display', h2: 'Playfair Display', h3: 'Playfair Display', text: 'Lora' },
-    compact: { h1: 'Outfit', h2: 'Outfit', h3: 'Outfit', text: 'Outfit' }
-  };
-
-  // Geometry is engine-owned: only the built-in presets are valid templates.
-  // Older/imported resumes may reference a custom template id — normalize those
-  // to a built-in preset (default `clean`). Colors/fonts are preserved via themeColors.
-  function normalizeTemplateName(name) {
-    return templateDefaultFonts[name] ? name : 'clean';
-  }
+  // templateDefaultFonts + normalizeTemplateName now live in a shared module
+  // (./lib/polished/templateFonts.js) so NotionPane's JSON import defaults to the
+  // same per-template fonts instead of a blanket Inter.
 
   // Router state
   let currentPath = $state('/dashboard');
@@ -444,17 +434,19 @@
         pageTitle = resume.pageTitle;
         paddingMm = resume.paddingMm;
         // Migrate any custom-template id to a built-in preset (geometry is ours).
-        activeTemplate = normalizeTemplateName(resume.templateName);
+        const normalizedTemplate = normalizeTemplateName(resume.templateName);
+        activeTemplate = normalizedTemplate;
+        const tdf = templateDefaultFonts[normalizedTemplate];
         themeColors = {
           h1Color: resume.themeColors?.h1Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
           h2Color: resume.themeColors?.h2Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
           h3Color: resume.themeColors?.h3Color ?? resume.themeColors?.textColor ?? '#1e1b18',
           textColor: resume.themeColors?.textColor ?? '#1e1b18',
           backgroundColor: resume.themeColors?.backgroundColor ?? '#ffffff',
-          h1Font: resume.themeColors?.h1Font ?? templateDefaultFonts[resume.templateName]?.h1 ?? 'Inter',
-          h2Font: resume.themeColors?.h2Font ?? templateDefaultFonts[resume.templateName]?.h2 ?? 'Inter',
-          h3Font: resume.themeColors?.h3Font ?? templateDefaultFonts[resume.templateName]?.h3 ?? 'Inter',
-          textFont: resume.themeColors?.textFont ?? templateDefaultFonts[resume.templateName]?.text ?? 'Inter'
+          h1Font: resume.themeColors?.h1Font ?? tdf?.h1 ?? 'Inter',
+          h2Font: resume.themeColors?.h2Font ?? tdf?.h2 ?? 'Inter',
+          h3Font: resume.themeColors?.h3Font ?? tdf?.h3 ?? 'Inter',
+          textFont: resume.themeColors?.textFont ?? tdf?.text ?? 'Inter'
         };
       }
     } else {
@@ -498,18 +490,20 @@
             blocks = data.blocks;
             pageTitle = data.pageTitle ?? '';
             paddingMm = data.paddingMm ?? 15;
-            if (data.templateName) activeTemplate = normalizeTemplateName(data.templateName);
+            const normalizedTemplate = normalizeTemplateName(data.templateName);
+            if (data.templateName) activeTemplate = normalizedTemplate;
             if (data.themeColors) {
+              const tdf = templateDefaultFonts[normalizedTemplate];
               themeColors = {
                 h1Color: data.themeColors.h1Color ?? data.themeColors.primaryColor ?? '#0a2463',
                 h2Color: data.themeColors.h2Color ?? data.themeColors.primaryColor ?? '#0a2463',
                 h3Color: data.themeColors.h3Color ?? data.themeColors.textColor ?? '#1e1b18',
                 textColor: data.themeColors.textColor ?? '#1e1b18',
                 backgroundColor: data.themeColors.backgroundColor ?? '#ffffff',
-                h1Font: data.themeColors.h1Font ?? templateDefaultFonts[data.templateName]?.h1 ?? 'Inter',
-                h2Font: data.themeColors.h2Font ?? templateDefaultFonts[data.templateName]?.h2 ?? 'Inter',
-                h3Font: data.themeColors.h3Font ?? templateDefaultFonts[data.templateName]?.h3 ?? 'Inter',
-                textFont: data.themeColors.textFont ?? templateDefaultFonts[data.templateName]?.text ?? 'Inter'
+                h1Font: data.themeColors.h1Font ?? tdf?.h1 ?? 'Inter',
+                h2Font: data.themeColors.h2Font ?? tdf?.h2 ?? 'Inter',
+                h3Font: data.themeColors.h3Font ?? tdf?.h3 ?? 'Inter',
+                textFont: data.themeColors.textFont ?? tdf?.text ?? 'Inter'
               };
             }
           }
@@ -621,22 +615,27 @@
   // Import carries text (blocks) + a seeded color palette only. Geometry is ours
   // (a built-in preset); any imported CSS/templateId is intentionally ignored.
   function handleNewImport({ blocks: importedBlocks, templateId, themeColors: importedColors }) {
+    const normalized = normalizeTemplateName(templateId);
+    const tdf = templateDefaultFonts[normalized];
     const newResume = {
       id: 'res_' + Math.random().toString(36).substring(2, 9),
       pageTitle: 'Imported CV',
       blocks: importedBlocks,
       paddingMm: 15,
-      templateName: normalizeTemplateName(templateId),
+      templateName: normalized,
       themeColors: {
         h1Color: importedColors?.h1Color ?? '#0a2463',
         h2Color: importedColors?.h2Color ?? '#0a2463',
         h3Color: importedColors?.h3Color ?? '#1e1b18',
         textColor: importedColors?.textColor ?? '#1e1b18',
         backgroundColor: importedColors?.backgroundColor ?? '#ffffff',
-        h1Font: importedColors?.h1Font ?? 'Inter',
-        h2Font: importedColors?.h2Font ?? 'Inter',
-        h3Font: importedColors?.h3Font ?? 'Inter',
-        textFont: importedColors?.textFont ?? 'Inter'
+        // Default to the normalized template's fonts (e.g. elegant → Playfair/Lora),
+        // not a blanket Inter — matches handleRouteChange so an imported resume looks
+        // like its template instead of falling back to the wrong family.
+        h1Font: importedColors?.h1Font ?? tdf?.h1 ?? 'Inter',
+        h2Font: importedColors?.h2Font ?? tdf?.h2 ?? 'Inter',
+        h3Font: importedColors?.h3Font ?? tdf?.h3 ?? 'Inter',
+        textFont: importedColors?.textFont ?? tdf?.text ?? 'Inter'
       },
       updatedAt: new Date().toISOString()
     };

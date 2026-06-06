@@ -2,6 +2,7 @@
 <script>
   import { onMount } from 'svelte';
   import BlockEditor from './BlockEditor.svelte';
+  import { templateDefaultFonts, normalizeTemplateName } from '../polished/templateFonts.js';
 
   // Svelte 5 props
   let { 
@@ -253,12 +254,30 @@
           blocks = data.blocks;
           pageTitle = data.pageTitle || '';
           if (data.paddingMm !== undefined) paddingMm = data.paddingMm;
-          if (data.templateName) activeTemplate = data.templateName;
+          // Normalize to a built-in preset: a custom/legacy id would leave
+          // activeTemplate unsupported, so getTypeStyle falls back to clean geometry
+          // while fonts default off the normalized name — a transient mismatch.
+          if (data.templateName) activeTemplate = normalizeTemplateName(data.templateName);
           if (data.themeColors) {
+            // The layout engine reads per-category keys (h1Color/h2Color/h3Color/
+            // textColor + h1Font/…/textFont). Older exports only carried a flat
+            // primaryColor/textColor/backgroundColor — map those forward, falling
+            // back to per-category keys when present, so imports don't silently
+            // drop to Inter + default colors.
+            const tc = data.themeColors;
+            // Fonts default to the imported template's defaults (e.g. elegant →
+            // Playfair/Lora), not a blanket Inter — matches App.svelte's import paths.
+            const tdf = templateDefaultFonts[normalizeTemplateName(data.templateName)];
             themeColors = {
-              primaryColor: data.themeColors.primaryColor ?? '#0a2463',
-              textColor: data.themeColors.textColor ?? '#1e1b18',
-              backgroundColor: data.themeColors.backgroundColor ?? '#ffffff'
+              h1Color: tc.h1Color ?? tc.primaryColor ?? '#0a2463',
+              h2Color: tc.h2Color ?? tc.primaryColor ?? '#0a2463',
+              h3Color: tc.h3Color ?? tc.textColor ?? '#1e1b18',
+              textColor: tc.textColor ?? '#1e1b18',
+              backgroundColor: tc.backgroundColor ?? '#ffffff',
+              h1Font: tc.h1Font ?? tdf?.h1 ?? 'Inter',
+              h2Font: tc.h2Font ?? tdf?.h2 ?? 'Inter',
+              h3Font: tc.h3Font ?? tdf?.h3 ?? 'Inter',
+              textFont: tc.textFont ?? tdf?.text ?? 'Inter'
             };
           }
         } else {

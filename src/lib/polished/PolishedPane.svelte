@@ -323,7 +323,10 @@
           pageTitle,
           paddingMm,
           templateName,
-          themeColors
+          themeColors,
+          // Manually-added blank trailing pages have no blocks; without this the
+          // PDF would stop at the last page that contains content.
+          pageCount: totalPages
         })
       });
 

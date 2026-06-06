@@ -5,7 +5,10 @@
  * coordinates. No width-based text wrapping API is used.
  */
 
-import { PDFDocument, rgb, degrees } from 'pdf-lib';
+import {
+  PDFDocument, rgb, degrees,
+  pushGraphicsState, popGraphicsState, moveTo, lineTo, closePath, clip, endPath,
+} from 'pdf-lib';
 // pdf-lib's font subsetting requires ITS OWN fontkit (@pdf-lib/fontkit), not the
 // standalone `fontkit` v2 the layout engine shapes with — that one throws
 // "subset.encodeStream is not a function" on subset:true. They coexist fine:
@@ -67,8 +70,22 @@ export async function renderResumePDF(blocks, ctx) {
           // Medium"), which broke filename reconstruction.
           const fontBuffer = getFontBufferForFont(glyph.font);
           if (fontBuffer) {
-            const pdfFont = await pdfDoc.embedFont(fontBuffer, { subset: false });
-            embeddedFonts.set(glyph.font, pdfFont);
+            try {
+              const pdfFont = await pdfDoc.embedFont(fontBuffer, { subset: false });
+              embeddedFonts.set(glyph.font, pdfFont);
+            } catch (e) {
+              // @pdf-lib/fontkit can fail to re-serialize an otherwise-valid TTF (a
+              // malformed glyf bbox throws "beyond buffer length" at save()). Surface
+              // WHICH font so it's actionable instead of an opaque fontkit stack trace.
+              // Fix is at the asset layer: sanitize the binary with pyftsubset
+              // (--recalc-bounds). scripts/test-pdf-font-embed.cjs guards against this.
+              const label = glyph.font.postscriptName || glyph.font.fullName || glyph.font.familyName || 'unknown font';
+              throw new Error(
+                `[render-pdf] Failed to embed vendored font "${label}" — the binary is ` +
+                `incompatible with @pdf-lib/fontkit. Replace it with a sanitized static TTF ` +
+                `(pyftsubset --recalc-bounds). Original error: ${e.message}`
+              );
+            }
           }
         }
       }
@@ -83,10 +100,16 @@ export async function renderResumePDF(blocks, ctx) {
     pagesMap.get(pageNum).push({ block, rect, lo });
   }
 
-  // Sort page numbers and render each page
-  const sortedPages = [...pagesMap.keys()].sort((a, b) => a - b);
-  for (const pageNum of sortedPages) {
-    const pageBlocks = pagesMap.get(pageNum);
+  // Render every page from 1 through the highest page — NOT only the pages that
+  // contain blocks. A canvas with content on pages 1 and 3 (page 2 empty) must export
+  // 3 pages, or page 3's content would slide onto page 2 and the PDF page count would
+  // diverge from the screen. ctx.pageCount carries manually-added blank trailing pages
+  // (which have no blocks). Math.max(1, …) guarantees at least one page so an empty
+  // resume still saves a valid (blank) single-page PDF.
+  const maxPlacedPage = layouts.reduce((m, { block }) => Math.max(m, block.canvas.page || 1), 1);
+  const maxPage = Math.max(1, ctx.pageCount || 1, maxPlacedPage);
+  for (let pageNum = 1; pageNum <= maxPage; pageNum++) {
+    const pageBlocks = pagesMap.get(pageNum) || [];
     const page = pdfDoc.addPage([mmToPt(PAGE_W_MM), mmToPt(PAGE_H_MM)]);
 
     // Fill the whole page with the theme background before drawing anything,
@@ -136,6 +159,27 @@ export async function renderResumePDF(blocks, ctx) {
             // Some glyphs may not be drawable; skip
           }
         }
+
+        // Underline / strike marks — drawn as lines, mirroring render-svg.js so the
+        // PDF carries text decorations that otherwise only appeared on screen.
+        // Same offsets/thickness: underline = baseline + 0.15em, strike = baseline −
+        // 0.25em, thickness = 0.05em (em = glyph.fontSizeMm).
+        for (const glyph of line.glyphs) {
+          if (!glyph.underline && !glyph.strike) continue;
+          const x1 = mmToPt(rect.leftMm + glyph.xMm);
+          const x2 = mmToPt(rect.leftMm + glyph.xMm + glyph.advanceMm);
+          const thickness = mmToPt(glyph.fontSizeMm * 0.05);
+          if (glyph.underline) {
+            const yMm = line.baselineYMm + glyph.fontSizeMm * 0.15;
+            const y = mmToPt(PAGE_H_MM - (rect.topMm + yMm));
+            page.drawLine({ start: { x: x1, y }, end: { x: x2, y }, thickness, color: hexToRgb(glyph.color) });
+          }
+          if (glyph.strike) {
+            const yMm = line.baselineYMm - glyph.fontSizeMm * 0.25;
+            const y = mmToPt(PAGE_H_MM - (rect.topMm + yMm));
+            page.drawLine({ start: { x: x1, y }, end: { x: x2, y }, thickness, color: hexToRgb(glyph.color) });
+          }
+        }
       }
 
       // Draw decorations
@@ -163,7 +207,18 @@ export async function renderResumePDF(blocks, ctx) {
     }
   }
 
-  return pdfDoc.save();
+  // save() re-serializes every embedded font; an @pdf-lib/fontkit-incompatible TTF
+  // (e.g. a malformed glyf bbox) throws HERE, not at embedFont(). Surface that clearly
+  // — the cure is sanitizing the binary; scripts/test-pdf-font-embed.cjs detects it.
+  try {
+    return await pdfDoc.save();
+  } catch (e) {
+    throw new Error(
+      `[render-pdf] Failed to serialize the PDF (pdfDoc.save). This is often an ` +
+      `@pdf-lib/fontkit-incompatible font binary — run scripts/test-pdf-font-embed.cjs ` +
+      `and sanitize any failing TTF (pyftsubset --recalc-bounds). Original error: ${e.message}`
+    );
+  }
 }
 
 /**
@@ -248,12 +303,29 @@ async function renderPassthroughToPDF(page, lo, rect, pdfDoc) {
       try {
         const img = await embedImageFromDataUrl(pdfDoc, pt.imageData);
         if (img) {
-          page.drawImage(img, {
-            x: leftPt,
-            y: topPt - heightPt,
-            width: widthPt,
-            height: heightPt,
-          });
+          // Match the on-screen headshot, which is `object-fit: cover`: scale the image
+          // to FILL the cell (cover), center it, and clip the overflow — instead of
+          // stretching it to the box (which distorts non-square photos). pdf-lib has no
+          // object-fit, so we set a rectangular clip path then draw the cover-scaled image.
+          const boxX = leftPt;
+          const boxY = topPt - heightPt; // bottom-left of the cell, PDF y-up
+          const scale = Math.max(widthPt / img.width, heightPt / img.height);
+          const drawW = img.width * scale;
+          const drawH = img.height * scale;
+          const drawX = boxX - (drawW - widthPt) / 2;
+          const drawY = boxY - (drawH - heightPt) / 2;
+          page.pushOperators(
+            pushGraphicsState(),
+            moveTo(boxX, boxY),
+            lineTo(boxX + widthPt, boxY),
+            lineTo(boxX + widthPt, boxY + heightPt),
+            lineTo(boxX, boxY + heightPt),
+            closePath(),
+            clip(),
+            endPath(),
+          );
+          page.drawImage(img, { x: drawX, y: drawY, width: drawW, height: drawH });
+          page.pushOperators(popGraphicsState());
         }
       } catch (e) {
         console.warn('[render-pdf] Failed to embed headshot:', e.message);

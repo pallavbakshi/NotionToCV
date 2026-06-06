@@ -484,7 +484,7 @@
 
   <!-- Content -->
   <div
-    class="block-content-container tmpl-{templateName} block-type-{block.type}"
+    class="block-content-container block-type-{block.type}"
     class:canvas-element={isCanvasElement}
     bind:this={contentEl}
   >
@@ -568,9 +568,14 @@
     overflow: visible;
     word-break: break-word;
     /* The layout engine (SVG/PDF) is the sole visual authority. The wrapper must
-       never paint its own border/background — those would appear on screen but
-       not in the engine-rendered PDF. Guard against any future leak. */
+       never contribute its own box model — a border/padding/background here would
+       appear on screen but not in the engine-rendered PDF. The `tmpl-*` class is
+       deliberately NOT applied to this wrapper (only `block-type-*`), so template
+       CSS like `.tmpl-modern.block-type-h2 { border-left; padding-left }` can't
+       match it and double-draw the H2 accent bar or shift the SVG right. The resets
+       below are a belt-and-suspenders guard against any future single-class leak. */
     border: 0;
+    padding: 0;
     background: transparent;
   }
 
