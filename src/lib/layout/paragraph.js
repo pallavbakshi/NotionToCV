@@ -142,28 +142,63 @@ export function layoutRuns(runs, contentWidthMm, blockHeightMm, blockMeta) {
   let runningYOffset = 0;
   const align = blockMeta?.align || 'left';
 
-  for (const brokenLine of brokenLines) {
+  for (let lineIdx = 0; lineIdx < brokenLines.length; lineIdx++) {
+    const brokenLine = brokenLines[lineIdx];
     const lineGlyphs = [];
     let lineOffsetMm = 0;
+    let justifySpacePerWhitespaceMm = 0;
+    let lastNonSpaceIdx = -1;
+    let spaceGlyphCount = 0;
+
+    // Find the last non-space glyph to define boundary for internal formatting
+    for (let i = brokenLine.glyphs.length - 1; i >= 0; i--) {
+      if (!brokenLine.glyphs[i].isWhitespace) {
+        lastNonSpaceIdx = i;
+        break;
+      }
+    }
+
     if (align === 'center') {
       lineOffsetMm = Math.max(0, (contentWidthMm - brokenLine.widthMm) / 2);
     } else if (align === 'right') {
       lineOffsetMm = Math.max(0, contentWidthMm - brokenLine.widthMm);
+    } else if (align === 'justify' && lineIdx !== brokenLines.length - 1) {
+      // Justify alignment: stretch intermediate lines to cover the full width.
+      // Do not justify the very last line of a paragraph segment.
+      const extraSpaceMm = contentWidthMm - brokenLine.widthMm;
+      if (extraSpaceMm > 0 && lastNonSpaceIdx > 0) {
+        for (let i = 0; i < lastNonSpaceIdx; i++) {
+          if (brokenLine.glyphs[i].isWhitespace) {
+            spaceGlyphCount++;
+          }
+        }
+        if (spaceGlyphCount > 0) {
+          justifySpacePerWhitespaceMm = extraSpaceMm / spaceGlyphCount;
+        }
+      }
     }
+
     let xMm = lineOffsetMm;
 
     // Collect unique styles on this line to determine line metrics
     const lineStyles = new Set();
 
-    for (const bg of brokenLine.glyphs) {
+    for (let gIdx = 0; gIdx < brokenLine.glyphs.length; gIdx++) {
+      const bg = brokenLine.glyphs[gIdx];
       const style = bg.style;
       lineStyles.add(style);
+
+      // Distribute extra spacing into intermediate white spaces on justification
+      let advanceMm = bg.advanceMm;
+      if (align === 'justify' && bg.isWhitespace && gIdx < lastNonSpaceIdx) {
+        advanceMm += justifySpacePerWhitespaceMm;
+      }
 
       lineGlyphs.push({
         glyphId: bg.glyphId,
         char: bg.char,
         xMm,
-        advanceMm: bg.advanceMm,
+        advanceMm,
         font: style.font,
         unitsPerEm: style.unitsPerEm,
         fontSizeMm: style.fontSizeMm,
@@ -172,7 +207,7 @@ export function layoutRuns(runs, contentWidthMm, blockHeightMm, blockMeta) {
         strike: style.strike,
         faux: style.faux,
       });
-      xMm += bg.advanceMm;
+      xMm += advanceMm;
     }
 
     // Baseline reconciliation: max ascent/descent/lineHeight across runs on this line
@@ -214,7 +249,7 @@ export function layoutRuns(runs, contentWidthMm, blockHeightMm, blockMeta) {
       baselineYMm,
       ascentMm: lineAscentMm,
       descentMm: lineDescentMm,
-      widthMm: brokenLine.widthMm,
+      widthMm: align === 'justify' && lineIdx !== brokenLines.length - 1 ? contentWidthMm : brokenLine.widthMm,
       lineHeightMm: lineBoxHeightMm,
     });
 
