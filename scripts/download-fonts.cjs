@@ -44,6 +44,13 @@ function fetch(url) {
         fetch(res.headers.location).then(resolve, reject);
         return;
       }
+      if (res.statusCode !== 200) {
+        reject(new Error(
+          `HTTP ${res.statusCode} for ${url}` +
+          (res.headers.location ? ` (redirect location: ${res.headers.location})` : '')
+        ));
+        return;
+      }
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => resolve(Buffer.concat(chunks)));

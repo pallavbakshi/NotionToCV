@@ -1,6 +1,7 @@
 /**
  * Phase 2 smoke test — multi-run layout, baseline reconciliation, single-run equivalence.
  */
+const assert = require('node:assert');
 const { initFonts, getFont, resolveRunStyle } = require('../src/lib/layout/fonts.js');
 const { layoutSingleRun, layoutRuns } = require('../src/lib/layout/paragraph.js');
 const { contentToRuns } = require('../src/lib/layout/runs.js');
@@ -44,6 +45,10 @@ const { contentToRuns } = require('../src/lib/layout/runs.js');
   console.log('  layoutSingleRun lines:', lo1.lines.length, 'usedHeight:', lo1.usedHeightMm);
   console.log('  layoutRuns([one]) lines:', lo2.lines.length, 'usedHeight:', lo2.usedHeightMm);
   console.log('  Match:', lo1.lines.length === lo2.lines.length && lo1.usedHeightMm === lo2.usedHeightMm);
+  assert.strictEqual(lo1.lines.length, lo2.lines.length,
+    `layoutSingleRun/layoutRuns line count mismatch: ${lo1.lines.length} vs ${lo2.lines.length}`);
+  assert.strictEqual(lo1.usedHeightMm, lo2.usedHeightMm,
+    `layoutSingleRun/layoutRuns usedHeightMm mismatch: ${lo1.usedHeightMm} vs ${lo2.usedHeightMm}`);
 
   // Test 2: Mixed bold + italic runs
   const boldStyle = resolveRunStyle(baseStyle, [{ type: 'bold' }]);
@@ -58,6 +63,8 @@ const { contentToRuns } = require('../src/lib/layout/runs.js');
   ];
 
   const lo3 = layoutRuns(runs, 35, 100, { blockId: 't3', blockType: 'paragraph' });
+  assert.ok(lo3.lines.length > 0, 'Mixed-style layout should produce at least one line');
+  assert.ok(lo3.usedHeightMm > 0, 'Mixed-style layout should have non-zero used height');
   console.log('\nMixed-style layout:');
   console.log('  lines:', lo3.lines.length);
   for (let i = 0; i < lo3.lines.length; i++) {
@@ -80,6 +87,10 @@ const { contentToRuns } = require('../src/lib/layout/runs.js');
     { type: 'text', text: ' text' },
   ];
   const styleRuns = contentToRuns(inlineNodes, baseStyle);
+  assert.strictEqual(styleRuns.length, 3, 'contentToRuns should produce 3 runs (coalescing adjacent)');
+  assert.strictEqual(styleRuns[0].text, 'Hello ');
+  assert.strictEqual(styleRuns[1].text, 'world');
+  assert.strictEqual(styleRuns[2].text, ' text');
   console.log('\ncontentToRuns:');
   for (const sr of styleRuns) {
     // Compare font identity, not faux flags — a real binary may be used

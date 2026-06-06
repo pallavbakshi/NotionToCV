@@ -28,6 +28,10 @@ const { renderBlockSVG } = require('../src/lib/layout/render-svg.js');
   const rect = blockRectMm(block.canvas, 15);
   const lo = computeLayout(block, rect, ctx);
   const svg = renderBlockSVG(lo, { glyphMode: 'text' });
+  if (!svg || !svg.startsWith('<svg')) {
+    console.error('FAIL: SVG output is empty or missing opening <svg> tag');
+    process.exit(1);
+  }
   console.log('SVG output (first 500 chars):');
   console.log(svg.slice(0, 500));
 

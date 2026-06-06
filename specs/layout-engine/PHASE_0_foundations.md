@@ -112,10 +112,10 @@ Provide `getTypeStyle(templateName, blockType, customTemplates?) -> TypeStyle`. 
 // Registry: key `${family}__${weight}__${style}` -> fontkit Font instance
 // initFonts(): load each vendored binary (fetch in browser, fs.readFile in Node) and fontkit.create(buffer).
 
-export async function initFonts(): Promise<void>;
-
+export async function initFonts();
 // Resolve a fontkit font for a desired style, with documented fallback policy.
-export function getFont(family, weight, style): { font, usedFamily, usedWeight, usedStyle, faux: { italic:boolean, bold:boolean } };
+// Returns: { font, usedFamily, usedWeight, usedStyle, faux: { italic:boolean, bold:boolean } }
+export function getFont(family, weight, style);
 ```
 
 **Fallback policy (must be explicit):**

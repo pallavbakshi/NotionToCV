@@ -89,8 +89,12 @@ function binarySlug(family, weight, italic) {
 
       if (fs.existsSync(origPath)) {
         if (origPath !== newPath) {
-          fs.renameSync(origPath, newPath);
-          console.log(`Renamed ${origName} -> ${newName}`);
+          if (fs.existsSync(newPath)) {
+            console.warn(`Skipping ${origName} -> ${newName}: target already exists (subset collision)`);
+          } else {
+            fs.renameSync(origPath, newPath);
+            console.log(`Renamed ${origName} -> ${newName}`);
+          }
         }
       }
     }

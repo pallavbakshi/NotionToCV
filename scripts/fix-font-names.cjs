@@ -22,8 +22,12 @@ for (const [oldName, newName] of Object.entries(RENAMES)) {
   const oldPath = path.join(VENDOR_DIR, oldName);
   const newPath = path.join(VENDOR_DIR, newName);
   if (fs.existsSync(oldPath)) {
-    fs.renameSync(oldPath, newPath);
-    console.log(`Renamed ${oldName} -> ${newName}`);
+    if (fs.existsSync(newPath)) {
+      console.warn(`Skipping ${oldName} -> ${newName}: target already exists`);
+    } else {
+      fs.renameSync(oldPath, newPath);
+      console.log(`Renamed ${oldName} -> ${newName}`);
+    }
   }
 }
 

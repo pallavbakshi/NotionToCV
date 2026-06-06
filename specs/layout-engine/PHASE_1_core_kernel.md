@@ -64,7 +64,13 @@ export function layoutSingleRun(text, runStyle, contentWidthMm, blockHeightMm, b
 1. `glyphs = shapeRun(text, runStyle)`.
 2. `lines = breakLines(glyphs, contentWidthMm)`.
 3. **Vertical metrics:** from fontkit font, derive `ascentMm`/`descentMm` scaled to `fontSizeMm` (`font.ascent/unitsPerEm*fontSizeMm`). Each line occupies `runStyle.lineHeightMm`.
-4. **Position lines:** for line *i*, `baselineYMm = i * lineHeightMm + ascentMm` (baseline placed so the line's box is `lineHeightMm` tall with text vertically centered per CSS line-box convention — match CSS `line-height` block behavior; document the exact baseline formula chosen).
+4. **Position lines:** for line *i*, derive metrics from the fontkit font: `ascentMm = font.ascent / unitsPerEm * fontSizeMm`, `descentMm = -font.descent / unitsPerEm * fontSizeMm`. The line box height is `lineHeightMm`. The glyph content is vertically centered within the line box (CSS half-leading):
+   ```
+   contentHeightMm = ascentMm + descentMm
+   leadingAboveMm  = (lineHeightMm - contentHeightMm) / 2
+   baselineYMm     = runningYOffset + leadingAboveMm + ascentMm
+   ```
+   where `runningYOffset` accumulates previous lines' `lineHeightMm`. This matches browser CSS `line-height` block behavior with `vertical-align: baseline`. Document the exact baseline formula chosen.
 5. **Position glyphs in a line:** running `xMm` from 0, each `LaidOutGlyph.xMm` = cumulative advance; carry `color/underline/strike/faux/font/unitsPerEm/fontSizeMm` from `runStyle`.
 6. **Totals:** `usedHeightMm = lines.length * lineHeightMm` (+ border-bottom height if present — but borders are Phase 3; here pass through `blockMeta.decorations` untouched). `maxLines = floor(blockHeightMm / lineHeightMm)`. `overflow = usedHeightMm > blockHeightMm + EPSILON`. `linesRemaining = maxLines − lines.length`.
 7. Return a fully-populated `LaidOutBlock` (`kind:'text'`).
