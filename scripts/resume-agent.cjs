@@ -120,7 +120,7 @@ async function main() {
 
   const events = [];
 
-  for await (const ev of engine.optimizeResume(inputState, instruction, { mode: 'agent' })) {
+  for await (const ev of engine.optimizeResume(inputState, instruction, { mode: 'agent', strictCapacity: opts.strictCapacity || false })) {
     events.push(ev);
 
     if (opts.verbose) {

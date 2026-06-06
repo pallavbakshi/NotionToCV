@@ -599,6 +599,12 @@
               });
             }
 
+            // Merge final transaction — catches blocks updated more than once during
+            // the run (second update to same block skips the staged_change event).
+            if (ev.transaction?.stagedChanges) {
+              stagedChanges.update(s => ({ ...s, ...ev.transaction.stagedChanges }));
+            }
+
             saveChats();
             break;
         }
@@ -644,6 +650,17 @@
       saveChats();
       isGenerating = false;
       abortController = null;
+    }
+    // Also cancel any running background job
+    if (backgroundJobStatus === 'polling' && backgroundJobId) {
+      fetch(`/api/agent/job/${backgroundJobId}`, {
+        method: 'DELETE',
+        headers: { 'X-User-Id': getUserId() }
+      }).catch(() => {});
+      clearPolling();
+      try { localStorage.removeItem(`notionToCV_bgJob_${resumeId}`); } catch (_) {}
+      backgroundJobId = null;
+      backgroundJobStatus = 'idle';
     }
   }
 

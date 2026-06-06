@@ -804,7 +804,14 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
 
             if (fileParam) {
               // Serve a specific file from the batch directory (PDF, JSON, fit report)
-              const filePath = path.join(process.cwd(), 'server/agent/results', batchDir, decodeURIComponent(fileParam));
+              const batchRoot = path.resolve(process.cwd(), 'server/agent/results', batchDir);
+              const filePath = path.resolve(batchRoot, decodeURIComponent(fileParam));
+              // Guard against path traversal outside the batch directory
+              if (!filePath.startsWith(batchRoot + path.sep) && filePath !== batchRoot) {
+                res.statusCode = 400;
+                res.end('Invalid file path');
+                return;
+              }
               if (!fs.existsSync(filePath)) {
                 res.statusCode = 404;
                 res.end('File not found');

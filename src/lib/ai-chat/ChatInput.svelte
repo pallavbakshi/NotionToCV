@@ -100,7 +100,7 @@
           type="button"
           class="btn-send-message btn-bg-job"
           onclick={handleRunInBackground}
-          disabled={!inputText.trim() && stagedAttachments.length === 0}
+          disabled={!inputText.trim()}
           title="Run in Background"
         >
           ⚡

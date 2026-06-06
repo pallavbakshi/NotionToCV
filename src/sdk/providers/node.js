@@ -171,6 +171,11 @@ export async function nodeScreenshotProvider({ blocks, pageTitle, paddingMm, tem
   // In a CI/server context this may be supplied via env.
   const port = process.env.DEV_SERVER_PORT || process.env.PORT || '5173';
 
+  // The Node screenshot provider renders the live dev-server page. To inject the
+  // current resume state it posts the full state via sessionStorage before navigating,
+  // which the app reads via ?agent-preview=1. If the dev server is not running or
+  // Puppeteer is unavailable the tool throws; the engine treats screenshots as
+  // advisory and continues (FR3.7).
   let browser;
   try {
     const puppeteer = (await import('puppeteer')).default;
@@ -180,17 +185,20 @@ export async function nodeScreenshotProvider({ blocks, pageTitle, paddingMm, tem
     });
     const page = await browser.newPage();
 
-    // Navigate to the CV page in export mode with the block data.
-    // The screenshot endpoint pattern uses a print cache, but for headless we
-    // pass data via query params or just take a plain page screenshot.
-    // For now we target the dev server; a fully offline render (canvas-based)
-    // is a future enhancement.
-    const url = `http://127.0.0.1:${port}/?export=true`;
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 15000 });
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    // Open a blank page first so we can set sessionStorage before navigation
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.evaluate((stateJson) => {
+      sessionStorage.setItem('ntcv_agent_preview_state', stateJson);
+    }, JSON.stringify({ blocks, pageTitle, paddingMm, templateName, themeColors }));
+
+    // Now navigate with the preview flag so the app picks up the injected state
+    await page.goto(`${baseUrl}/?agent-preview=1`, { waitUntil: 'networkidle0', timeout: 15000 });
 
     const el = await page.$(`[data-block-id="${blockId}"]`);
     if (!el) {
-      throw new Error(`Block ${blockId} not found on page`);
+      throw new Error(`Block ${blockId} not found on page — dev server may not support ?agent-preview=1`);
     }
 
     const buffer = await el.screenshot({ type: 'jpeg', quality: 80 });
