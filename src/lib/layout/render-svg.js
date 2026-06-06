@@ -183,6 +183,13 @@ function renderLineText(parts, line) {
       };
     }
 
+    // Approach B: skip whitespace glyphs. Spaces carry no ink — their
+    // horizontal offset is already baked into the next visible glyph's xMm.
+    // Emitting them forces the browser's whitespace-collapsing behavior into
+    // play. The PDF renderer draws each visible glyph at its absolute x
+    // without spaces; SVG matches that model.
+    if (/\s/.test(g.char)) continue;
+
     currentSpan.glyphs.push(g);
     currentSpan.xList.push(g.xMm.toFixed(3));
     // SVG <text x="..."> assigns one x per UTF-16 code unit, not per glyph.
@@ -198,8 +205,10 @@ function renderLineText(parts, line) {
   if (currentSpan) spans.push(currentSpan);
 
   // Dev guard: verify that per-span x-list length equals the total UTF-16 code
-  // units of the glyph chars.  A mismatch means a multi-unit char slipped through
-  // and the browser will assign x-values to the wrong characters.
+  // units of the visible (non-whitespace) glyph chars.  Whitespace glyphs are
+  // skipped — both glyphs[] and xList[] exclude them, so the count stays in sync.
+  // A mismatch means a multi-unit visible char slipped through and the browser
+  // will assign x-values to the wrong characters.
   for (const s of spans) {
     const totalUnits = s.glyphs.reduce((n, g) => n + g.char.length, 0);
     if (totalUnits !== s.xList.length) {
@@ -241,10 +250,10 @@ function renderLineText(parts, line) {
     const NO_RESHAPE = ` font-kerning="none" style="font-variant-ligatures:none;font-feature-settings:'liga' 0,'clig' 0,'dlig' 0,'calt' 0"`;
 
     // Emit the span as a <text> with the given per-glyph x list.
+    // Single parts.push() keeps the text content inline with the tag — no
+    // formatting whitespace that could be interpreted as renderable characters.
     const emit = (xs) => {
-      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${escapeXml(span.fontName)}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${escapeXml(span.color)}"${transform}${NO_RESHAPE}>`);
-      parts.push(chars);
-      parts.push('</text>');
+      parts.push(`<text x="${xs}" y="${line.baselineYMm.toFixed(3)}" font-family="${escapeXml(span.fontName)}" font-size="${fontSize}" font-weight="${span.weight}"${fontStyleAttr} fill="${escapeXml(span.color)}"${transform}${NO_RESHAPE}>${chars}</text>`);
     };
 
     emit(xAttr);
