@@ -35,7 +35,8 @@
     onAskAI = null,
     stagedChanges = $bindable({}),
     acceptStagedChange = null,
-    denyStagedChange = null
+    denyStagedChange = null,
+    toggleBlockLock = null
   } = $props();
 
   let editorElement;
@@ -243,6 +244,7 @@
 
     editor = new Editor({
       element: editorElement,
+      editable: !block.locked,
       extensions: [
         StarterKit.configure({
           heading: { levels: [1, 2, 3] },
@@ -278,6 +280,8 @@
       },
       editorProps: {
         handleKeyDown: (view, event) => {
+          // Locked blocks reject all key input
+          if (block.locked) return true;
           // 1. Slash Menu Key Handling
           if (showSlashMenu) {
             if (event.key === 'ArrowDown') {
@@ -423,6 +427,7 @@
         }
       },
       onUpdate: () => {
+        if (block.locked) return;
         if (!editor || editor.isDestroyed) return;
         const docNode = editor.state.doc;
         const firstChild = docNode.firstChild;
@@ -594,6 +599,13 @@
     }
   });
 
+  // Sync editor editable state with block lock status
+  $effect(() => {
+    if (editor && !editor.isDestroyed) {
+      editor.setEditable(!block.locked);
+    }
+  });
+
   // Blur editor if block is selected
   $effect(() => {
     if (selected && editor && editor.isFocused) {
@@ -720,6 +732,7 @@
   }
 
   function handleActionDelete() {
+    if (block.locked) return;
     if (selected && deleteSelectedBlocks) {
       deleteSelectedBlocks(selectedBlockIds);
     } else {
@@ -738,6 +751,7 @@
   }
 
   function handleActionDuplicate() {
+    if (block.locked) return;
     if (selected && duplicateSelectedBlocks) {
       duplicateSelectedBlocks(selectedBlockIds);
     } else {
@@ -752,11 +766,13 @@
   }
 
   function handleActionTurnInto(type) {
+    if (block.locked) return;
     applyTurnInto(type);
     showActionMenu = false;
   }
 
   function handleActionRename() {
+    if (block.locked) return;
     modalNameVal = block.name || '';
     showNameModal = true;
     validateModalName(modalNameVal);
@@ -788,11 +804,22 @@
   class:is-placed={block.canvas !== null}
   class:has-name={block.name}
   class:is-selected={selected}
+  class:is-locked={block.locked}
   data-block-id={block.id}
   bind:this={rowElement}
 >
   <!-- Gutter Controls: Visible on hover -->
   <div class="block-gutter" contenteditable="false">
+    {#if block.locked}
+      <button
+        type="button"
+        class="gutter-btn lock-indicator"
+        onclick={() => toggleBlockLock(block.id)}
+        title="Block is locked. Click to unlock."
+      >
+        🔒
+      </button>
+    {:else}
     <button 
       type="button" 
       class="gutter-btn add-btn" 
@@ -818,13 +845,16 @@
     >
       ⠿
     </div>
+    {/if}
   </div>
 
   <!-- Green @name badge -->
   {#if block.name}
     <div class="block-name-badge" contenteditable="false">
-      <span class="badge-text">@{block.name}</span>
+      <span class="badge-text" class:badge-locked={block.locked}>@{block.name}</span>
+      {#if !block.locked}
       <button type="button" class="block-name-clear-btn" onclick={() => updateBlock(current.index, { name: null })} title="Remove name">×</button>
+      {/if}
     </div>
   {/if}
 
@@ -1021,6 +1051,11 @@
       class="action-menu-card" 
       style="position: absolute; left: 52px; top: 8px;"
     >
+      <button type="button" class="action-menu-btn" onclick={() => { toggleBlockLock(block.id); showActionMenu = false; }} style="color: var(--color-imperial-blue);">
+        {block.locked ? '🔓 Unlock block' : '🔒 Lock block'}
+      </button>
+
+      {#if !block.locked}
       <button type="button" class="action-menu-btn delete-action" onclick={handleActionDelete}>
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1033,6 +1068,7 @@
         </svg>
         Duplicate block
       </button>
+      {/if}
       
       <button type="button" class="action-menu-btn" onclick={handleActionAskAI} style="color: #10b981;">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -1041,6 +1077,7 @@
         💬 Chat with AI
       </button>
 
+      {#if !block.locked}
       <div class="action-menu-divider"></div>
       <button type="button" class="action-menu-btn" onclick={handleActionRename}>
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -1063,6 +1100,7 @@
       <button type="button" class="action-menu-btn" onclick={() => handleActionTurnInto('h3')}>
         <span class="action-menu-icon">H3</span> Heading 3
       </button>
+      {/if}
     </div>
   {/if}
 </div>
@@ -1137,6 +1175,36 @@
 
   .block-editor-row.is-placed::before {
     background-color: #10b981; /* emerald-500 */
+  }
+
+  .block-editor-row.is-locked {
+    background-color: #f8fafc;
+    border-radius: 4px;
+    border-left: 3px solid #cbd5e1;
+  }
+
+  .block-editor-row.is-locked :global(.ProseMirror) {
+    cursor: not-allowed;
+    color: #64748b;
+  }
+
+  .gutter-btn.lock-indicator {
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: transparent;
+  }
+
+  .gutter-btn.lock-indicator:hover {
+    background: #f1f5f9;
+  }
+
+  .badge-text.badge-locked {
+    padding-right: 0;
   }
 
   /* Gutter setup */

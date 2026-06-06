@@ -33,7 +33,7 @@
   let activeResumeId = $state(null);
 
   // Editor states (bound to active CV session)
-  let blocks = $state([{ id: 'b_initial', type: 'paragraph', content: [], canvas: null, name: null }]);
+  let blocks = $state([{ id: 'b_initial', type: 'paragraph', content: [], canvas: null, name: null, locked: false }]);
   let pageTitle = $state('');
   let paddingMm = $state(15);
   let activeTemplate = $state('clean');
@@ -396,6 +396,8 @@
       const resume = resumes.find(r => r.id === id);
       if (resume) {
         blocks = JSON.parse(JSON.stringify(resume.blocks));
+        // Ensure legacy blocks without a locked field default to unlocked
+        blocks = blocks.map(b => ({ locked: false, ...b }));
         pageTitle = resume.pageTitle;
         paddingMm = resume.paddingMm;
         // Migrate any custom-template id to a built-in preset (geometry is ours).
@@ -509,8 +511,17 @@
     isDragging = false;
   }
 
+  // Toggle lock state — blocks can be locked from either pane, so this lives
+  // at the App level and is threaded through to all components.
+  function toggleBlockLock(id) {
+    blocks = blocks.map(b => b.id === id ? { ...b, locked: !b.locked } : b);
+  }
+
   // Mutations within active session
   function updateBlockCanvas(id, patch) {
+    const target = blocks.find(b => b.id === id);
+    if (target?.locked) return;
+
     blocks = blocks.map(b => {
       if (b.id === id) {
         return {
@@ -524,6 +535,9 @@
 
   // Update name inside active session
   function updateBlockName(id, name) {
+    const target = blocks.find(b => b.id === id);
+    if (target?.locked) return;
+
     blocks = blocks.map(b => b.id === id ? { ...b, name } : b);
   }
 
@@ -536,6 +550,7 @@
       content: [],
       canvas: null,
       name: null,
+      locked: false,
       source: 'canvas',
       elementType,
       imageData: null
@@ -544,10 +559,16 @@
   }
 
   function removeCanvasElement(id) {
+    const target = blocks.find(b => b.id === id);
+    if (target?.locked) return;
+
     blocks = blocks.filter(b => b.id !== id);
   }
 
   function updateBlockImageData(id, dataUrl) {
+    const target = blocks.find(b => b.id === id);
+    if (target?.locked) return;
+
     blocks = blocks.map(b => b.id === id ? { ...b, imageData: dataUrl } : b);
   }
 
@@ -556,7 +577,7 @@
     const newResume = {
       id: 'res_' + Math.random().toString(36).substring(2, 9),
       pageTitle: 'Untitled CV',
-      blocks: [{ id: 'b_initial', type: 'paragraph', content: [], canvas: null, name: null }],
+      blocks: [{ id: 'b_initial', type: 'paragraph', content: [], canvas: null, name: null, locked: false }],
       paddingMm: 15,
       templateName: normalizeTemplateName(templateId),
       themeColors: {
@@ -615,7 +636,7 @@
   }
 
   function handleEditImport({ blocks: importedBlocks, templateId }) {
-    blocks = importedBlocks;
+    blocks = importedBlocks.map(b => ({ locked: false, ...b }));
     activeTemplate = normalizeTemplateName(templateId);
   }
 
@@ -685,6 +706,7 @@
             {denyStagedChange}
             {acceptAllStagedChanges}
             {denyAllStagedChanges}
+            {toggleBlockLock}
           />
         </div>
 
@@ -698,7 +720,7 @@
         ></button>
 
         <div class="right-pane">
-          <PolishedPane
+            <PolishedPane
             blocks={blocks}
             bind:paddingMm={paddingMm}
             bind:draggedBlockId={draggedBlockId}
@@ -722,6 +744,7 @@
             bind:stagedChatBlockIds={stagedChatBlockIds}
             bind:stagedChanges={stagedChanges}
             bind:stagedAttachments={stagedAttachments}
+            {toggleBlockLock}
           />
         </div>
       </div>

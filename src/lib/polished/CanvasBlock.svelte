@@ -21,7 +21,8 @@
     draggedBlockId = $bindable(),
     templateName = 'clean',
     themeColors = {},
-    onAskAI = null
+    onAskAI = null,
+    toggleBlockLock = null
   } = $props();
 
   let isCanvasElement = $derived(block?.source === 'canvas');
@@ -104,6 +105,10 @@
   // No browser ResizeObserver needed — same authority as agent measurement
 
   function handleCanvasDragStart(e) {
+    if (block.locked) {
+      e.preventDefault();
+      return;
+    }
     isDraggingThis = true;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', block.id);
@@ -118,6 +123,7 @@
   function handleResizeStart(handle, event) {
     event.stopPropagation();
     event.preventDefault();
+    if (block.locked) return;
 
     const originalCanvas = { ...block.canvas };
     const pageElement = event.currentTarget.closest('.cv-page-container');
@@ -240,6 +246,7 @@
 
   function handleDeleteClick(e) {
     e.stopPropagation();
+    if (block.locked) return;
     if (selected && selectedBlockIds.length > 1) {
       selectedBlockIds.forEach(id => {
         const b = blocks.find(x => x.id === id);
@@ -325,6 +332,7 @@
   class:resize-invalid={resizeState && !resizeState.isValid}
   class:gutter-element={isGutterElement}
   class:is-overlapping={isOverlapping}
+  class:is-locked={block.locked}
   style="left:{leftMm}mm;top:{topMm}mm;width:{widthMm}mm;height:{heightMm}mm;"
   onclick={handleBlockClick}
   onkeydown={handleBlockKeydown}
@@ -342,6 +350,11 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
+      {#if block.locked}
+        <button type="button" class="toolbar-unlock-btn" onclick={() => toggleBlockLock(block.id)}>
+          🔓 Unlock Block
+        </button>
+      {:else}
       <div
         class="toolbar-drag-handle"
         draggable="true"
@@ -352,10 +365,19 @@
       >
         <span class="icon">⠿</span> Move
       </div>
+      {/if}
+
       {#if selectedBlockIds.length === 1}
         <div class="toolbar-divider"></div>
 
-        {#if isDivider}
+        {#if !block.locked}
+        <button type="button" class="toolbar-lock-btn" onclick={() => toggleBlockLock(block.id)} title="Lock block layout &amp; edits">
+          🔒 Lock
+        </button>
+        <div class="toolbar-divider"></div>
+        {/if}
+
+        {#if !block.locked && isDivider}
           <!-- Divider style controls -->
           {#each [
             { value: 'solid',  label: '—',   title: 'Solid' },
@@ -384,14 +406,14 @@
           </div>
         {/if}
 
-        {#if isCanvasElement && block.elementType === 'headshot'}
+        {#if !block.locked && isCanvasElement && block.elementType === 'headshot'}
           <button type="button" class="toolbar-upload-btn" onclick={handleUploadClick}>
             📷 {block.imageData ? 'Replace' : 'Upload'}
           </button>
           <input type="file" accept="image/*" style="display:none;" bind:this={imageInput} onchange={handleImageChange} />
         {/if}
 
-        {#if !isCanvasElement}
+        {#if !block.locked && !isCanvasElement}
           <button
             type="button"
             class="toolbar-align-btn"
@@ -461,13 +483,15 @@
       >
         💬 Chat with AI
       </button>
+      {#if !block.locked}
       <div class="toolbar-divider"></div>
       <button type="button" class="toolbar-delete-btn" onclick={handleDeleteClick}>Delete</button>
+      {/if}
     </div>
   {/if}
 
   <!-- Hover drag handle -->
-  {#if !selected}
+  {#if !selected && !block.locked}
     <div
       class="hover-drag-handle"
       draggable="true"
@@ -479,6 +503,11 @@
       aria-label="Drag to move block"
       title="Drag to move"
     >⠿</div>
+  {/if}
+
+  <!-- Lock indicator badge -->
+  {#if block.locked}
+    <div class="lock-indicator-badge" title="This block is locked">🔒</div>
   {/if}
 
   <!-- Content -->
@@ -499,7 +528,7 @@
   </div>
 
   <!-- Resize handles — gutter elements: vertical only; canvas elements: no horizontal -->
-  {#if selected && selectedBlockIds.length === 1}
+  {#if selected && selectedBlockIds.length === 1 && !block.locked}
     {#if isGutterElement}
       <div class="resize-handle t" role="presentation" onpointerdown={(e) => handleResizeStart('t', e)}></div>
       <div class="resize-handle b" role="presentation" onpointerdown={(e) => handleResizeStart('b', e)}></div>
@@ -561,6 +590,59 @@
   @keyframes overlap-pulse {
     0%, 100% { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3); }
     50%       { box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+  }
+
+  .canvas-block.is-locked {
+    outline-color: rgba(148, 163, 184, 0.4) !important;
+  }
+  .canvas-block.is-locked.selected {
+    outline: 1.5px dashed var(--color-blue-bell) !important;
+  }
+
+  .lock-indicator-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 4px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    pointer-events: none;
+    z-index: 10;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+
+  .toolbar-unlock-btn {
+    border: none;
+    background: transparent;
+    color: #38bdf8;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+  }
+  .toolbar-unlock-btn:hover {
+    background-color: rgba(56, 189, 248, 0.15);
+  }
+
+  .toolbar-lock-btn {
+    border: none;
+    background: transparent;
+    color: var(--color-blue-bell);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+  }
+  .toolbar-lock-btn:hover {
+    background-color: rgba(144, 174, 173, 0.2);
   }
 
   .block-content-container {

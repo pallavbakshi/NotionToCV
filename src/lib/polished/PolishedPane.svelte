@@ -30,7 +30,8 @@
     isChatDrawerOpen = $bindable(false),
     stagedChatBlockIds = $bindable([]),
     stagedChanges = $bindable({}),
-    stagedAttachments = $bindable([])
+    stagedAttachments = $bindable([]),
+    toggleBlockLock = null
   } = $props();
 
   let isDrawerOpen = $state(false);
@@ -196,7 +197,7 @@
     if (e.key === 'Delete' || e.key === 'Backspace') {
       selectedBlockIds.forEach(id => {
         const b = blocks.find(x => x.id === id);
-        if (b) {
+        if (b && !b.locked) {
           if (b.source === 'canvas' && removeCanvasElement) {
             removeCanvasElement(b.id);
           } else {
@@ -785,6 +786,7 @@
             templateName={templateName}
             themeColors={themeColors}
             onAskAI={handleAskAI}
+            {toggleBlockLock}
           />
           {#if !isExportMode && pageNum > totalPages}
             <div class="ghost-page-label">Page {pageNum} (Drop block to add page)</div>

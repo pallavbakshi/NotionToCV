@@ -21,7 +21,8 @@
     acceptStagedChange = null,
     denyStagedChange = null,
     acceptAllStagedChanges = null,
-    denyAllStagedChanges = null
+    denyAllStagedChanges = null,
+    toggleBlockLock = null
   } = $props();
 
   let fileInput;
@@ -64,7 +65,8 @@
       type: 'paragraph',
       content: afterCursorContent,
       canvas: null,
-      name: null
+      name: null,
+      locked: false
     };
     blocks.splice(index + 1, 0, newBlock);
     blocks = [...blocks];
@@ -72,6 +74,8 @@
   }
 
   function deleteBlock(index) {
+    if (blocks[index]?.locked) return;
+
     if (blocks.length <= 1) {
       // Invariant: Never allow an empty blocks array
       blocks = [{
@@ -79,7 +83,8 @@
         type: 'paragraph',
         content: [],
         canvas: null,
-        name: null
+        name: null,
+        locked: false
       }];
       focusBlock(0);
     } else {
@@ -93,10 +98,16 @@
 
   function deleteMultipleBlocks(ids) {
     if (ids.length === 0) return;
-    const firstId = ids[0];
+
+    // Filter out locked blocks — they cannot be deleted
+    const lockedIds = blocks.filter(b => b.locked).map(b => b.id);
+    const deletableIds = ids.filter(id => !lockedIds.includes(id));
+    if (deletableIds.length === 0) return;
+
+    const firstId = deletableIds[0];
     const firstIdx = blocks.findIndex(b => b.id === firstId);
 
-    blocks = blocks.filter(b => !ids.includes(b.id));
+    blocks = blocks.filter(b => !deletableIds.includes(b.id));
 
     // Invariant: Never allow an empty blocks array
     if (blocks.length === 0) {
@@ -105,7 +116,8 @@
         type: 'paragraph',
         content: [],
         canvas: null,
-        name: null
+        name: null,
+        locked: false
       }];
     }
 
@@ -121,7 +133,8 @@
       type: original.type,
       content: JSON.parse(JSON.stringify(original.content)),
       canvas: null,
-      name: null
+      name: null,
+      locked: false
     };
     blocks.splice(index + 1, 0, newBlock);
     blocks = [...blocks];
@@ -136,7 +149,8 @@
       id: 'b_' + Math.random().toString(36).substring(2, 9),
       content: JSON.parse(JSON.stringify(b.content)),
       canvas: null,
-      name: null
+      name: null,
+      locked: false
     }));
 
     const lastId = ids[ids.length - 1];
@@ -151,12 +165,14 @@
 
   function updateBlock(index, patch) {
     if (index >= 0 && index < blocks.length) {
+      if (blocks[index]?.locked) return;
       blocks[index] = { ...blocks[index], ...patch };
     }
   }
 
   function moveBlock(fromIndex, toIndex) {
     if (fromIndex === toIndex) return;
+    if (blocks[fromIndex]?.locked) return;
     const item = blocks[fromIndex];
     blocks.splice(fromIndex, 1);
     
@@ -169,6 +185,9 @@
   }
 
   function moveBlocks(idsToMove, toRealIndex) {
+    // Reject if any selected block is locked
+    if (blocks.some(b => idsToMove.includes(b.id) && b.locked)) return;
+
     const targetBlocks = blocks.filter(b => idsToMove.includes(b.id));
     if (targetBlocks.length === 0) return;
 
@@ -189,6 +208,7 @@
   function mergeWithPrevious(index, currentContent) {
     if (index <= 0) return;
     const prevBlock = blocks[index - 1];
+    if (prevBlock.locked || blocks[index]?.locked) return;
     
     // Concatenate inline nodes
     const mergedContent = [...(prevBlock.content || []), ...currentContent];
@@ -251,7 +271,8 @@
       try {
         const data = JSON.parse(event.target.result);
         if (data && Array.isArray(data.blocks)) {
-          blocks = data.blocks;
+          // Ensure legacy blocks without a locked field default to unlocked
+          blocks = data.blocks.map(b => ({ locked: false, ...b }));
           pageTitle = data.pageTitle || '';
           if (data.paddingMm !== undefined) paddingMm = data.paddingMm;
           // Normalize to a built-in preset: a custom/legacy id would leave
@@ -756,6 +777,7 @@
             bind:stagedChanges={stagedChanges}
             {acceptStagedChange}
             {denyStagedChange}
+            {toggleBlockLock}
           />
         </div>
       {/each}
