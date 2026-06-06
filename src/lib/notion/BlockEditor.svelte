@@ -48,12 +48,6 @@
   let current = $derived({ index, block, blocks });
   let stagedInfo = $derived($stagedChanges[block.id]);
   let hasStagedChange = $derived(!!stagedInfo);
-
-  $effect(() => {
-    if (hasStagedChange) {
-      console.log('[DIFF CARD] blockId:', block.id, 'block.content:', JSON.stringify(block.content), 'proposedContent:', JSON.stringify(stagedInfo?.proposedContent));
-    }
-  });
   
   // Custom bubble menu element bindings
   let showBubbleMenu = $state(false);
