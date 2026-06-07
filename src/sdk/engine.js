@@ -61,6 +61,14 @@ export class ResumeAgentEngine {
     let stagedChanges = {};
     let turn = 0;
 
+    // Layout Designer: track placements to enforce visual checkpoints
+    let layoutPlacementCount = 0;
+    let layoutLastScreenshotAt = 0;
+
+    // Track blocks with content overflow — the AI MUST fix these before placing more
+    /** @type {Set<string>} */
+    let pendingOverflows = new Set();
+
     while (true) {
       // Abort check
       if (signal?.aborted) {
@@ -166,6 +174,19 @@ export class ResumeAgentEngine {
 
         const { result, stagedChangesUpdate, canvasChange, contentChange } = toolResult;
 
+        // Layout Designer: track placements and screenshots for visual checkpoints
+        if (isLayout) {
+          if (tcName === 'place_block') {
+            layoutPlacementCount++;
+            if (result?.message?.includes('OVERFLOW')) {
+              pendingOverflows.add(parsedArgs.id);
+            } else {
+              pendingOverflows.delete(parsedArgs.id);
+            }
+          }
+          if (tcName === 'get_block_screenshot') layoutLastScreenshotAt = layoutPlacementCount;
+        }
+
         yield { type: 'tool_result', id: tc.id, name: tcName, result };
 
         if (canvasChange) {
@@ -196,6 +217,27 @@ export class ResumeAgentEngine {
           tool_call_id: tc.id,
           name: tcName,
           content: JSON.stringify(result)
+        });
+      }
+
+      // Layout Designer: inject screenshot checkpoint every 5 placements
+      if (isLayout && layoutPlacementCount > 0 && layoutPlacementCount - layoutLastScreenshotAt >= 5) {
+        history.push({
+          role: 'user',
+          content: `[SYSTEM] You have placed ${layoutPlacementCount - layoutLastScreenshotAt} blocks since your last visual check. Pause now and call get_block_screenshot on a recently placed block to verify the layout. Describe what you see — check for overflow, alignment, spacing, font choices, and overall visual balance. If anything doesn't look right, fix it (re-place with adjusted coords/spans, or change fonts) before continuing. Then resume placing remaining blocks. Note: older screenshots are automatically pruned from context — only your summaries remain.`
+        });
+        layoutLastScreenshotAt = layoutPlacementCount;
+      }
+
+      // Layout Designer: enforce overflow fixes BEFORE placing more blocks
+      if (isLayout && pendingOverflows.size > 0) {
+        const blockList = [...pendingOverflows].map(id => {
+          const b = state.blocks.find(bl => bl.id === id);
+          return b ? `"${b.name || b.id}" (${b.type})` : id;
+        }).join(', ');
+        history.push({
+          role: 'user',
+          content: `[SYSTEM] The following blocks have content overflow and MUST be fixed before you place any more blocks: ${blockList}. Re-place these blocks with a larger rowSpan, or remove and re-place them elsewhere. Do NOT call place_block on new blocks until all overflows are resolved.`
         });
       }
 

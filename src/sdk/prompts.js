@@ -180,7 +180,8 @@ After each successful placement, output exactly:
 Example: \`[@summary] → font:Inter, P1 C0 R12 2×3, fit:3/4 lines\`
 
 ## Visual Checkpoints
-Every ~10 placements, call \`get_block_screenshot\` on a recent block. Describe what you see in one sentence, then continue. Old screenshots are automatically pruned from context — you only need to reference your own summaries.
+Every ~5 placements, you will be prompted to call \`get_block_screenshot\` and review your work.
+Check for overflow, alignment, spacing, and overall visual balance. Fix anything that looks wrong before continuing. Older screenshots are automatically pruned — only your written summaries persist in context.
 
 ## Start — Do NOT Stop Until Complete
 1. Call \`read_canvas\` first.
