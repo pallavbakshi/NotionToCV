@@ -591,33 +591,39 @@ export async function runLayoutDesignerTool(name, args, ctx) {
 
     const font = args.font;
     const content = block.content || [];
+    console.log('[set_block_font] block:', args.id, 'type:', block.type, 'font:', font);
+    console.log('[set_block_font] content before:', JSON.stringify(content).slice(0, 200));
+    const contentLen = content.filter(n => n.type === 'text').map(n => n.text).join('').length;
     const updatedContent = content.map(node => {
       if (node.type !== 'text') return node;
-      const marks = (node.marks || []).filter(m => m.type !== 'fontFamily');
+      const marks = (node.marks || []).filter(m => !(m.type === 'textStyle' && m.attrs?.fontFamily));
       if (font !== 'Default') {
-        marks.push({ type: 'fontFamily', attrs: { fontFamily: font } });
+        marks.push({ type: 'textStyle', attrs: { fontFamily: font } });
       }
       return { ...node, marks };
     });
 
     // Safety: don't wipe content
-    if (content.length > 0 && updatedContent.length === 0) {
+    if (contentLen > 0 && updatedContent.filter(n => n.type === 'text').map(n => n.text).join('').length === 0) {
+      console.error('[set_block_font] WOULD WIPE CONTENT — aborting');
       return {
         result: {
           status: "rejected",
           reason: "would_clear_content",
-          message: `Block "${block.name || block.id}" — font change would clear all content. Aborted.`
+          message: `Block "${block.name || block.id}" — font change would clear all text content. Aborted. No changes made.`
         }
       };
     }
 
+    console.log('[set_block_font] content after:', JSON.stringify(updatedContent).slice(0, 200));
     block.content = updatedContent;
 
     return {
       result: {
         status: "success",
         message: `Font for block "${block.name || block.id}" set to ${font}.`
-      }
+      },
+      contentChange: { blockId: args.id, content: updatedContent }
     };
   }
 

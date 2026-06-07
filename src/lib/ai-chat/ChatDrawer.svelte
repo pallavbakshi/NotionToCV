@@ -21,7 +21,8 @@
     themeColors,
     selectedBlockIds = [],
     onClose,
-    onPlaceBlock = null
+    onPlaceBlock = null,
+    onSetBlockContent = null
   } = $props();
 
   // Conversation history list and active conversation state
@@ -578,7 +579,8 @@
 
     const engine = new ResumeAgentEngine({
       modelProvider: browserModelProvider,
-      screenshotProvider: browserScreenshotProvider
+      screenshotProvider: browserScreenshotProvider,
+      maxTurns: isLayoutDesigner ? 100 : 30
     });
 
     let contentAccumulated = ''; // first-turn content — used by done handler to detect empty opener
@@ -704,6 +706,11 @@
 
           case 'canvas_change':
             onPlaceBlock?.(ev.blockId, ev.canvas);
+            break;
+
+          case 'content_change':
+            console.log('[ChatDrawer] content_change', ev.blockId, 'content len:', ev.content?.filter(n => n.type === 'text').map(n => n.text).join('').length);
+            onSetBlockContent?.(ev.blockId, ev.content);
             break;
 
           case 'error':
@@ -1052,7 +1059,7 @@
     aria-label="Resize chat drawer"
   ></div>
 
-  <ChatHeader bind:historyView {chatMode} {startNewConversation} {onClose} />
+  <ChatHeader bind:historyView {chatMode} {subAgent} {startNewConversation} {onClose} />
 
   <ModeToggle {historyView} {chatMode} {subAgent} {setChatMode} {setSubAgent} />
 

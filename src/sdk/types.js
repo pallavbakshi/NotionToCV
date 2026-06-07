@@ -65,7 +65,12 @@
  * @property {string} blockId - Block that was placed/moved.
  * @property {Object} canvas - New canvas placement { page, col, row, colSpan, rowSpan }.
  *
- * @typedef {AgentTextEvent|AgentToolCallEvent|AgentToolResultEvent|AgentStagedChangeEvent|AgentCanvasChangeEvent|AgentErrorEvent|AgentDoneEvent} AgentEvent
+ * @typedef {Object} AgentContentChangeEvent
+ * @property {'content_change'} type
+ * @property {string} blockId - Block whose content was updated.
+ * @property {Array<Object>} content - New content inline node array.
+ *
+ * @typedef {AgentTextEvent|AgentToolCallEvent|AgentToolResultEvent|AgentStagedChangeEvent|AgentCanvasChangeEvent|AgentContentChangeEvent|AgentErrorEvent|AgentDoneEvent} AgentEvent
  */
 
 /**

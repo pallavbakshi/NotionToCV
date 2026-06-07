@@ -663,6 +663,11 @@
     updateBlockCanvas(blockId, canvas);
   }
 
+  function handleSetBlockContent(blockId, content) {
+    console.log('[App] handleSetBlockContent', blockId, 'content len:', content?.filter(n => n.type === 'text').map(n => n.text).join('').length);
+    blocks = blocks.map(b => b.id === blockId ? { ...b, content } : b);
+  }
+
   function handleDeleteResume(id) {
     resumes = resumes.filter(r => r.id !== id);
     localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
@@ -786,6 +791,7 @@
             {toggleBlockLock}
             onImportJSON={handleImportJSON}
             onPlaceBlock={handlePlaceBlock}
+            onSetBlockContent={handleSetBlockContent}
           />
         </div>
       </div>

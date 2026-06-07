@@ -164,12 +164,17 @@ export class ResumeAgentEngine {
           strictCapacity: opts.strictCapacity || false
         });
 
-        const { result, stagedChangesUpdate, canvasChange } = toolResult;
+        const { result, stagedChangesUpdate, canvasChange, contentChange } = toolResult;
 
         yield { type: 'tool_result', id: tc.id, name: tcName, result };
 
         if (canvasChange) {
           yield { type: 'canvas_change', blockId: canvasChange.blockId, canvas: canvasChange.canvas };
+        }
+
+        if (contentChange) {
+          console.log('[engine] yielding content_change', contentChange.blockId, 'len:', contentChange.content?.filter(n => n.type === 'text').map(n => n.text).join('').length);
+          yield { type: 'content_change', blockId: contentChange.blockId, content: contentChange.content };
         }
 
         if (stagedChangesUpdate) {

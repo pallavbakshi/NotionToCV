@@ -28,7 +28,8 @@
     addCanvasElement = null,
     toggleBlockLock = null,
     onImportJSON = null,
-    onPlaceBlock = null
+    onPlaceBlock = null,
+    onSetBlockContent = null
   } = $props();
 
   let themeDrawerEl = $state(null);
@@ -223,6 +224,7 @@
       {selectedBlockIds}
       onClose={() => isChatDrawerOpen = false}
       {onPlaceBlock}
+      {onSetBlockContent}
     />
   {/if}
 

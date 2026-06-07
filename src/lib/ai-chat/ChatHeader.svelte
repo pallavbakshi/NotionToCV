@@ -1,6 +1,12 @@
 <!-- ChatHeader.svelte -->
 <script>
-  let { historyView = $bindable(false), chatMode, startNewConversation, onClose } = $props();
+  let { historyView = $bindable(false), chatMode, subAgent = 'editor', startNewConversation, onClose } = $props();
+
+  let modelLabel = $derived(
+    chatMode === 'agent' && subAgent === 'layout_designer' ? 'Gemini 3.1 Flash Lite' :
+    chatMode === 'agent' ? 'Claude Sonnet 4.5' :
+    'Gemini 2.5 Flash'
+  );
 </script>
 
 <div class="drawer-header">
@@ -10,7 +16,7 @@
   {:else}
     <div class="header-left">
       <h3>💬 Chat with AI</h3>
-      <span class="chat-model-tag">{chatMode === 'agent' ? 'Claude Sonnet 4.5' : 'Gemini 2.5'}</span>
+      <span class="chat-model-tag">{modelLabel}</span>
     </div>
     <div class="header-actions">
       <button type="button" class="btn-header-action" onclick={() => historyView = true} title="View previous chats">History</button>

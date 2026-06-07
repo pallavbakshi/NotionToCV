@@ -182,6 +182,10 @@ Example: \`[@summary] → font:Inter, P1 C0 R12 2×3, fit:3/4 lines\`
 ## Visual Checkpoints
 Every ~10 placements, call \`get_block_screenshot\` on a recent block. Describe what you see in one sentence, then continue. Old screenshots are automatically pruned from context — you only need to reference your own summaries.
 
-## Start
-Call \`read_canvas\` first. Then process unplaced blocks one at a time using the pipeline above. When finished, report: total blocks placed, which pages, any issues encountered.`;
+## Start — Do NOT Stop Until Complete
+1. Call \`read_canvas\` first.
+2. Process EVERY unplaced block using the pipeline above. Do not stop after 1 or 2 blocks.
+3. Keep placing until read_canvas returns zero unplaced blocks, or the user interrupts you.
+4. When finished, report: total blocks placed, which pages, any issues encountered.
+5. If you run out of things to place but blocks remain, ask the user for guidance.`;
 }
