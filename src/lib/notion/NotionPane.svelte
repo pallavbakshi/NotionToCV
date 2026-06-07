@@ -704,9 +704,7 @@
 <div class="top-bar">
   <div class="view-label">Notion View</div>
   <div class="action-buttons">
-    <button type="button" class="btn btn-outline" onclick={() => undo?.()} disabled={historyPastLength === 0} title="Undo (Cmd+Z)">↶ Undo</button>
-    <button type="button" class="btn btn-outline" onclick={() => redo?.()} disabled={historyFutureLength === 0} title="Redo (Cmd+Shift+Z)">↷ Redo</button>
-    <div style="width: 1px; height: 16px; background-color: var(--notion-border); margin: 0 4px; align-self: center;"></div>
+
     {#if hasAnyStagedChanges}
       <button type="button" class="btn btn-accept-all" onclick={acceptAllStagedChanges} title="Accept all proposed changes">
         ✓ Accept All ({Object.keys($stagedChanges).length})
