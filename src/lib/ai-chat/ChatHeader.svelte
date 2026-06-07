@@ -3,7 +3,9 @@
   let { historyView = $bindable(false), chatMode, subAgent = 'editor', startNewConversation, onClose } = $props();
 
   let modelLabel = $derived(
-    chatMode === 'agent' ? 'Claude Sonnet 4.5' : 'Gemini 2.5 Flash'
+    chatMode === 'agent' && subAgent === 'layout_designer' ? 'Gemini 3.1 Flash Lite' :
+    chatMode === 'agent' ? 'Claude Sonnet 4.5' :
+    'Gemini 2.5 Flash'
   );
 </script>
 

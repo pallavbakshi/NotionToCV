@@ -440,7 +440,7 @@
         ? getAgentSystemPrompt(blocks, pageTitle)
         : getSystemPromptOutline(blocks, pageTitle);
     const activeModel = isLayoutDesigner
-      ? 'anthropic/claude-sonnet-4-5'
+      ? 'google/gemini-3.1-flash-lite'
       : chatMode === 'agent' ? 'anthropic/claude-sonnet-4-5' : 'google/gemini-2.5-flash';
 
     const historyPayload = [];
