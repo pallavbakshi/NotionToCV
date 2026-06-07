@@ -190,10 +190,11 @@ For every text block, choose colSpan/rowSpan by this ranking:
 
 ## Planning
 1. Group blocks by section (@names or adjacent content).
-2. Fill page 1 first. Overflow to page 2+ only when page 1 is full.
-3. h1/h2 → full width (4 cols) at section start. h3 → 2 cols (pair side-by-side). Short facts/contact → side-by-side 2-col slots.
-4. Work around already-placed blocks. Place new blocks in gaps.
-5. Prioritize user-attached blocks.
+2. **Page budget: target ≤ 35 rows used per page.** When a page reaches 35 used rows, start placing subsequent sections on the NEXT page — do not cram everything onto one page. A dense resume reads better across 2 pages than crammed onto 1.
+3. **Never place more than ~20 blocks per page.** If a section would push a page past 35 rows, move the entire section to the next page.
+4. h1/h2 → full width (4 cols) at section start. h3 → 2 cols (pair side-by-side). Short facts/contact → side-by-side 2-col slots.
+5. Work around already-placed blocks. Place new blocks in gaps.
+6. Prioritize user-attached blocks.
 
 ## Per-Block Report Format
 \`\`\`

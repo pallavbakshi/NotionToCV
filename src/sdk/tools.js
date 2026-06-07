@@ -701,6 +701,7 @@ export async function runLayoutDesignerTool(name, args, ctx) {
     const evalPage = args.page || null;
     const cw = colWidthMm(paddingMm);
     let score = 100;
+    let hardFail = false;
     const penalties = [];
     const suggestions = [];
 
@@ -711,6 +712,7 @@ export async function runLayoutDesignerTool(name, args, ctx) {
     for (const b of placed) {
       if (anyOverlap(blocks, b.id, b.canvas.page, b.canvas, cw, paddingMm)) {
         penalties.push({ type: 'overlap', severity: 'hard_fail', page: b.canvas.page, block: b.name || b.id, message: `Overlaps with another block` });
+        hardFail = true;
         score = 0;
       }
     }
@@ -723,6 +725,7 @@ export async function runLayoutDesignerTool(name, args, ctx) {
       const capacity = computeBlockCapacity(b, rect, layoutCtx);
       if (capacity.is_overflowing) {
         penalties.push({ type: 'overflow', severity: 'hard_fail', page: b.canvas.page, block: b.name || b.id, message: `Content overflows by ${capacity.current_lines_used - capacity.max_lines} line(s)` });
+        hardFail = true;
         score = Math.max(0, score - 20);
         suggestions.push({ block: b.name || b.id, action: 'increase rowSpan', from: `rowSpan ${b.canvas.rowSpan}`, reason: `Needs ${capacity.current_lines_used} lines but only has ${capacity.max_lines}` });
       }
@@ -817,6 +820,19 @@ export async function runLayoutDesignerTool(name, args, ctx) {
       }
     }
 
+    // Out of bounds: blocks placed beyond page grid (e.g. by pack_section) — hard fail
+    for (const b of placed) {
+      if (b.canvas.colSpan > 0 && b.canvas.col + b.canvas.colSpan > 4) {
+        penalties.push({ type: 'out_of_bounds', severity: 'hard_fail', page: b.canvas.page, block: b.name || b.id, message: `col ${b.canvas.col} + colSpan ${b.canvas.colSpan} = ${b.canvas.col + b.canvas.colSpan} exceeds 4 columns` });
+        hardFail = true; score = 0;
+      }
+      if (b.canvas.row + b.canvas.rowSpan > 53) {
+        penalties.push({ type: 'out_of_bounds', severity: 'hard_fail', page: b.canvas.page, block: b.name || b.id, message: `Block placed beyond page bottom: row ${b.canvas.row} + rowSpan ${b.canvas.rowSpan} = ${b.canvas.row + b.canvas.rowSpan} exceeds row 52. Move to page ${b.canvas.page + 1}.` });
+        hardFail = true; score = 0;
+        suggestions.push({ block: b.name || b.id, action: `move to page ${b.canvas.page + 1}`, reason: 'Block extends beyond page bottom — must be on next page' });
+      }
+    }
+
     // Orphan heading: a heading (h1/h2/h3) whose bottom row is within 2 rows of the
     // page bottom (row 52) while its section content is on the next page.
     const allPlaced = blocks.filter(b => b.canvas);
@@ -852,10 +868,11 @@ export async function runLayoutDesignerTool(name, args, ctx) {
 
     return {
       result: {
-        valid: score > 0,
+        valid: !hardFail && score > 0,
         score: Math.max(0, Math.round(score)),
+        hardFails: penalties.filter(p => p.severity === 'hard_fail').length,
         pagesEvaluated: evalPage ? [evalPage] : pageNums,
-        penalties: penalties.slice(0, 15),
+        penalties: penalties.slice(0, 20),
         suggestions: suggestions.slice(0, 10)
       }
     };
@@ -905,8 +922,8 @@ export async function runLayoutDesignerTool(name, args, ctx) {
 
       // Find first row where this block fits without overlap
       let found = false;
-      const maxSearchRows = 100;
-      for (let attempt = 0; attempt < maxSearchRows && !found; attempt++) {
+      const PAGE_MAX_ROW = 52;
+      while (!found && row + rowSpan <= PAGE_MAX_ROW + 1) {
         for (let c = 0; c + colSpan <= 4; c++) {
           if (!anyOverlap(blocks, id, page, { col: c, row, colSpan, rowSpan }, cw, paddingMm)) {
             col = c;
@@ -918,11 +935,15 @@ export async function runLayoutDesignerTool(name, args, ctx) {
       }
 
       if (!found) {
-        results.push({ id, status: 'skipped', reason: 'No free space found on page' });
+        results.push({ id, status: 'skipped', reason: `No free space on page ${page} within row limit (${PAGE_MAX_ROW}). Place on the next page instead.` });
         continue;
       }
 
-      // Place
+      // Place — verify bounds before mutating (belt-and-suspenders: mirrors place_block validation)
+      if (row + rowSpan > PAGE_MAX_ROW + 1) {
+        results.push({ id, status: 'skipped', reason: `Placement at row ${row} rowSpan ${rowSpan} would exceed page boundary (max row ${PAGE_MAX_ROW}).` });
+        continue;
+      }
       block.canvas = { page, col, row, colSpan, rowSpan };
       results.push({
         id, status: 'placed',
