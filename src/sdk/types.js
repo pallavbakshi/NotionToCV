@@ -60,7 +60,12 @@
  * @property {'model_complete'|'max_turns'|'aborted'} reason - How the loop ended.
  * @property {Object} [transaction] - Accumulated staged changes (set when reason is not "aborted").
  *
- * @typedef {AgentTextEvent|AgentToolCallEvent|AgentToolResultEvent|AgentStagedChangeEvent|AgentErrorEvent|AgentDoneEvent} AgentEvent
+ * @typedef {Object} AgentCanvasChangeEvent
+ * @property {'canvas_change'} type
+ * @property {string} blockId - Block that was placed/moved.
+ * @property {Object} canvas - New canvas placement { page, col, row, colSpan, rowSpan }.
+ *
+ * @typedef {AgentTextEvent|AgentToolCallEvent|AgentToolResultEvent|AgentStagedChangeEvent|AgentCanvasChangeEvent|AgentErrorEvent|AgentDoneEvent} AgentEvent
  */
 
 /**

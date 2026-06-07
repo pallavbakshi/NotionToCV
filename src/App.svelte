@@ -659,6 +659,10 @@
     }
   }
 
+  function handlePlaceBlock(blockId, canvas) {
+    updateBlockCanvas(blockId, canvas);
+  }
+
   function handleDeleteResume(id) {
     resumes = resumes.filter(r => r.id !== id);
     localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
@@ -781,6 +785,7 @@
             bind:isChatDrawerOpen={isChatDrawerOpen}
             {toggleBlockLock}
             onImportJSON={handleImportJSON}
+            onPlaceBlock={handlePlaceBlock}
           />
         </div>
       </div>

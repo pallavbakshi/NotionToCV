@@ -952,7 +952,6 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                   const buffer = await el.screenshot({ type: 'jpeg', quality: 80 });
                   screenshots.push(buffer.toString('base64'));
                 }
-
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ screenshots }));
               }
@@ -969,6 +968,49 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                   console.error('Failed to close browser:', e);
                 }
               }
+            }
+          });
+
+        // ── /api/normalize-text ─────────────────────────────────────────────
+        } else if (req.url === '/api/normalize-text' && req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', async () => {
+            try {
+              const { text } = JSON.parse(body);
+              if (!text || !text.trim()) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'No text provided' }));
+                return;
+              }
+
+              const OPENROUTER_KEY = env.OPENROUTER_API_KEY;
+              const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${OPENROUTER_KEY}`,
+                  'Content-Type': 'application/json',
+                  'HTTP-Referer': 'http://localhost:5173',
+                  'X-Title': 'NotionToCV'
+                },
+                body: JSON.stringify({
+                  model: 'google/gemini-3.1-flash-lite',
+                  messages: [
+                    { role: 'system', content: 'You are a text formatter. Fix spacing, line breaks, and whitespace issues WITHOUT changing any words, punctuation, or meaning. Return ONLY the cleaned text, no explanations.' },
+                    { role: 'user', content: text }
+                  ],
+                  max_tokens: 4096
+                })
+              });
+
+              const data = await response.json();
+              const cleaned = data.choices?.[0]?.message?.content || text;
+
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ cleaned: cleaned.trim() }));
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: err.message }));
             }
           });
 

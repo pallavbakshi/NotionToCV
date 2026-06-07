@@ -9,7 +9,7 @@
   import ChatMessageList from './ChatMessageList.svelte';
   import ChatInput from './ChatInput.svelte';
   import { initFonts } from '../layout/index.js';
-  import { ResumeAgentEngine, browserModelProvider, browserScreenshotProvider, getAgentSystemPrompt, getSystemPromptOutline } from '../../sdk/index.js';
+  import { ResumeAgentEngine, browserModelProvider, browserScreenshotProvider, getAgentSystemPrompt, getSystemPromptOutline, getLayoutDesignerPrompt } from '../../sdk/index.js';
   import { stagedChanges, stagedChatBlockIds, stagedAttachments } from '../shared/stagingStore.js';
 
   let {
@@ -20,7 +20,8 @@
     templateName,
     themeColors,
     selectedBlockIds = [],
-    onClose
+    onClose,
+    onPlaceBlock = null
   } = $props();
 
   // Conversation history list and active conversation state
@@ -47,10 +48,40 @@
   let drawerWidth = $state(400);
   let isResizing = $state(false);
 
+  // Layout Designer state — snapshot + rollback
+  let layoutCanvasSnapshot = $state(null);
+  let layoutResultMsgId = $state(null);
+
+  function acceptLayout() {
+    layoutCanvasSnapshot = null;
+    if (layoutResultMsgId) {
+      chatList = chatList.map(c => c.id === activeChatId
+        ? { ...c, messages: c.messages.map(m => m.id === layoutResultMsgId ? { ...m, layoutResult: undefined, layoutAccepted: true } : m) }
+        : c);
+      layoutResultMsgId = null;
+    }
+  }
+
+  function denyLayout() {
+    if (!layoutCanvasSnapshot) return;
+    for (const item of layoutCanvasSnapshot) {
+      onPlaceBlock?.(item.id, item.canvas);
+    }
+    layoutCanvasSnapshot = null;
+    if (layoutResultMsgId) {
+      chatList = chatList.map(c => c.id === activeChatId
+        ? { ...c, messages: c.messages.filter(m => m.id !== layoutResultMsgId) }
+        : c);
+      layoutResultMsgId = null;
+    }
+    saveChats();
+  }
+
   // Derived
   let activeChat = $derived(chatList.find(c => c.id === activeChatId));
   let messages = $derived(activeChat ? activeChat.messages : []);
   let chatMode = $derived(activeChat ? (activeChat.mode || 'chat') : 'chat');
+  let subAgent = $derived(activeChat ? (activeChat.subAgent || 'editor') : 'editor');
 
   function handleResizeStart(e) {
     if (e.button !== 0) return;
@@ -80,6 +111,17 @@
     chatList = chatList.map(c => {
       if (c.id === activeChatId) {
         return { ...c, mode: newMode };
+      }
+      return c;
+    });
+    saveChats();
+  }
+
+  function setSubAgent(newSubAgent) {
+    if (!activeChatId) return;
+    chatList = chatList.map(c => {
+      if (c.id === activeChatId) {
+        return { ...c, subAgent: newSubAgent };
       }
       return c;
     });
@@ -389,14 +431,66 @@
 
     saveChats();
 
-    const systemPrompt = chatMode === 'agent' ? getAgentSystemPrompt(blocks, pageTitle) : getSystemPromptOutline(blocks, pageTitle);
-    const activeModel = chatMode === 'agent' ? 'anthropic/claude-sonnet-4-5' : 'google/gemini-2.5-flash';
+    const isLayoutDesigner = chatMode === 'agent' && subAgent === 'layout_designer';
+    const systemPrompt = isLayoutDesigner
+      ? getLayoutDesignerPrompt(blocks, pageTitle)
+      : chatMode === 'agent'
+        ? getAgentSystemPrompt(blocks, pageTitle)
+        : getSystemPromptOutline(blocks, pageTitle);
+    const activeModel = isLayoutDesigner
+      ? 'google/gemini-3.1-flash-lite'
+      : chatMode === 'agent' ? 'anthropic/claude-sonnet-4-5' : 'google/gemini-2.5-flash';
 
     const historyPayload = [];
     const activeChatRef = chatList.find(c => c.id === activeChatId);
     const pastMessages = activeChatRef ? activeChatRef.messages : [];
 
-    for (const msg of pastMessages) {
+    // Layout Designer: track placements and screenshots to enforce
+    // deterministic visual verification + old-image cleanup.
+    let placementCount = 0;
+    let screenshotInfos = []; // [{ index, blockId, tool_call_id }]
+    let lastScreenshotPlacedAt = 0;
+    if (isLayoutDesigner) {
+      pastMessages.forEach((msg, i) => {
+        if (msg.role === 'tool' && msg.isToolResult && msg.name === 'place_block') {
+          placementCount++;
+        }
+        if (msg.role === 'tool' && msg.isToolResult && msg.name === 'get_block_screenshot') {
+          let blockId = '';
+          try { blockId = JSON.parse(msg.content).blockId || ''; } catch {}
+          screenshotInfos.push({ index: i, blockId, tool_call_id: msg.tool_call_id });
+          lastScreenshotPlacedAt = placementCount;
+        }
+      });
+    }
+
+    // Inject screenshot reminder if 10+ placements since last screenshot
+    // (injected after history payload is built, below)
+
+    for (let i = 0; i < pastMessages.length; i++) {
+      const msg = pastMessages[i];
+
+      // Apply the breadcrumb screenshot cleanup AFTER the reminder (if any) is already
+      // in the payload, so the LLM sees the reminder first, then the history.
+      if (msg.role === 'tool' && msg.isToolResult && msg.name === 'get_block_screenshot') {
+        const isLatest = screenshotInfos.length > 0 && i === screenshotInfos[screenshotInfos.length - 1].index;
+        if (isLatest) {
+          // Keep the latest screenshot intact
+          historyPayload.push({ role: 'tool', tool_call_id: msg.tool_call_id, name: msg.name, content: msg.content });
+        } else {
+          // Replace older screenshots with a breadcrumb — keeps history flow intact
+          const num = screenshotInfos.findIndex(s => s.index === i) + 1;
+          const blockLabel = screenshotInfos.find(s => s.index === i)?.blockId || 'unknown';
+          historyPayload.push({
+            role: 'tool',
+            tool_call_id: msg.tool_call_id,
+            name: msg.name,
+            content: `[Screenshot #${num} (block ${blockLabel}) — image data pruned. The agent reviewed this and summarized findings in the following assistant message.]`
+          });
+        }
+        continue;
+      }
+
       if (msg.role === 'assistant') {
         const item = { role: 'assistant', content: msg.content || null };
         if (msg.tool_calls) item.tool_calls = msg.tool_calls;
@@ -464,6 +558,15 @@
       }
     }
 
+    // Layout Designer: inject screenshot reminder if 10+ placements since last visual check.
+    // This acts as a system prompt-level nudge, keeping the agent visually grounded.
+    if (isLayoutDesigner && placementCount > 0 && placementCount - lastScreenshotPlacedAt >= 10) {
+      historyPayload.push({
+        role: 'user',
+        content: `[SYSTEM REMINDER] You have placed ${placementCount - lastScreenshotPlacedAt} blocks since your last visual check. Pause now and call get_block_screenshot on a recently placed block to verify the layout looks correct. Summarize what you see, then continue placing remaining blocks.`
+      });
+    }
+
     const resumeState = {
       title: pageTitle,
       paddingMm,
@@ -505,12 +608,18 @@
     });
 
     try {
+      // Snapshot canvas before layout designer runs so we can roll back
+      if (isLayoutDesigner) {
+        layoutCanvasSnapshot = blocks.map(b => ({ id: b.id, canvas: b.canvas ? { ...b.canvas } : null }));
+      }
+
       for await (const ev of engine.optimizeResume(resumeState, queryText, {
         messages: historyPayload,
         systemPrompt,
         model: activeModel,
         signal: abortController.signal,
-        mode: chatMode === 'agent' ? 'agent' : 'coach'
+        mode: chatMode === 'agent' ? 'agent' : 'coach',
+        subAgent
       })) {
         switch (ev.type) {
           case 'text': {
@@ -593,6 +702,10 @@
             stagedChanges.update(s => ({ ...s, [ev.blockId]: ev.change }));
             break;
 
+          case 'canvas_change':
+            onPlaceBlock?.(ev.blockId, ev.canvas);
+            break;
+
           case 'error':
             // Append error to whichever bubble is currently active.
             chatList = chatList.map(c => {
@@ -628,6 +741,34 @@
             // the run (second update to same block skips the staged_change event).
             if (ev.transaction?.stagedChanges) {
               stagedChanges.update(s => ({ ...s, ...ev.transaction.stagedChanges }));
+            }
+
+            // Layout Designer: append accept/deny message if blocks were placed
+            if (isLayoutDesigner && layoutCanvasSnapshot) {
+              let placedCount = 0;
+              for (const snap of layoutCanvasSnapshot) {
+                const current = blocks.find(b => b.id === snap.id);
+                if (JSON.stringify(snap.canvas) !== JSON.stringify(current?.canvas ?? null)) {
+                  placedCount++;
+                }
+              }
+              if (placedCount > 0) {
+                const resultMsgId = 'msg_' + Math.random().toString(36).substring(2, 9);
+                layoutResultMsgId = resultMsgId;
+                chatList = chatList.map(c => {
+                  if (c.id === activeChatId) {
+                    return { ...c, messages: [...c.messages, {
+                      id: resultMsgId,
+                      role: 'assistant',
+                      content: `Layout complete. ${placedCount} block${placedCount !== 1 ? 's' : ''} placed.`,
+                      layoutResult: true,
+                      layoutAccepted: false,
+                      timestamp: new Date().toISOString()
+                    }] };
+                  }
+                  return c;
+                });
+              }
             }
 
             saveChats();
@@ -913,7 +1054,7 @@
 
   <ChatHeader bind:historyView {chatMode} {startNewConversation} {onClose} />
 
-  <ModeToggle {historyView} {chatMode} {setChatMode} />
+  <ModeToggle {historyView} {chatMode} {subAgent} {setChatMode} {setSubAgent} />
 
   <div class="drawer-content">
     {#if historyView}
@@ -927,6 +1068,8 @@
         {renderMarkdown}
         {attachPolishedCV}
         {attachAllBlocks}
+        {acceptLayout}
+        {denyLayout}
       />
     {/if}
   </div>

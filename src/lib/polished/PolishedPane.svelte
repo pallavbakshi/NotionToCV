@@ -27,7 +27,8 @@
     isChatDrawerOpen = $bindable(false),
     addCanvasElement = null,
     toggleBlockLock = null,
-    onImportJSON = null
+    onImportJSON = null,
+    onPlaceBlock = null
   } = $props();
 
   let themeDrawerEl = $state(null);
@@ -221,6 +222,7 @@
       {themeColors}
       {selectedBlockIds}
       onClose={() => isChatDrawerOpen = false}
+      {onPlaceBlock}
     />
   {/if}
 

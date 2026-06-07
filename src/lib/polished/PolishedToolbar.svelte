@@ -19,7 +19,7 @@
 
   let isMenuOpen = $state(false);
   let downloading = $state(false);
-  let fileInput;
+  let fileInput = $state(null);
 
   export function closeMenu() { isMenuOpen = false; }
 
@@ -197,21 +197,6 @@
     font-size: 11px; font-weight: 600; color: #878682;
     letter-spacing: 0.8px; text-transform: uppercase;
   }
-
-  .btn-change-template {
-    font-size: 11px; font-weight: 500; color: #4b5563;
-    background: rgba(55, 53, 47, 0.06);
-    border: 1px solid rgba(55, 53, 47, 0.12);
-    border-radius: 5px; padding: 3px 8px; cursor: pointer;
-    transition: background-color 0.15s, color 0.15s; white-space: nowrap;
-  }
-
-  .btn-change-template:hover {
-    background-color: rgba(35, 131, 226, 0.1); color: #2383e2;
-    border-color: rgba(35, 131, 226, 0.25);
-  }
-
-  .btn-change-template:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .btn-goto-dashboard {
     font-size: 11px; font-weight: 600; color: #2383e2;

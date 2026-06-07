@@ -12,10 +12,11 @@ import { DOMParser as PMParser } from 'prosemirror-model';
 
 import { computeLayout, blockRectMm, initFonts, effectiveBaseStyle, colWidthMm } from '../lib/layout/index.js';
 import { findNeighbors } from './spatial.js';
-import { getAgentSystemPrompt, getSystemPromptOutline } from './prompts.js';
+import { getAgentSystemPrompt, getSystemPromptOutline, getLayoutDesignerPrompt } from './prompts.js';
 import { sanitizeHtmlWithoutCss, initDomParser } from '../lib/ai-chat/messageParser.js';
+import { anyOverlap, canvasToRect, rectsOverlap } from '../lib/polished/canvasUtils.js';
 
-export { getAgentSystemPrompt, getSystemPromptOutline };
+export { getAgentSystemPrompt, getSystemPromptOutline, getLayoutDesignerPrompt };
 
 // ---------------------------------------------------------------------------
 // Extension set — identical to parseHtmlToTiptapJson in messageParser.js.
@@ -345,6 +346,295 @@ export async function runAgentTool(name, args, ctx) {
         paddingMm,
         templateName,
         themeColors,
+        blockId: block.id
+      });
+
+      return {
+        result: {
+          status: "success",
+          blockId: block.id,
+          screenshot_base64: result.screenshot
+        }
+      };
+    } catch (err) {
+      console.error('Screenshot tool failed:', err);
+      return { result: { error: `Screenshot failed: ${err.message}` } };
+    }
+  }
+
+  return { result: { error: `Unknown tool: ${name}` } };
+}
+
+// ---------------------------------------------------------------------------
+// Layout Designer tools
+// ---------------------------------------------------------------------------
+
+const DEFAULT_SPANS = {
+  paragraph:           { colSpan: 2, rowSpan: 1 },
+  h3:                  { colSpan: 2, rowSpan: 2 },
+  h2:                  { colSpan: 4, rowSpan: 3 },
+  h1:                  { colSpan: 4, rowSpan: 4 },
+  horizontal_divider:  { colSpan: 4, rowSpan: 1 },
+  vertical_divider:    { colSpan: 0, rowSpan: 6 },
+  headshot:            { colSpan: 1, rowSpan: 6 }
+};
+
+export const LAYOUT_DESIGNER_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "read_canvas",
+      description: "Get a complete map of the canvas: all placed blocks with grid coordinates, all unplaced blocks with their content and default spans. Call this first before placing anything.",
+      parameters: { type: "object", properties: {}, required: [] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "place_block",
+      description: "Place or reposition a block on the 4-column grid canvas. Validates no overlap, within bounds, and locked status. Returns success or detailed collision info.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "The block's unique ID." },
+          page: { type: "integer", minimum: 1, description: "Page number (1-indexed)." },
+          col: { type: "integer", minimum: 0, maximum: 3, description: "Start column (0–3)." },
+          row: { type: "integer", minimum: 0, maximum: 52, description: "Start row (0–52)." },
+          colSpan: { type: "integer", minimum: 0, maximum: 4, description: "Column span. Use 0 for vertical divider / gutter elements." },
+          rowSpan: { type: "integer", minimum: 1, maximum: 53, description: "Row span height." }
+        },
+        required: ["id", "page", "col", "row", "colSpan", "rowSpan"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_block_font",
+      description: "Apply a font family to all text in a block. Affects layout because different fonts have different metrics (line height, character width). Use 'Default' to reset to the template's default font.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "The block's unique ID." },
+          font: { type: "string", enum: ["Default", "Inter", "Lora", "Playfair Display", "Space Grotesk", "Fira Code", "Outfit"], description: "Font family to apply. 'Default' removes any custom font override." }
+        },
+        required: ["id", "font"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_block_screenshot",
+      description: "Capture a visual screenshot of the block as it renders on the canvas. Useful to verify layout, density, font rendering, or line-wrapping before and after placement.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "The block's unique ID to screenshot." }
+        },
+        required: ["id"]
+      }
+    }
+  }
+];
+
+/**
+ * Run a Layout Designer tool call. Returns { result } or { result, canvasChange }.
+ *
+ * @param {string} name - Tool name ("read_canvas", "place_block")
+ * @param {object} args - Tool arguments
+ * @param {object} ctx - Application context (same shape as runAgentTool ctx)
+ * @returns {Promise<object>}
+ */
+export async function runLayoutDesignerTool(name, args, ctx) {
+  const { blocks, paddingMm } = ctx;
+
+  await initFonts();
+
+  if (name === 'read_canvas') {
+    const placedBlocks = [];
+    const unplacedBlocks = [];
+    let pageCount = 1;
+
+    for (const b of blocks) {
+      if (b.canvas) {
+        if (b.canvas.page > pageCount) pageCount = b.canvas.page;
+        placedBlocks.push({
+          id: b.id,
+          type: b.type,
+          name: b.name || null,
+          locked: !!b.locked,
+          canvas: { ...b.canvas },
+          plaintext: (b.content || []).map(n => n.text || '').join('')
+        });
+      } else {
+        unplacedBlocks.push({
+          id: b.id,
+          type: b.type,
+          name: b.name || null,
+          locked: !!b.locked,
+          plaintext: (b.content || []).map(n => n.text || '').join(''),
+          defaultSpans: DEFAULT_SPANS[b.type] || { colSpan: 2, rowSpan: 1 }
+        });
+      }
+    }
+
+    return {
+      result: {
+        pageCount,
+        placedBlocks,
+        unplacedBlocks
+      }
+    };
+  }
+
+  if (name === 'place_block') {
+    const block = blocks.find(b => b.id === args.id);
+    if (!block) {
+      return { result: { error: `Block ${args.id} not found` } };
+    }
+
+    if (block.locked) {
+      return {
+        result: {
+          status: "rejected",
+          reason: "block_is_locked",
+          message: `Block "${block.name || block.id}" is locked. You cannot move it.`
+        }
+      };
+    }
+
+    const { page, col, row, colSpan, rowSpan } = args;
+    const MAX_COLS = 4;
+    const MAX_ROW = 52;
+
+    // Grid bounds check
+    if (colSpan > 0 && col + colSpan > MAX_COLS) {
+      return {
+        result: {
+          status: "rejected",
+          reason: "out_of_bounds",
+          message: `col + colSpan (${col} + ${colSpan} = ${col + colSpan}) exceeds max columns (${MAX_COLS}).`
+        }
+      };
+    }
+    if (row + rowSpan > MAX_ROW + 1) {
+      return {
+        result: {
+          status: "rejected",
+          reason: "out_of_bounds",
+          message: `row + rowSpan (${row} + ${rowSpan} = ${row + rowSpan}) exceeds max row (${MAX_ROW}).`
+        }
+      };
+    }
+
+    // Overlap check — use the same physical collision math as the UI
+    const proposal = { page, col, row, colSpan, rowSpan };
+    const cw = colWidthMm(paddingMm);
+    const overlaps = anyOverlap(blocks, args.id, page, proposal, cw, paddingMm);
+
+    if (overlaps) {
+      // Find which block overlaps for contextual feedback
+      const candidateRect = canvasToRect(proposal, cw, paddingMm);
+      const collider = blocks.find(b => {
+        if (!b.canvas || b.id === args.id || b.canvas.page !== page) return false;
+        return rectsOverlap(candidateRect, canvasToRect(b.canvas, cw, paddingMm));
+      });
+      const colliderLabel = collider ? (collider.name ? `@${collider.name}` : collider.id) : 'another block';
+      return {
+        result: {
+          status: "rejected",
+          reason: "overlap",
+          message: `Placement overlaps with ${colliderLabel} at col ${collider?.canvas?.col}, row ${collider?.canvas?.row}. Choose different coordinates.`
+        }
+      };
+    }
+
+    // Apply placement directly
+    block.canvas = { page, col, row, colSpan, rowSpan };
+
+    // Content overflow check — for text blocks, verify content fits within the
+    // allocated dimensions so the AI knows if it needs a larger rowSpan
+    let capacity = null;
+    if (['paragraph', 'h1', 'h2', 'h3'].includes(block.type) && block.content?.length) {
+      const rect = blockRectMm(block.canvas, paddingMm);
+      const layoutCtx = { templateName: ctx.templateName, paddingMm, themeColors: ctx.themeColors };
+      capacity = computeBlockCapacity(block, rect, layoutCtx);
+    }
+
+    return {
+      result: {
+        status: "success",
+        message: `Block "${block.name || block.id}" placed at page ${page}, col ${col}, row ${row} (span ${colSpan}x${rowSpan}).` +
+          (capacity ? ` Content: ${capacity.current_lines_used}/${capacity.max_lines} lines used.` +
+            (capacity.is_overflowing ? ` ⚠️ OVERFLOW — content exceeds the block budget by ${capacity.current_lines_used - capacity.max_lines} line(s). Increase rowSpan or split content across blocks.` : '') : '')
+      },
+      canvasChange: { blockId: args.id, canvas: { page, col, row, colSpan, rowSpan } }
+    };
+  }
+
+  if (name === 'set_block_font') {
+    const block = blocks.find(b => b.id === args.id);
+    if (!block) {
+      return { result: { error: `Block ${args.id} not found` } };
+    }
+
+    if (block.locked) {
+      return {
+        result: {
+          status: "rejected",
+          reason: "block_is_locked",
+          message: `Block "${block.name || block.id}" is locked. Cannot change font.`
+        }
+      };
+    }
+
+    const font = args.font;
+    const content = block.content || [];
+    const updatedContent = content.map(node => {
+      if (node.type !== 'text') return node;
+      const marks = (node.marks || []).filter(m => m.type !== 'fontFamily');
+      if (font !== 'Default') {
+        marks.push({ type: 'fontFamily', attrs: { fontFamily: font } });
+      }
+      return { ...node, marks };
+    });
+
+    // Safety: don't wipe content
+    if (content.length > 0 && updatedContent.length === 0) {
+      return {
+        result: {
+          status: "rejected",
+          reason: "would_clear_content",
+          message: `Block "${block.name || block.id}" — font change would clear all content. Aborted.`
+        }
+      };
+    }
+
+    block.content = updatedContent;
+
+    return {
+      result: {
+        status: "success",
+        message: `Font for block "${block.name || block.id}" set to ${font}.`
+      }
+    };
+  }
+
+  if (name === 'get_block_screenshot') {
+    const { blocks: allBlocks, pageTitle: title, templateName: tmpl, themeColors: colors, screenshotProvider } = ctx;
+    const block = blocks.find(b => b.id === args.id);
+    if (!block) {
+      return { result: { error: `Block ${args.id} not found` } };
+    }
+
+    try {
+      const result = await screenshotProvider({
+        blocks: allBlocks,
+        pageTitle: title,
+        paddingMm,
+        templateName: tmpl,
+        themeColors: colors,
         blockId: block.id
       });
 

@@ -13,4 +13,4 @@ export { ResumeAgentEngine } from './engine.js';
 export { browserModelProvider, browserScreenshotProvider } from './providers/browser.js';
 
 // Re-export tool utilities for hosts that need direct access
-export { runAgentTool, AGENT_TOOLS, getAgentSystemPrompt, getSystemPromptOutline, htmlToInlineNodes, initSdkDomParser } from './tools.js';
+export { runAgentTool, runLayoutDesignerTool, AGENT_TOOLS, LAYOUT_DESIGNER_TOOLS, getAgentSystemPrompt, getSystemPromptOutline, getLayoutDesignerPrompt, htmlToInlineNodes, initSdkDomParser } from './tools.js';

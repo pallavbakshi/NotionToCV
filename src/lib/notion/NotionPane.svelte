@@ -199,6 +199,77 @@
     }
   }
 
+  let isNormalizing = $state(false);
+
+  async function aiNormalizeText(text) {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'google/gemini-3.1-flash-lite',
+        systemPrompt: 'Fix spacing, line breaks, and whitespace issues WITHOUT changing any words, punctuation, or meaning. Return ONLY the cleaned text, no explanations.',
+        messages: [{ role: 'user', content: text }]
+      })
+    });
+    if (!res.ok) return text;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        const clean = line.trim();
+        if (!clean || !clean.startsWith('data: ')) continue;
+        const dataStr = clean.substring(6);
+        if (dataStr === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(dataStr);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) result += content;
+        } catch {}
+      }
+    }
+    return result.trim() || text;
+  }
+
+  async function normalizeSelectedBlocks() {
+    console.log('[normalize] called, selectedBlockIds:', selectedBlockIds.length, 'isNormalizing:', isNormalizing);
+    if (selectedBlockIds.length === 0 || isNormalizing) return;
+    isNormalizing = true;
+    try {
+      for (const id of selectedBlockIds) {
+        const idx = blocks.findIndex(b => b.id === id);
+        if (idx === -1 || blocks[idx].locked) { console.log('[normalize] skip block', id); continue; }
+        const block = blocks[idx];
+        const plain = (block.content || []).map(n => n.text || '').join('');
+        console.log('[normalize] block', id, 'preview:', plain.slice(0, 40));
+        if (!plain.trim()) { console.log('[normalize] skip empty block', id); continue; }
+
+        const cleaned = await aiNormalizeText(plain);
+        console.log('[normalize] cleaned length:', cleaned?.length, 'changed:', cleaned !== plain);
+        if (!cleaned || cleaned === plain) continue;
+
+        const proposedContent = [{ type: 'text', text: cleaned }];
+        stagedChanges.update(s => ({
+          ...s,
+          [block.id]: {
+            originalContent: block.content,
+            proposedContent,
+            proposedHtml: `<p>${cleaned.replace(/\n/g, '<br>')}</p>`
+          }
+        }));
+      }
+    } catch (err) {
+      console.error('[normalize] error:', err);
+    }
+    isNormalizing = false;
+  }
+
   function moveBlock(fromIndex, toIndex) {
     if (fromIndex === toIndex) return;
     if (blocks[fromIndex]?.locked) return;
@@ -545,7 +616,7 @@
       e.clipboardData.setData('application/json', jsonData);
     }
 
-    function handleCut(e) {
+  function handleCut(e) {
       if (selectedBlockIds.length === 0) return;
       if (
         document.activeElement.tagName === 'INPUT' || 
@@ -736,10 +807,18 @@
   <div class="floating-chat-bubble-container" contenteditable="false">
     <button
       type="button"
-      class="floating-chat-bubble"
-      onclick={() => onAskAI?.(selectedBlockIds)}
+      class="floating-chat-bubble floating-chat-bubble-secondary"
+      onclick={(e) => { e.stopPropagation(); normalizeSelectedBlocks(); }}
+      disabled={isNormalizing}
     >
-      💬 Chat with AI ({selectedBlockIds.length} block{selectedBlockIds.length > 1 ? 's' : ''})
+      {isNormalizing ? '⏳ Cleaning...' : '✨ Clean text'}
+    </button>
+    <button
+      type="button"
+      class="floating-chat-bubble"
+      onclick={(e) => { e.stopPropagation(); onAskAI?.(selectedBlockIds); }}
+    >
+      💬 Chat with AI ({selectedBlockIds.length})
     </button>
   </div>
 {/if}
@@ -752,6 +831,8 @@
     transform: translateX(-50%);
     z-index: 10000;
     animation: bubble-fade-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    display: flex;
+    gap: 8px;
   }
 
   @keyframes bubble-fade-up {
@@ -785,6 +866,20 @@
   .floating-chat-bubble:hover {
     background: #081d50;
     transform: scale(1.03);
+  }
+
+  .floating-chat-bubble-secondary {
+    background: #374151;
+  }
+
+  .floating-chat-bubble-secondary:hover {
+    background: #1f2937;
+  }
+
+  .floating-chat-bubble:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
   }
   .top-bar {
     height: 44px;

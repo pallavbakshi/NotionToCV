@@ -7,7 +7,8 @@
 // Zero Svelte, zero browser globals, zero fetch. Everything host-specific
 // arrives through the injected modelProvider / screenshotProvider.
 
-import { runAgentTool, AGENT_TOOLS, getAgentSystemPrompt, getSystemPromptOutline, computeBlockCapacity } from './tools.js';
+import { runAgentTool, runLayoutDesignerTool, AGENT_TOOLS, LAYOUT_DESIGNER_TOOLS, getAgentSystemPrompt, getSystemPromptOutline, computeBlockCapacity } from './tools.js';
+import { getLayoutDesignerPrompt } from './prompts.js';
 import { blockRectMm } from '../lib/layout/index.js';
 
 export class ResumeAgentEngine {
@@ -37,15 +38,20 @@ export class ResumeAgentEngine {
    * @param {string} [opts.model] - Per-call model override (defaults to constructor model).
    * @param {AbortSignal} [opts.signal] - Abort signal.
    * @param {'agent'|'coach'} [opts.mode]
+   * @param {'editor'|'layout_designer'} [opts.subAgent] - Sub-agent when mode is 'agent'. Default: 'editor'.
    * @returns {AsyncIterable<import('./types.js').AgentEvent>}
    */
   async *optimizeResume(state, instruction, opts = {}) {
     const signal = opts.signal;
     const mode = opts.mode || 'agent';
+    const subAgent = opts.subAgent || 'editor';
+    const isLayout = mode === 'agent' && subAgent === 'layout_designer';
     const systemPrompt = opts.systemPrompt ||
-      (mode === 'agent'
-        ? getAgentSystemPrompt(state.blocks, state.title)
-        : getSystemPromptOutline(state.blocks, state.title));
+      (isLayout
+        ? getLayoutDesignerPrompt(state.blocks, state.title)
+        : mode === 'agent'
+          ? getAgentSystemPrompt(state.blocks, state.title)
+          : getSystemPromptOutline(state.blocks, state.title));
 
     let history = opts.messages && opts.messages.length > 0
       ? [...opts.messages]
@@ -73,7 +79,7 @@ export class ResumeAgentEngine {
           messages: history,
           systemPrompt,
           model: opts.model || this.model,
-          tools: mode === 'agent' ? AGENT_TOOLS : undefined,
+          tools: isLayout ? LAYOUT_DESIGNER_TOOLS : mode === 'agent' ? AGENT_TOOLS : undefined,
           signal
         });
 
@@ -147,7 +153,7 @@ export class ResumeAgentEngine {
 
         yield { type: 'tool_call', id: tc.id, name: tcName, args: parsedArgs };
 
-        const { result, stagedChangesUpdate } = await runAgentTool(tcName, parsedArgs, {
+        const toolResult = await (isLayout ? runLayoutDesignerTool : runAgentTool)(tcName, parsedArgs, {
           blocks: state.blocks,
           paddingMm: state.paddingMm,
           templateName: state.templateName,
@@ -158,7 +164,13 @@ export class ResumeAgentEngine {
           strictCapacity: opts.strictCapacity || false
         });
 
+        const { result, stagedChangesUpdate, canvasChange } = toolResult;
+
         yield { type: 'tool_result', id: tc.id, name: tcName, result };
+
+        if (canvasChange) {
+          yield { type: 'canvas_change', blockId: canvasChange.blockId, canvas: canvasChange.canvas };
+        }
 
         if (stagedChangesUpdate) {
           // Emit staged_change whenever a block's staged content changes — including

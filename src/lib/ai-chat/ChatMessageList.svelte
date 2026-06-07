@@ -7,7 +7,9 @@
     blocks = [],
     renderMarkdown,
     attachPolishedCV,
-    attachAllBlocks
+    attachAllBlocks,
+    acceptLayout = null,
+    denyLayout = null
   } = $props();
 </script>
 
@@ -63,6 +65,12 @@
             <div class="markdown-content">
               {@html renderMarkdown(msg.content)}
             </div>
+            {#if msg.layoutResult && !msg.layoutAccepted}
+              <div class="layout-result-actions">
+                <button type="button" class="btn-layout-accept" onclick={() => acceptLayout?.()}>✓ Accept Layout</button>
+                <button type="button" class="btn-layout-deny" onclick={() => denyLayout?.()}>✕ Deny Layout</button>
+              </div>
+            {/if}
             {#if !msg.content && isGenerating && msg === messages[messages.length - 1]}
               <div class="stream-loading-dots">
                 <span class="dot"></span>
@@ -316,5 +324,43 @@
     background: rgba(239, 68, 68, 0.2);
     border-color: rgba(239, 68, 68, 0.45);
     color: #fee2e2;
+  }
+
+  .layout-result-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .btn-layout-accept,
+  .btn-layout-deny {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.12s, border-color 0.12s;
+  }
+
+  .btn-layout-accept {
+    background: #10b981;
+    color: #ffffff;
+  }
+
+  .btn-layout-accept:hover {
+    background: #059669;
+  }
+
+  .btn-layout-deny {
+    background: transparent;
+    color: #9ca3af;
+    border-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .btn-layout-deny:hover {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.05);
   }
 </style>
