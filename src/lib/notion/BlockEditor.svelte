@@ -449,12 +449,13 @@
 
           // Multiple blocks (or a single heading): split this block at the cursor
           // and insert the parsed blocks between the two halves — like Notion.
+          if (!insertPastedBlocks) return false;
           event.preventDefault();
           const { from, to } = view.state.selection;
           const contentArray = view.state.doc.firstChild?.toJSON().content || [];
           const before = splitInlineContent(contentArray, Math.max(0, from - 1)).before;
           const after = splitInlineContent(contentArray, Math.max(0, to - 1)).after;
-          insertPastedBlocks?.(current.index, before, after, newBlocks);
+          insertPastedBlocks(current.index, before, after, newBlocks);
           return true;
         }
       },

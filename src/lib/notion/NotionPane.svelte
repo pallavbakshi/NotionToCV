@@ -182,6 +182,7 @@
         ...current,
         id: 'b_' + Math.random().toString(36).substring(2, 9),
         name: null,
+        canvas: null,
         content: after
       });
     }
@@ -590,9 +591,12 @@
       // is selected (e.g. pasting into empty document space).
       let insertIdx = blocks.length;
       if (selectedBlockIds.length > 0) {
-        const lastSelectedId = selectedBlockIds[selectedBlockIds.length - 1];
-        const targetIdx = blocks.findIndex(b => b.id === lastSelectedId);
-        if (targetIdx !== -1) insertIdx = targetIdx + 1;
+        let maxIdx = -1;
+        for (const id of selectedBlockIds) {
+          const idx = blocks.findIndex(b => b.id === id);
+          if (idx > maxIdx) maxIdx = idx;
+        }
+        if (maxIdx !== -1) insertIdx = maxIdx + 1;
       }
 
       blocks.splice(insertIdx, 0, ...newBlocks);

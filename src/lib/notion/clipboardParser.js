@@ -284,7 +284,7 @@ function trimInline(nodes) {
 
 function parsePlainText(text) {
   if (!text) return null;
-  const lines = text.split(/\r?\n/);
+  const lines = text.replace(/[\r\n]+$/, '').split(/\r?\n/);
   return lines.map(line => {
     let type = 'paragraph';
     let contentText = line;
