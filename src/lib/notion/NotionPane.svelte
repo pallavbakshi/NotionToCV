@@ -2,8 +2,8 @@
 <script>
   import { onMount } from 'svelte';
   import BlockEditor from './BlockEditor.svelte';
-  import { templateDefaultFonts, normalizeTemplateName } from '../shared/templateFonts.js';
   import { stagedChanges } from '../shared/stagingStore.js';
+  import { parseClipboard } from './clipboardParser.js';
 
   // Svelte 5 props
   let { 
@@ -13,10 +13,6 @@
     paddingMm = $bindable(15),
     activeTemplate = $bindable('clean'),
     themeColors = $bindable(),
-    undo = null,
-    redo = null,
-    historyPastLength = 0,
-    historyFutureLength = 0,
     onAskAI = null,
     acceptStagedChange = null,
     denyStagedChange = null,
@@ -25,7 +21,6 @@
     toggleBlockLock = null
   } = $props();
 
-  let fileInput;
   let focusTarget = $state({ index: null, position: 'end', timestamp: 0 });
   let hasAnyStagedChanges = $derived(Object.keys($stagedChanges).length > 0);
 
@@ -163,6 +158,40 @@
     selectedBlockIds = duplicates.map(b => b.id);
   }
 
+  // Strategy 2 paste: split the block at `index` at the cursor (before/after are
+  // the inline halves) and drop the pasted blocks in between. If both halves are
+  // empty (cursor in an empty block), the block is simply replaced.
+  function insertPastedBlocks(index, before, after, newBlocks) {
+    if (index < 0 || index >= blocks.length) return;
+    if (blocks[index]?.locked) return;
+    if (!newBlocks || newBlocks.length === 0) return;
+
+    const current = blocks[index];
+    const hasBefore = before && before.length > 0;
+    const hasAfter = after && after.length > 0;
+
+    const out = [];
+    if (hasBefore) out.push({ ...current, content: before });
+    out.push(...newBlocks);
+    if (hasAfter) {
+      out.push({
+        ...current,
+        id: 'b_' + Math.random().toString(36).substring(2, 9),
+        name: null,
+        canvas: null,
+        content: after
+      });
+    }
+
+    blocks.splice(index, 1, ...out);
+    blocks = [...blocks];
+
+    // Focus the end of the last pasted block.
+    const lastPastedIdx = (hasBefore ? index + 1 : index) + newBlocks.length - 1;
+    selectedBlockIds = [];
+    focusBlock(lastPastedIdx, 'end');
+  }
+
   function updateBlock(index, patch) {
     if (index >= 0 && index < blocks.length) {
       if (blocks[index]?.locked) return;
@@ -238,78 +267,6 @@
     
     // Focus previous block at junction position
     focusBlock(index - 1, junctionPos);
-  }
-
-  // JSON Import & Export
-  function exportJSON() {
-    const data = {
-      pageTitle,
-      blocks,
-      paddingMm,
-      templateName: activeTemplate,
-      themeColors
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = (pageTitle.trim() || 'Untitled') + '_resume.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function triggerImport() {
-    fileInput.click();
-  }
-
-  function handleImportFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target.result);
-        if (data && Array.isArray(data.blocks)) {
-          // Ensure legacy blocks without a locked field default to unlocked
-          blocks = data.blocks.map(b => ({ locked: false, ...b }));
-          pageTitle = data.pageTitle || '';
-          if (data.paddingMm !== undefined) paddingMm = data.paddingMm;
-          // Normalize to a built-in preset: a custom/legacy id would leave
-          // activeTemplate unsupported, so getTypeStyle falls back to clean geometry
-          // while fonts default off the normalized name — a transient mismatch.
-          if (data.templateName) activeTemplate = normalizeTemplateName(data.templateName);
-          if (data.themeColors) {
-            // The layout engine reads per-category keys (h1Color/h2Color/h3Color/
-            // textColor + h1Font/…/textFont). Older exports only carried a flat
-            // primaryColor/textColor/backgroundColor — map those forward, falling
-            // back to per-category keys when present, so imports don't silently
-            // drop to Inter + default colors.
-            const tc = data.themeColors;
-            // Fonts default to the imported template's defaults (e.g. elegant →
-            // Playfair/Lora), not a blanket Inter — matches App.svelte's import paths.
-            const tdf = templateDefaultFonts[normalizeTemplateName(data.templateName)];
-            themeColors = {
-              h1Color: tc.h1Color ?? tc.primaryColor ?? '#0a2463',
-              h2Color: tc.h2Color ?? tc.primaryColor ?? '#0a2463',
-              h3Color: tc.h3Color ?? tc.textColor ?? '#1e1b18',
-              textColor: tc.textColor ?? '#1e1b18',
-              backgroundColor: tc.backgroundColor ?? '#ffffff',
-              h1Font: tc.h1Font ?? tdf?.h1 ?? 'Inter',
-              h2Font: tc.h2Font ?? tdf?.h2 ?? 'Inter',
-              h3Font: tc.h3Font ?? tdf?.h3 ?? 'Inter',
-              textFont: tc.textFont ?? tdf?.text ?? 'Inter'
-            };
-          }
-        } else {
-          alert('Invalid JSON file format. It must contain a "blocks" array.');
-        }
-      } catch (err) {
-        alert('Failed to parse JSON file.');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = ''; // Reset file input
   }
 
   // Drag and Drop Event Handlers
@@ -604,70 +561,44 @@
       deleteMultipleBlocks(selectedBlockIds);
     }
 
-    async function handlePaste(e) {
-      if (selectedBlockIds.length === 0) return;
+    function handlePaste(e) {
+      // Let native paste handle text fields and in-block editing — pasting into
+      // a focused block stays ProseMirror's job (inline paste). Block-level
+      // paste only fires when the user is NOT typing in an editable target.
+      const ae = document.activeElement;
       if (
-        document.activeElement.tagName === 'INPUT' || 
-        document.activeElement.tagName === 'TEXTAREA' ||
-        document.activeElement.closest('.ProseMirror')
+        ae && (
+          ae.tagName === 'INPUT' ||
+          ae.tagName === 'TEXTAREA' ||
+          ae.closest?.('.ProseMirror') ||
+          ae.closest?.('.chat-drawer')
+        )
       ) {
         return;
       }
 
-      e.preventDefault();
       const clipboardData = e.clipboardData || window.clipboardData;
-      const jsonData = clipboardData.getData('application/json');
-      const textData = clipboardData.getData('text/plain');
+      const newBlocks = parseClipboard(clipboardData);
+      if (!newBlocks || newBlocks.length === 0) return;
 
-      let newBlocks = [];
-      try {
-        if (jsonData) {
-          const parsed = JSON.parse(jsonData);
-          if (Array.isArray(parsed) && parsed.every(b => b.type && b.id)) {
-            newBlocks = parsed.map(b => ({
-              ...b,
-              id: 'b_' + Math.random().toString(36).substring(2, 9),
-              canvas: null
-            }));
-          }
+      e.preventDefault();
+
+      // Insert after the last selected block, or append to the end when nothing
+      // is selected (e.g. pasting into empty document space).
+      let insertIdx = blocks.length;
+      if (selectedBlockIds.length > 0) {
+        let maxIdx = -1;
+        for (const id of selectedBlockIds) {
+          const idx = blocks.findIndex(b => b.id === id);
+          if (idx > maxIdx) maxIdx = idx;
         }
-      } catch (err) {}
-
-      if (newBlocks.length === 0 && textData) {
-        const lines = textData.split(/\r?\n/);
-        newBlocks = lines.map(line => {
-          let type = 'paragraph';
-          let contentText = line;
-          if (line.startsWith('# ')) {
-            type = 'h1';
-            contentText = line.substring(2);
-          } else if (line.startsWith('## ')) {
-            type = 'h2';
-            contentText = line.substring(3);
-          } else if (line.startsWith('### ')) {
-            type = 'h3';
-            contentText = line.substring(4);
-          }
-          return {
-            id: 'b_' + Math.random().toString(36).substring(2, 9),
-            type,
-            content: contentText ? [{ type: 'text', text: contentText }] : [],
-            canvas: null,
-            name: null
-          };
-        });
+        if (maxIdx !== -1) insertIdx = maxIdx + 1;
       }
 
-      if (newBlocks.length > 0) {
-        const lastSelectedId = selectedBlockIds[selectedBlockIds.length - 1];
-        const targetIdx = blocks.findIndex(b => b.id === lastSelectedId);
-        const insertIdx = targetIdx !== -1 ? targetIdx + 1 : blocks.length;
+      blocks.splice(insertIdx, 0, ...newBlocks);
+      blocks = [...blocks];
 
-        blocks.splice(insertIdx, 0, ...newBlocks);
-        blocks = [...blocks];
-
-        selectedBlockIds = newBlocks.map(b => b.id);
-      }
+      selectedBlockIds = newBlocks.map(b => b.id);
     }
 
     function handleWindowClick(e) {
@@ -699,9 +630,7 @@
 <div class="top-bar">
   <div class="view-label">Notion View</div>
   <div class="action-buttons">
-    <button type="button" class="btn btn-outline" onclick={() => undo?.()} disabled={historyPastLength === 0} title="Undo (Cmd+Z)">↶ Undo</button>
-    <button type="button" class="btn btn-outline" onclick={() => redo?.()} disabled={historyFutureLength === 0} title="Redo (Cmd+Shift+Z)">↷ Redo</button>
-    <div style="width: 1px; height: 16px; background-color: var(--notion-border); margin: 0 4px; align-self: center;"></div>
+
     {#if hasAnyStagedChanges}
       <button type="button" class="btn btn-accept-all" onclick={acceptAllStagedChanges} title="Accept all proposed changes">
         ✓ Accept All ({Object.keys($stagedChanges).length})
@@ -711,15 +640,6 @@
       </button>
       <div style="width: 1px; height: 16px; background-color: var(--notion-border); margin: 0 4px; align-self: center;"></div>
     {/if}
-    <button type="button" class="btn btn-outline" onclick={triggerImport}>Import JSON</button>
-    <button type="button" class="btn btn-outline" onclick={exportJSON}>Export JSON</button>
-    <input 
-      type="file" 
-      accept=".json" 
-      style="display: none;" 
-      bind:this={fileInput} 
-      onchange={handleImportFile}
-    />
   </div>
 </div>
 
@@ -765,6 +685,7 @@
             {focusBlock}
             {mergeWithPrevious}
             {duplicateBlock}
+            {insertPastedBlocks}
             onDragStart={(e) => handleDragStart(idx, e)}
             onDragEnd={handleDragEnd}
             selected={selectedBlockIds.includes(block.id)}

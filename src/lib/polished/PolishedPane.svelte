@@ -23,15 +23,11 @@
     templateName = 'clean',
     themeColors = $bindable(),
     onGoToDashboard,
-    onChangeTemplate,
-    undo = null,
-    redo = null,
-    historyPastLength = 0,
-    historyFutureLength = 0,
     activeResumeId = null,
     isChatDrawerOpen = $bindable(false),
     addCanvasElement = null,
-    toggleBlockLock = null
+    toggleBlockLock = null,
+    onImportJSON = null
   } = $props();
 
   let themeDrawerEl = $state(null);
@@ -46,7 +42,6 @@
   const colWidth = (210 - 2 * paddingMm - 12) / 4;
   const overlappingBlockIds = $derived(findOverlappingIds(blocks, colWidth, paddingMm));
   const overlapCount = $derived(overlappingBlockIds.size);
-  const unplacedCount = $derived(blocks.filter(b => !b.canvas).length);
   const maxPlacedPage = $derived(blocks.reduce((max, b) => b.canvas?.page > max ? b.canvas.page : max, 0));
   const totalPages = $derived(Math.max(manualPageCount, maxPlacedPage));
 
@@ -197,11 +192,6 @@
     bind:this={toolbarEl}
     {isExportMode}
     {onGoToDashboard}
-    {undo}
-    {redo}
-    {historyPastLength}
-    {historyFutureLength}
-    {onChangeTemplate}
     {templateName}
     {isChatDrawerOpen}
     {toggleChatDrawer}
@@ -213,6 +203,7 @@
     {pageTitle}
     {themeColors}
     {totalPages}
+    {onImportJSON}
   />
 
   {#if !isExportMode}
@@ -294,7 +285,7 @@
 
   <SelectionOverlay {marqueeState} />
 
-  {#if !isExportMode && selectedBlockIds.length > 0}
+  {#if !isExportMode && selectedBlockIds.length > 0 && !isChatDrawerOpen}
     <div class="floating-chat-bubble-container">
       <button type="button" class="floating-chat-bubble" onclick={() => handleAskAI(selectedBlockIds)}>
         💬 Chat with AI about {selectedBlockIds.length} block{selectedBlockIds.length > 1 ? 's' : ''}

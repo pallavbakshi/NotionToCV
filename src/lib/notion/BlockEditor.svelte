@@ -9,6 +9,7 @@
   import { Placeholder } from '@tiptap/extension-placeholder';
   import BlockRenderer from '../polished/BlockRenderer.svelte';
   import { stagedChanges } from '../shared/stagingStore.js';
+  import { parseClipboard } from './clipboardParser.js';
 
   // Svelte 5 props
   let {
@@ -25,6 +26,7 @@
     focusBlock,
     mergeWithPrevious,
     duplicateBlock,
+    insertPastedBlocks = null,
     onDragStart,
     onDragEnd,
     selected = false,
@@ -424,6 +426,37 @@
           }
 
           return false;
+        },
+        handlePaste: (view, event) => {
+          // Locked blocks swallow paste.
+          if (block.locked) return true;
+
+          const clipboardData = event.clipboardData;
+          if (!clipboardData) return false; // let ProseMirror handle
+
+          const newBlocks = parseClipboard(clipboardData);
+          if (!newBlocks || newBlocks.length === 0) return false;
+
+          // A single paragraph is an inline paste (a word, a sentence): insert it
+          // at the cursor so it stays in THIS block and our parsed marks survive
+          // (ProseMirror's native paste drops Notion's inline-style formatting).
+          if (newBlocks.length === 1 && newBlocks[0].type === 'paragraph') {
+            event.preventDefault();
+            const inline = newBlocks[0].content || [];
+            if (inline.length) editor.commands.insertContent(inline);
+            return true;
+          }
+
+          // Multiple blocks (or a single heading): split this block at the cursor
+          // and insert the parsed blocks between the two halves — like Notion.
+          if (!insertPastedBlocks) return false;
+          event.preventDefault();
+          const { from, to } = view.state.selection;
+          const contentArray = view.state.doc.firstChild?.toJSON().content || [];
+          const before = splitInlineContent(contentArray, Math.max(0, from - 1)).before;
+          const after = splitInlineContent(contentArray, Math.max(0, to - 1)).after;
+          insertPastedBlocks(current.index, before, after, newBlocks);
+          return true;
         }
       },
       onUpdate: () => {
