@@ -715,7 +715,7 @@ export async function runLayoutDesignerTool(name, args, ctx) {
       }
     }
 
-    // Check each text block for overflow and tall-thin aspect ratio
+    // Check each text block for overflow, tall-thin aspect ratio, and narrow long paragraphs
     for (const b of placed) {
       if (!['paragraph', 'h1', 'h2', 'h3'].includes(b.type)) continue;
       const rect = blockRectMm(b.canvas, paddingMm);
@@ -727,10 +727,20 @@ export async function runLayoutDesignerTool(name, args, ctx) {
         suggestions.push({ block: b.name || b.id, action: 'increase rowSpan', from: `rowSpan ${b.canvas.rowSpan}`, reason: `Needs ${capacity.current_lines_used} lines but only has ${capacity.max_lines}` });
       }
       const aspectRatio = b.canvas.rowSpan / b.canvas.colSpan;
-      if (aspectRatio > 2 && b.type === 'paragraph') {
-        penalties.push({ type: 'tall_thin', severity: 'medium', page: b.canvas.page, block: b.name || b.id, rows: `aspect ${Math.round(aspectRatio * 10) / 10}` });
+      // Threshold: 1.5 for substantial paragraphs (>100 chars), 2.0 for short ones and headings.
+      // Catches 3×6 (ratio 2.0) and 2×7 (ratio 3.5) summaries, not just extreme cases.
+      const plaintext = (b.content || []).filter(n => n.type === 'text').map(n => n.text).join('');
+      const tallThinThreshold = (b.type === 'paragraph' && plaintext.length > 100) ? 1.5 : 2.0;
+      if (aspectRatio > tallThinThreshold) {
+        penalties.push({ type: 'tall_thin', severity: 'medium', page: b.canvas.page, block: b.name || b.id, message: `Aspect ratio ${Math.round(aspectRatio * 10) / 10} (rowSpan ${b.canvas.rowSpan} / colSpan ${b.canvas.colSpan}) — too tall and narrow for this amount of text.` });
         score = Math.max(0, score - 5);
-        suggestions.push({ block: b.name || b.id, action: 'widen to colSpan 3-4', reason: `Aspect ratio ${Math.round(aspectRatio * 10) / 10} — too tall and narrow` });
+        suggestions.push({ block: b.name || b.id, action: 'widen to colSpan 3-4', reason: `Aspect ratio ${Math.round(aspectRatio * 10) / 10} exceeds threshold ${tallThinThreshold} — widen the block instead of stacking rows` });
+      }
+      // Narrow long paragraph: >200 chars squeezed into ≤2 cols is almost always wrong on a 4-col resume.
+      if (b.type === 'paragraph' && plaintext.length > 200 && b.canvas.colSpan <= 2) {
+        penalties.push({ type: 'narrow_long_paragraph', severity: 'medium', page: b.canvas.page, block: b.name || b.id, message: `${plaintext.length}-char paragraph placed at colSpan ${b.canvas.colSpan}. Long prose needs at least 3 columns.` });
+        score = Math.max(0, score - 6);
+        suggestions.push({ block: b.name || b.id, action: 'widen to colSpan 3 or 4', reason: 'Long text in narrow column wastes vertical space and hurts readability' });
       }
       if (capacity.current_lines_used / Math.max(1, capacity.max_lines) < 0.5) {
         penalties.push({ type: 'low_utilization', severity: 'small', page: b.canvas.page, block: b.name || b.id, message: `Only ${capacity.current_lines_used}/${capacity.max_lines} lines used` });
@@ -738,38 +748,37 @@ export async function runLayoutDesignerTool(name, args, ctx) {
       }
     }
 
-    // Per-page fill ratio check
+    // Per-page fill ratio and spatial checks — build a cell-level occupancy grid per page
+    const MAX_PAGE_ROWS = 53;
     for (const pg of pageNums) {
       const pgBlocks = placed.filter(b => b.canvas.page === pg);
       const maxRow = pgBlocks.reduce((m, b) => Math.max(m, b.canvas.row + b.canvas.rowSpan), 0);
-      const totalCells = maxRow * 4;
+
+      // Build a 4-col × maxRow occupancy grid
+      const grid = Array.from({ length: Math.max(maxRow, 1) }, () => [false, false, false, false]);
       let occupiedCells = 0;
       for (const b of pgBlocks) {
-        occupiedCells += b.canvas.colSpan * b.canvas.rowSpan;
+        if (b.canvas.colSpan === 0) continue;
+        for (let r = b.canvas.row; r < b.canvas.row + b.canvas.rowSpan && r < grid.length; r++) {
+          for (let c = b.canvas.col; c < b.canvas.col + b.canvas.colSpan && c < 4; c++) {
+            if (!grid[r][c]) { grid[r][c] = true; occupiedCells++; }
+          }
+        }
       }
+
+      // Fill ratio based on actual occupied cells, not block bounding boxes
+      const totalCells = maxRow * 4;
       const fillRatio = totalCells > 0 ? occupiedCells / totalCells : 0;
       if (fillRatio < 0.5 && pgBlocks.length > 2) {
         penalties.push({ type: 'low_fill', severity: 'medium', page: pg, message: `Fill ratio ${Math.round(fillRatio * 100)}% — page is sparse` });
         score = Math.max(0, score - 5);
       }
-    }
 
-    // Excess vertical gap: find consecutive empty row bands > 2 rows on each page.
-    // A "row band" is a row where all 4 columns are empty across ALL placed blocks on that page.
-    for (const pg of pageNums) {
-      const pgBlocks = placed.filter(b => b.canvas.page === pg);
-      if (pgBlocks.length < 2) continue;
-      const maxRow = pgBlocks.reduce((m, b) => Math.max(m, b.canvas.row + b.canvas.rowSpan), 0);
-      // Build occupancy: which rows have at least one cell occupied
-      const occupiedRows = new Set();
-      for (const b of pgBlocks) {
-        if (b.canvas.colSpan === 0) continue; // vertical dividers don't count
-        for (let r = b.canvas.row; r < b.canvas.row + b.canvas.rowSpan; r++) occupiedRows.add(r);
-      }
-      // Scan for gaps > 2 consecutive empty rows within the used range
+      // Excess vertical gap: scan for > 2 consecutive ALL-EMPTY rows (no column occupied)
       let gapStart = -1;
-      for (let r = 0; r <= maxRow; r++) {
-        if (!occupiedRows.has(r)) {
+      for (let r = 0; r < grid.length; r++) {
+        const rowEmpty = grid[r].every(cell => !cell);
+        if (rowEmpty) {
           if (gapStart === -1) gapStart = r;
         } else {
           if (gapStart !== -1) {
@@ -777,9 +786,32 @@ export async function runLayoutDesignerTool(name, args, ctx) {
             if (gapSize > 2) {
               penalties.push({ type: 'excess_vertical_gap', severity: 'medium', page: pg, rows: gapSize, message: `${gapSize}-row empty gap at rows ${gapStart}–${r - 1}. Tighten spacing or move blocks up.` });
               score = Math.max(0, score - Math.min(10, gapSize * 2));
-              suggestions.push({ action: 'reduce gap', page: pg, message: `Move blocks above row ${r} down or blocks below row ${gapStart} up to close the ${gapSize}-row gap` });
+              suggestions.push({ action: 'reduce gap', page: pg, message: `Close the ${gapSize}-row gap at rows ${gapStart}–${r - 1}` });
             }
             gapStart = -1;
+          }
+        }
+      }
+
+      // Column vacancy: if any single column is empty for > 5 consecutive rows while
+      // at least one adjacent column is occupied in those same rows — horizontal waste.
+      for (let col = 0; col < 4; col++) {
+        let vacStart = -1;
+        for (let r = 0; r < grid.length; r++) {
+          const colEmpty = !grid[r][col];
+          const neighborOccupied = (col > 0 && grid[r][col - 1]) || (col < 3 && grid[r][col + 1]);
+          if (colEmpty && neighborOccupied) {
+            if (vacStart === -1) vacStart = r;
+          } else {
+            if (vacStart !== -1) {
+              const vacSize = r - vacStart;
+              if (vacSize > 5) {
+                penalties.push({ type: 'column_vacancy', severity: 'medium', page: pg, message: `Column ${col} is empty for ${vacSize} rows (${vacStart}–${r - 1}) while adjacent columns have content. Widen neighboring blocks.` });
+                score = Math.max(0, score - 4);
+                suggestions.push({ action: `widen blocks in adjacent columns to cover col ${col}`, page: pg, message: `Col ${col} has ${vacSize} wasted rows alongside content` });
+              }
+              vacStart = -1;
+            }
           }
         }
       }
