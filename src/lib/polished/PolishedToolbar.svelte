@@ -3,11 +3,6 @@
   let {
     isExportMode = false,
     onGoToDashboard = null,
-    undo = null,
-    redo = null,
-    historyPastLength = 0,
-    historyFutureLength = 0,
-    onChangeTemplate = null,
     templateName = 'clean',
     isChatDrawerOpen = false,
     toggleChatDrawer = null,

@@ -23,11 +23,6 @@
     templateName = 'clean',
     themeColors = $bindable(),
     onGoToDashboard,
-    onChangeTemplate,
-    undo = null,
-    redo = null,
-    historyPastLength = 0,
-    historyFutureLength = 0,
     activeResumeId = null,
     isChatDrawerOpen = $bindable(false),
     addCanvasElement = null,
@@ -198,11 +193,6 @@
     bind:this={toolbarEl}
     {isExportMode}
     {onGoToDashboard}
-    {undo}
-    {redo}
-    {historyPastLength}
-    {historyFutureLength}
-    {onChangeTemplate}
     {templateName}
     {isChatDrawerOpen}
     {toggleChatDrawer}

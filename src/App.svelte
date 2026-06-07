@@ -659,10 +659,6 @@
     }
   }
 
-  function handleChangeTemplate() {
-    activeTemplate = null;
-  }
-
   function handleDeleteResume(id) {
     resumes = resumes.filter(r => r.id !== id);
     localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
@@ -785,11 +781,6 @@
             templateName={activeTemplate ?? 'clean'}
             bind:themeColors={themeColors}
             onGoToDashboard={() => navigate('/dashboard')}
-            onChangeTemplate={handleChangeTemplate}
-            undo={undo}
-            redo={redo}
-            historyPastLength={historyPast.length}
-            historyFutureLength={historyFuture.length}
             activeResumeId={activeResumeId}
             bind:isChatDrawerOpen={isChatDrawerOpen}
             {toggleBlockLock}
