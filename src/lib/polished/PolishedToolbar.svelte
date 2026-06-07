@@ -116,12 +116,6 @@
         <div class="toolbar-divider-v"></div>
       {/if}
       <div class="toolbar-label">Polished View</div>
-
-      {#if onChangeTemplate}
-        <button type="button" class="btn-change-template" onclick={onChangeTemplate}>
-          ⊞ {templateName.charAt(0).toUpperCase() + templateName.slice(1)}
-        </button>
-      {/if}
     </div>
 
     <div class="toolbar-right" style="display: flex; align-items: center; gap: 8px;">
