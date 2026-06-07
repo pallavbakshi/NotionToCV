@@ -140,7 +140,9 @@ export class ResumeAgentEngine {
       // --- Dispatch tools ---
       const assistantMsg = {
         role: 'assistant',
-        content: contentAccumulated || null,
+        // Omit content entirely when empty — null serializes as "content":null which
+        // Gemini's OpenAI-compat layer rejects. undefined is stripped by JSON.stringify.
+        ...(contentAccumulated ? { content: contentAccumulated } : {}),
         tool_calls: completedToolCalls
       };
       history.push(assistantMsg);
@@ -158,6 +160,10 @@ export class ResumeAgentEngine {
         try {
           parsedArgs = JSON.parse(tc.function?.arguments || '{}');
         } catch (_e) { /* fall through with empty args */ }
+
+        // Ensure tool call IDs are always non-empty — Gemini sometimes omits them in
+        // streaming deltas. Empty IDs cause tool_call_id mismatches in multi-tool turns.
+        if (!tc.id) tc.id = `tool_${completedToolCalls.indexOf(tc)}_${tcName}`;
 
         yield { type: 'tool_call', id: tc.id, name: tcName, args: parsedArgs };
 
@@ -225,25 +231,27 @@ export class ResumeAgentEngine {
         });
       }
 
-      // Layout Designer: inject screenshot checkpoint every 5 placements
-      if (isLayout && layoutPlacementCount > 0 && layoutPlacementCount - layoutLastScreenshotAt >= 5) {
-        history.push({
-          role: 'user',
-          content: `[SYSTEM] You have placed ${layoutPlacementCount - layoutLastScreenshotAt} blocks since your last visual check. Pause now. Call evaluate_layout on the current page to get a numeric score and penalty list, then call get_page_screenshot to see the full page. Fix any penalties (especially hard fails and tall-thin blocks) before continuing. Then resume placing remaining blocks.`
-        });
-        layoutLastScreenshotAt = layoutPlacementCount;
-      }
+      // Layout Designer: merge checkpoint + overflow into a single user message to avoid
+      // consecutive user-role messages, which Gemini's OpenAI-compat layer rejects.
+      if (isLayout) {
+        const parts = [];
 
-      // Layout Designer: enforce overflow fixes BEFORE placing more blocks
-      if (isLayout && pendingOverflows.size > 0) {
-        const blockList = [...pendingOverflows].map(id => {
-          const b = state.blocks.find(bl => bl.id === id);
-          return b ? `"${b.name || b.id}" (${b.type})` : id;
-        }).join(', ');
-        history.push({
-          role: 'user',
-          content: `[SYSTEM] The following blocks have content overflow and MUST be fixed before you place any more blocks: ${blockList}. Re-place these blocks with a larger rowSpan, or remove and re-place them elsewhere. Do NOT call place_block on new blocks until all overflows are resolved.`
-        });
+        if (layoutPlacementCount > 0 && layoutPlacementCount - layoutLastScreenshotAt >= 5) {
+          parts.push(`[SYSTEM] You have placed ${layoutPlacementCount - layoutLastScreenshotAt} blocks since your last visual check. Pause now. Call evaluate_layout on the current page to get a numeric score and penalty list, then call get_page_screenshot to see the full page. Fix any penalties (especially hard fails and tall-thin blocks) before continuing. Then resume placing remaining blocks.`);
+          layoutLastScreenshotAt = layoutPlacementCount;
+        }
+
+        if (pendingOverflows.size > 0) {
+          const blockList = [...pendingOverflows].map(id => {
+            const b = state.blocks.find(bl => bl.id === id);
+            return b ? `"${b.name || b.id}" (${b.type})` : id;
+          }).join(', ');
+          parts.push(`[SYSTEM] The following blocks have content overflow and MUST be fixed before you place any more blocks: ${blockList}. Re-place these blocks with a larger rowSpan. Do NOT call place_block on new blocks until all overflows are resolved.`);
+        }
+
+        if (parts.length > 0) {
+          history.push({ role: 'user', content: parts.join('\n\n') });
+        }
       }
 
       // --- Turn cap ---

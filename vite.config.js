@@ -722,6 +722,7 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                   headers: orHeaders,
                   body: JSON.stringify({
                     model: model || 'google/gemini-2.5-flash',
+                    max_tokens: 8192,
                     messages: [
                       { role: 'system', content: systemPrompt },
                       ...messages

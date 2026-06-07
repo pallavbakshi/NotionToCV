@@ -70,6 +70,18 @@ export async function* browserModelProvider({ messages, systemPrompt, model, too
         }
       }
     }
+    // Flush any remaining buffered line (final chunk may not end with newline)
+    if (buffer.trim().startsWith('data: ')) {
+      const dataStr = buffer.trim().substring(6);
+      if (dataStr !== '[DONE]') {
+        try {
+          const parsed = JSON.parse(dataStr);
+          const delta = parsed.choices?.[0]?.delta;
+          if (delta?.content) yield { content: delta.content };
+          if (delta?.tool_calls?.length) yield { tool_calls: delta.tool_calls };
+        } catch (_e) {}
+      }
+    }
   } finally {
     reader.releaseLock();
   }
