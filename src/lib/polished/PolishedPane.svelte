@@ -31,7 +31,8 @@
     activeResumeId = null,
     isChatDrawerOpen = $bindable(false),
     addCanvasElement = null,
-    toggleBlockLock = null
+    toggleBlockLock = null,
+    onImportJSON = null
   } = $props();
 
   let themeDrawerEl = $state(null);
@@ -213,6 +214,7 @@
     {pageTitle}
     {themeColors}
     {totalPages}
+    {onImportJSON}
   />
 
   {#if !isExportMode}

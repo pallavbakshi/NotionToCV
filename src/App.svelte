@@ -637,6 +637,28 @@
     activeTemplate = normalizeTemplateName(templateId);
   }
 
+  function handleImportJSON(data) {
+    blocks = data.blocks.map(b => ({ locked: false, ...b }));
+    pageTitle = data.pageTitle || '';
+    if (data.paddingMm !== undefined) paddingMm = data.paddingMm;
+    if (data.templateName) activeTemplate = normalizeTemplateName(data.templateName);
+    if (data.themeColors) {
+      const tc = data.themeColors;
+      const tdf = templateDefaultFonts[normalizeTemplateName(data.templateName)];
+      themeColors = {
+        h1Color: tc.h1Color ?? tc.primaryColor ?? '#0a2463',
+        h2Color: tc.h2Color ?? tc.primaryColor ?? '#0a2463',
+        h3Color: tc.h3Color ?? tc.textColor ?? '#1e1b18',
+        textColor: tc.textColor ?? '#1e1b18',
+        backgroundColor: tc.backgroundColor ?? '#ffffff',
+        h1Font: tc.h1Font ?? tdf?.h1 ?? 'Inter',
+        h2Font: tc.h2Font ?? tdf?.h2 ?? 'Inter',
+        h3Font: tc.h3Font ?? tdf?.h3 ?? 'Inter',
+        textFont: tc.textFont ?? tdf?.text ?? 'Inter'
+      };
+    }
+  }
+
   function handleChangeTemplate() {
     activeTemplate = null;
   }
@@ -771,6 +793,7 @@
             activeResumeId={activeResumeId}
             bind:isChatDrawerOpen={isChatDrawerOpen}
             {toggleBlockLock}
+            onImportJSON={handleImportJSON}
           />
         </div>
       </div>

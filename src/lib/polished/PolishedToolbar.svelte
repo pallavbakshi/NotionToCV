@@ -18,13 +18,56 @@
     blocks = [],
     pageTitle = '',
     themeColors = {},
-    totalPages = 1
+    totalPages = 1,
+    onImportJSON = null
   } = $props();
 
   let isMenuOpen = $state(false);
   let downloading = $state(false);
+  let fileInput;
 
   export function closeMenu() { isMenuOpen = false; }
+
+  function exportJSON() {
+    const data = {
+      pageTitle,
+      blocks,
+      paddingMm,
+      templateName,
+      themeColors
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (pageTitle.trim() || 'Untitled') + '_resume.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function triggerImport() {
+    fileInput.click();
+  }
+
+  function handleImportFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (data && Array.isArray(data.blocks)) {
+          onImportJSON?.(data);
+        } else {
+          alert('Invalid JSON file format. It must contain a "blocks" array.');
+        }
+      } catch (err) {
+        alert('Failed to parse JSON file.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
 
   async function downloadPdf() {
     if (downloading) return;
@@ -119,6 +162,14 @@
             <div class="ham-divider"></div>
 
             <div class="ham-section">
+              <span class="ham-section-label">Import / Export</span>
+              <button type="button" class="ham-btn" onclick={() => { triggerImport(); isMenuOpen = false; }}>↥ Import JSON</button>
+              <button type="button" class="ham-btn" onclick={() => { exportJSON(); isMenuOpen = false; }}>↧ Export JSON</button>
+            </div>
+
+            <div class="ham-divider"></div>
+
+            <div class="ham-section">
               <button type="button" class="ham-btn ham-btn-primary" onclick={() => { downloadPdf(); isMenuOpen = false; }} disabled={downloading}>
                 {#if downloading}<span class="spinner"></span> Generating...{:else}↓ Download PDF{/if}
               </button>
@@ -128,6 +179,13 @@
       </div>
     </div>
   </div>
+  <input
+    type="file"
+    accept=".json"
+    style="display: none;"
+    bind:this={fileInput}
+    onchange={handleImportFile}
+  />
 {/if}
 
 <style>
