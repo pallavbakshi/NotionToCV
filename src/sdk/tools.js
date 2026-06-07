@@ -1019,7 +1019,7 @@ export async function runLayoutDesignerTool(name, args, ctx) {
       result: {
         status: "success",
         area: colSpan * rowSpan,
-        aspectRatio: Math.round((rowSpan / colSpan) * 100) / 100,
+        aspectRatio: colSpan > 0 ? Math.round((rowSpan / colSpan) * 100) / 100 : null,
         utilization: capacity ? Math.round(capacity.current_lines_used / Math.max(1, capacity.max_lines) * 100) / 100 : null,
         fitQuality: capacity && !capacity.is_overflowing
           ? (capacity.current_lines_used / Math.max(1, capacity.max_lines) >= 0.7 ? 'good' : 'underutilized')

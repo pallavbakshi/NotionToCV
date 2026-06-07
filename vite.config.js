@@ -997,6 +997,11 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
               }
 
               const OPENROUTER_KEY = env.OPENROUTER_API_KEY;
+              if (!OPENROUTER_KEY) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: 'OPENROUTER_API_KEY not set in .env' }));
+                return;
+              }
               const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {

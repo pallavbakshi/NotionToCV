@@ -234,6 +234,17 @@
         } catch {}
       }
     }
+    // Process any remaining buffered line (final chunk may not end with newline)
+    if (buffer.trim().startsWith('data: ')) {
+      const dataStr = buffer.trim().substring(6);
+      if (dataStr !== '[DONE]') {
+        try {
+          const parsed = JSON.parse(dataStr);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) result += content;
+        } catch {}
+      }
+    }
     return result.trim() || text;
   }
 
@@ -260,7 +271,7 @@
           [block.id]: {
             originalContent: block.content,
             proposedContent,
-            proposedHtml: `<p>${cleaned.replace(/\n/g, '<br>')}</p>`
+            proposedHtml: `<p>${cleaned.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>')}</p>`
           }
         }));
       }
