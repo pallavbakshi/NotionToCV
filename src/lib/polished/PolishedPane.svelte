@@ -296,7 +296,7 @@
 
   <SelectionOverlay {marqueeState} />
 
-  {#if !isExportMode && selectedBlockIds.length > 0}
+  {#if !isExportMode && selectedBlockIds.length > 0 && !isChatDrawerOpen}
     <div class="floating-chat-bubble-container">
       <button type="button" class="floating-chat-bubble" onclick={() => handleAskAI(selectedBlockIds)}>
         💬 Chat with AI about {selectedBlockIds.length} block{selectedBlockIds.length > 1 ? 's' : ''}
