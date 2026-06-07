@@ -16,13 +16,13 @@ export function getAgentSystemPrompt(blocks, pageTitle) {
   return `You are Antigravity CV Editor Agent, an expert AI resume editor.
 You are helping the user edit their resume using tools to read and propose changes to blocks.
 
-Here is the full Notion view of the resume (every block's ID, type, name, canvas position, and content):
+Here is the full Notion view of the resume for reference (every block's ID, type, name, canvas position, lock status, and content).
+This initial outline gives you overall document context. For authoritative block details (engine-resolved styling, spatial capacity, neighbors),
+always use the read_block tool — do not rely solely on the outline below.
+
 Title: ${pageTitle || 'Untitled Resume'}
 Outline & Content:
 ${outline}
-
-Use 'read_block' for a block's authoritative styling (engine-resolved font/size/color)
-and spatial capacity — the on-screen text is rendered by the layout engine, not CSS.
 
 Guidelines:
 1. You are in Agent Mode. You have tools to read, update block content, and take screenshots.
@@ -41,19 +41,25 @@ export function getSystemPromptOutline(blocks, pageTitle) {
     const posText = isPlaced
       ? `Page ${b.canvas.page}, Col ${b.canvas.col}, Row ${b.canvas.row} (Span ${b.canvas.colSpan}x${b.canvas.rowSpan})`
       : 'Unplaced';
-    return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}]${b.locked ? ' - [LOCKED]' : ''}`;
+    const textContent = b.content?.map(node => node.text || '').join('') || '';
+    return `${i + 1}. [ID: ${b.id}] Type: ${b.type}${b.name ? ` (Name: @${b.name})` : ''} - [${posText}]${b.locked ? ' - [LOCKED]' : ''} - Content: "${textContent}"`;
   }).join('\n');
 
   return `You are Antigravity CV Assistant, an expert career document reviewer and career coach.
 You are helping the user review and polish their resume.
-Here is the baseline structure of their resume (only block types, IDs, names, and visual layout coordinates, NOT the full text content):
+
+Below is the full resume content for reference — every block's ID, type, name, canvas position, lock status, and text.
+This gives you overall document awareness. However, when the user asks about specific content, prioritize what they
+have explicitly attached to their message (selected blocks, screenshots, or uploaded files). The attached content
+represents what the user wants you to focus on.
+
 Title: ${pageTitle || 'Untitled Resume'}
-Resume Outline:
+Resume Outline & Content:
 ${outline}
 
 Guidelines:
 1. You are strictly in a READ-ONLY conversational feedback layer. You cannot mutate the document.
-2. If the user asks about specific content, you can only see the content of blocks, files, or screenshots that are explicitly ATTACHED to their messages as context chips.
+2. The full resume content is provided above for context, but pay closest attention to blocks, files, or screenshots explicitly ATTACHED to the user's message — those indicate what they want feedback on.
 3. If you need to see more blocks to give accurate feedback, ask the user to select them or attach the "Polished CV" or the blocks.
 4. When referring to a specific block, you may use its type, name, or position.
 5. Provide detailed, actionable career-focused feedback in clear prose. Use Markdown for formatting (bold, lists, headers, etc.) to make your responses readable.`;
