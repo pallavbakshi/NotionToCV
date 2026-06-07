@@ -164,7 +164,7 @@ body {
 }
 
 .divider {
-  width: 4px;
+  width: 8px;
   height: 100%;
   cursor: col-resize;
   background-color: var(--outline-subtle);
@@ -172,11 +172,29 @@ body {
   transition: background-color 0.2s;
   flex-shrink: 0;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.divider::after {
+  content: '';
+  width: 2px;
+  height: 32px;
+  border-radius: 1px;
+  background-color: var(--outline-subtle);
+  transition: background-color 0.2s, height 0.15s;
 }
 
 .divider:hover,
 .divider.active {
+  background-color: rgba(35, 131, 226, 0.08);
+}
+
+.divider:hover::after,
+.divider.active::after {
   background-color: var(--color-imperial-blue);
+  height: 48px;
 }
 
 /* ProseMirror / Tiptap specific adjustments */

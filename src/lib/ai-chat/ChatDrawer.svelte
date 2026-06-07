@@ -991,17 +991,35 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    left: -3px;
-    width: 6px;
+    left: -5px;
+    width: 10px;
     cursor: col-resize;
     z-index: 1000;
     background: transparent;
     transition: background-color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .resize-handle::after {
+    content: '';
+    width: 2px;
+    height: 32px;
+    border-radius: 1px;
+    background: transparent;
+    transition: background-color 0.15s, height 0.15s;
   }
 
   .resize-handle:hover,
   .resize-handle.is-resizing {
-    background-color: rgba(10, 36, 99, 0.2);
+    background-color: rgba(10, 36, 99, 0.08);
+  }
+
+  .resize-handle:hover::after,
+  .resize-handle.is-resizing::after {
+    background-color: rgba(10, 36, 99, 0.35);
+    height: 48px;
   }
 
   @keyframes chat-slide-in {
