@@ -42,7 +42,6 @@
   const colWidth = (210 - 2 * paddingMm - 12) / 4;
   const overlappingBlockIds = $derived(findOverlappingIds(blocks, colWidth, paddingMm));
   const overlapCount = $derived(overlappingBlockIds.size);
-  const unplacedCount = $derived(blocks.filter(b => !b.canvas).length);
   const maxPlacedPage = $derived(blocks.reduce((max, b) => b.canvas?.page > max ? b.canvas.page : max, 0));
   const totalPages = $derived(Math.max(manualPageCount, maxPlacedPage));
 

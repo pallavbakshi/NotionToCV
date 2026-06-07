@@ -1,6 +1,6 @@
 <!-- CanvasBlock.svelte -->
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import BlockRenderer from './BlockRenderer.svelte';
   import { anyOverlap } from './canvasUtils.js';
   import { computeLayout, blockRectMm, renderBlockSVG, initFonts, fontsReady } from '../layout/index.js';
