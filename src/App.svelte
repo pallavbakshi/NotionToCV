@@ -744,10 +744,6 @@
             bind:paddingMm={paddingMm}
             bind:activeTemplate={activeTemplate}
             bind:themeColors={themeColors}
-            undo={undo}
-            redo={redo}
-            historyPastLength={historyPast.length}
-            historyFutureLength={historyFuture.length}
             onAskAI={handleAskAI}
             {acceptStagedChange}
             {denyStagedChange}
