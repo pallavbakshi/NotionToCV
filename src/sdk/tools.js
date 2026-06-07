@@ -11,6 +11,7 @@ import { FontFamily } from '@tiptap/extension-font-family';
 import { DOMParser as PMParser } from 'prosemirror-model';
 
 import { computeLayout, blockRectMm, initFonts, effectiveBaseStyle, colWidthMm } from '../lib/layout/index.js';
+import { GUTTER_MM, ROW_MM } from '../lib/layout/units.js';
 import { findNeighbors } from './spatial.js';
 import { getAgentSystemPrompt, getSystemPromptOutline, getLayoutDesignerPrompt } from './prompts.js';
 import { sanitizeHtmlWithoutCss, initDomParser } from '../lib/ai-chat/messageParser.js';
@@ -131,38 +132,6 @@ export function htmlToInlineNodes(html) {
 // ---------------------------------------------------------------------------
 
 export const AGENT_TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "read_block",
-      description: "Read the content, layout, dimensions, styling, capacity, and neighbors of a specific resume block.",
-      parameters: {
-        type: "object",
-        properties: {
-          id: { type: "string", description: "The unique ID of the block to read." }
-        },
-        required: ["id"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "update_block_content",
-      description: "Stage a change to a block's content using HTML (without CSS/inline styles). This automatically runs verification to check if the new content fits within the block's physical budget and capacity.",
-      parameters: {
-        type: "object",
-        properties: {
-          id: { type: "string", description: "The unique ID of the block to update." },
-          html_without_css: {
-            type: "string",
-            description: "The proposed text content as plain inline HTML: text with <strong>, <em>, <u>, <s>, and <br>. Multiple <p> paragraphs are allowed (each becomes a line break). Do NOT use <ul>, <ol>, <li>, tables, headings, styles, classes, inline CSS, or font declarations — lists are unsupported and will be flattened to plain text."
-          }
-        },
-        required: ["id", "html_without_css"]
-      }
-    }
-  },
   {
     type: "function",
     function: {
@@ -362,6 +331,32 @@ export async function runAgentTool(name, args, ctx) {
     }
   }
 
+  if (name === 'get_page_screenshot') {
+    const { blocks: allBlocks, pageTitle: title, templateName: tmpl, themeColors: colors, screenshotProvider } = ctx;
+    const page = args.page || 1;
+    try {
+      const result = await screenshotProvider({
+        blocks: allBlocks,
+        pageTitle: title,
+        paddingMm,
+        templateName: tmpl,
+        themeColors: colors,
+        page
+      });
+
+      return {
+        result: {
+          status: "success",
+          page,
+          screenshot_base64: result.screenshot
+        }
+      };
+    } catch (err) {
+      console.error('Page screenshot tool failed:', err);
+      return { result: { error: `Page screenshot failed: ${err.message}` } };
+    }
+  }
+
   return { result: { error: `Unknown tool: ${name}` } };
 }
 
@@ -386,6 +381,21 @@ export const LAYOUT_DESIGNER_TOOLS = [
       name: "read_canvas",
       description: "Get a complete map of the canvas: all placed blocks with grid coordinates, all unplaced blocks with their content and default spans. Call this first before placing anything.",
       parameters: { type: "object", properties: {}, required: [] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "measure_block_fit",
+      description: "Measure a block's footprint at every column width (1–4 cols) WITHOUT placing it. Returns ranked options by readability and economy. Use this BEFORE place_block to choose the best colSpan/rowSpan. For text blocks, also computes per-font options if a font is specified.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "The block's unique ID." },
+          font: { type: "string", description: "Optional: evaluate fit with this font. If omitted, uses the block's current font or template default." }
+        },
+        required: ["id"]
+      }
     }
   },
   {
@@ -435,6 +445,51 @@ export const LAYOUT_DESIGNER_TOOLS = [
         required: ["id"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_page_screenshot",
+      description: "Capture a visual screenshot of an entire page. Use this at checkpoints to evaluate overall page balance, whitespace distribution, and section layout. Much more useful than per-block screenshots for layout critique.",
+      parameters: {
+        type: "object",
+        properties: {
+          page: { type: "integer", minimum: 1, description: "Page number to screenshot (1-indexed)." }
+        },
+        required: ["page"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "evaluate_layout",
+      description: "Score the current layout 0–100 with a penalty list and fix suggestions. Checks for hard fails (overlap, overflow, out-of-bounds), structural issues (orphan headings, sections split across pages), and quality issues (tall-thin blocks, excess gaps, column imbalance, cramped text). Call at checkpoints (~every 5 placements) and before finishing.",
+      parameters: {
+        type: "object",
+        properties: {
+          page: { type: "integer", minimum: 1, description: "Optional: evaluate a single page. Omit to evaluate all pages." }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "pack_section",
+      description: "Pack a group of blocks into the best available space. You provide the block IDs and a preferred column width strategy ('auto' lets the code decide). The tool measures each block, finds the best fit, and places them sequentially. Use for placing a whole section at once instead of block-by-block.",
+      parameters: {
+        type: "object",
+        properties: {
+          blockIds: { type: "array", items: { type: "string" }, description: "Ordered list of block IDs to pack (in desired top-to-bottom order)." },
+          page: { type: "integer", minimum: 1, description: "Page to pack onto (1-indexed)." },
+          strategy: { type: "string", enum: ["auto", "full-width", "two-column", "sidebar"], description: "Column strategy: 'auto' picks best fit per block, 'full-width' uses 4 cols for all, 'two-column' uses 2 cols, 'sidebar' uses 1+3 col split." },
+          startRow: { type: "integer", minimum: 0, description: "Optional: row to start packing from. Auto-detected if omitted." }
+        },
+        required: ["blockIds", "page"]
+      }
+    }
   }
 ];
 
@@ -450,6 +505,91 @@ export async function runLayoutDesignerTool(name, args, ctx) {
   const { blocks, paddingMm } = ctx;
 
   await initFonts();
+
+  if (name === 'measure_block_fit') {
+    const block = blocks.find(b => b.id === args.id);
+    if (!block) {
+      return { result: { error: `Block ${args.id} not found` } };
+    }
+
+    const isText = ['paragraph', 'h1', 'h2', 'h3'].includes(block.type);
+    if (!isText || !block.content?.length) {
+      return {
+        result: {
+          id: block.id, type: block.type,
+          message: 'Not a text block or block has no content. Use default spans.',
+          recommended: { colSpan: DEFAULT_SPANS[block.type]?.colSpan || 2, rowSpan: DEFAULT_SPANS[block.type]?.rowSpan || 1, font: 'Default', reason: 'Default span for this block type' }
+        }
+      };
+    }
+
+    const cw = colWidthMm(paddingMm);
+    const font = args.font || null;
+    const options = [];
+
+    for (let colSpan = 1; colSpan <= 4; colSpan++) {
+      const widthMm = colSpan * cw + (colSpan - 1) * GUTTER_MM;
+      const virtualRect = { leftMm: paddingMm, topMm: paddingMm, widthMm, heightMm: 2000 };
+      const layoutCtx = { templateName: ctx.templateName, paddingMm, themeColors: ctx.themeColors };
+
+      // Apply requested font temporarily for measurement
+      let measureBlock = block;
+      if (font && font !== 'Default') {
+        measureBlock = {
+          ...block,
+          content: block.content.map(n => {
+            if (n.type !== 'text') return n;
+            const marks = (n.marks || []).filter(m => !(m.type === 'textStyle' && m.attrs?.fontFamily));
+            marks.push({ type: 'textStyle', attrs: { fontFamily: font } });
+            return { ...n, marks };
+          })
+        };
+      }
+
+      const lo = computeLayout(measureBlock, virtualRect, layoutCtx);
+      const linesUsed = lo.lines.length;
+      const usedHeightMm = lo.usedHeightMm || 0;
+      const minRowSpan = Math.max(1, Math.ceil(usedHeightMm / ROW_MM));
+      const rowSpan = minRowSpan; // tightest fit
+      const area = colSpan * rowSpan;
+      const aspectRatio = rowSpan / colSpan;
+      const plaintext = block.content.filter(n => n.type === 'text').map(n => n.text).join('');
+      const avgCharsPerLine = linesUsed > 0 ? plaintext.length / linesUsed : 0;
+
+      // Utilization: how densely the minimum rowSpan is filled (1.0 = perfectly tight).
+      // Uses the actual allocated height at minRowSpan, not the unbounded virtual rect.
+      const allocatedHeightMm = rowSpan * ROW_MM;
+      const utilization = allocatedHeightMm > 0 ? Math.min(1, usedHeightMm / allocatedHeightMm) : 0;
+
+      // Fit quality: readability band (45–90 chars/line)
+      const readabilityInBand = avgCharsPerLine >= 45 && avgCharsPerLine <= 90;
+      const fitQuality = readabilityInBand ? 'good' : (avgCharsPerLine < 45 ? 'wide' : 'narrow');
+
+      options.push({ colSpan, linesUsed, minRowSpan: rowSpan, area, aspectRatio: Math.round(aspectRatio * 100) / 100, avgCharsPerLine: Math.round(avgCharsPerLine), utilization: Math.round(utilization * 100) / 100, fitQuality });
+    }
+
+    // Rank per §3.1: 1) readability in band, 2) lowest area, 3) lowest aspectRatio, 4) utilization
+    options.sort((a, b) => {
+      const aReadable = a.fitQuality === 'good' ? 0 : 1;
+      const bReadable = b.fitQuality === 'good' ? 0 : 1;
+      if (aReadable !== bReadable) return aReadable - bReadable;
+      if (a.area !== b.area) return a.area - b.area;
+      if (a.aspectRatio !== b.aspectRatio) return a.aspectRatio - b.aspectRatio;
+      return b.utilization - a.utilization;
+    });
+
+    const best = options[0];
+    return {
+      result: {
+        id: block.id, type: block.type, plaintextLength: block.content.filter(n => n.type === 'text').map(n => n.text).join('').length,
+        options,
+        recommended: {
+          colSpan: best.colSpan, rowSpan: best.minRowSpan, font: font || 'Default',
+          reason: `Best fit: ${best.fitQuality} readability (${best.avgCharsPerLine} chars/line), area ${best.area} cells, aspect ratio ${best.aspectRatio}`
+        }
+      }
+    };
+  }
 
   if (name === 'read_canvas') {
     const placedBlocks = [];
@@ -479,12 +619,293 @@ export async function runLayoutDesignerTool(name, args, ctx) {
       }
     }
 
+    // Build per-page free-space map
+    const pages = [];
+    for (let pg = 1; pg <= pageCount; pg++) {
+      const pageBlocks = placedBlocks.filter(b => b.canvas.page === pg);
+      const maxRow = pageBlocks.reduce((m, b) => Math.max(m, b.canvas.row + b.canvas.rowSpan), 0);
+      const gridRows = Math.max(maxRow, 1);
+
+      // Build occupancy grid (4 cols × gridRows rows)
+      const grid = Array.from({ length: gridRows }, () => [false, false, false, false]);
+      for (const b of pageBlocks) {
+        const c = b.canvas;
+        for (let r = c.row; r < c.row + c.rowSpan && r < gridRows; r++) {
+          for (let col = c.col; col < c.col + c.colSpan && col < 4; col++) {
+            if (grid[r]) grid[r][col] = true;
+          }
+        }
+      }
+
+      const totalCells = gridRows * 4;
+      const occupiedCells = grid.flat().filter(Boolean).length;
+      const fillRatio = totalCells > 0 ? Math.round(occupiedCells / totalCells * 100) : 0;
+
+      // Find continuous empty row ranges for each colSpan — builds both freeRects (JSON) and packingHints (NL)
+      const freeRects = [];
+      const packingHints = [];
+      for (let colSpan = 4; colSpan >= 1; colSpan--) {
+        for (let col = 0; col + colSpan <= 4; col++) {
+          let row = 0;
+          while (row < gridRows) {
+            // Find start of empty region at this col/colSpan
+            let empty = true;
+            for (let c = col; c < col + colSpan; c++) {
+              if (grid[row][c]) { empty = false; break; }
+            }
+            if (!empty) { row++; continue; }
+
+            // Find how many consecutive rows are empty
+            let endRow = row;
+            while (endRow < gridRows) {
+              let allEmpty = true;
+              for (let c = col; c < col + colSpan; c++) {
+                if (grid[endRow]?.[c]) { allEmpty = false; break; }
+              }
+              if (!allEmpty) break;
+              endRow++;
+            }
+            if (endRow - row >= 1) {
+              freeRects.push({ col, row, colSpan, rowSpan: endRow - row });
+              packingHints.push(`${colSpan}-wide block fits at col ${col}, rows ${row}–${endRow - 1} (${endRow - row} rows)`);
+              row = endRow;
+            } else {
+              row++;
+            }
+          }
+        }
+      }
+
+      const MAX_PAGE_ROWS = 53;
+      pages.push({
+        page: pg,
+        usedRows: gridRows,
+        emptyRows: Math.max(0, MAX_PAGE_ROWS - gridRows),
+        fillRatio,
+        freeRects: freeRects.slice(0, 20),
+        packingHints: packingHints.slice(0, 12)
+      });
+    }
+
     return {
       result: {
         pageCount,
         placedBlocks,
-        unplacedBlocks
+        unplacedBlocks,
+        pages
       }
+    };
+  }
+
+  if (name === 'evaluate_layout') {
+    const evalPage = args.page || null;
+    const cw = colWidthMm(paddingMm);
+    let score = 100;
+    const penalties = [];
+    const suggestions = [];
+
+    const placed = blocks.filter(b => b.canvas && (!evalPage || b.canvas.page === evalPage));
+    const pageNums = [...new Set(placed.map(b => b.canvas.page))].sort((a, b) => a - b);
+
+    // Check each block for overlap
+    for (const b of placed) {
+      if (anyOverlap(blocks, b.id, b.canvas.page, b.canvas, cw, paddingMm)) {
+        penalties.push({ type: 'overlap', severity: 'hard_fail', page: b.canvas.page, block: b.name || b.id, message: `Overlaps with another block` });
+        score = 0;
+      }
+    }
+
+    // Check each text block for overflow and tall-thin aspect ratio
+    for (const b of placed) {
+      if (!['paragraph', 'h1', 'h2', 'h3'].includes(b.type)) continue;
+      const rect = blockRectMm(b.canvas, paddingMm);
+      const layoutCtx = { templateName: ctx.templateName, paddingMm, themeColors: ctx.themeColors };
+      const capacity = computeBlockCapacity(b, rect, layoutCtx);
+      if (capacity.is_overflowing) {
+        penalties.push({ type: 'overflow', severity: 'hard_fail', page: b.canvas.page, block: b.name || b.id, message: `Content overflows by ${capacity.current_lines_used - capacity.max_lines} line(s)` });
+        score = Math.max(0, score - 20);
+        suggestions.push({ block: b.name || b.id, action: 'increase rowSpan', from: `rowSpan ${b.canvas.rowSpan}`, reason: `Needs ${capacity.current_lines_used} lines but only has ${capacity.max_lines}` });
+      }
+      const aspectRatio = b.canvas.rowSpan / b.canvas.colSpan;
+      if (aspectRatio > 2 && b.type === 'paragraph') {
+        penalties.push({ type: 'tall_thin', severity: 'medium', page: b.canvas.page, block: b.name || b.id, rows: `aspect ${Math.round(aspectRatio * 10) / 10}` });
+        score = Math.max(0, score - 5);
+        suggestions.push({ block: b.name || b.id, action: 'widen to colSpan 3-4', reason: `Aspect ratio ${Math.round(aspectRatio * 10) / 10} — too tall and narrow` });
+      }
+      if (capacity.current_lines_used / Math.max(1, capacity.max_lines) < 0.5) {
+        penalties.push({ type: 'low_utilization', severity: 'small', page: b.canvas.page, block: b.name || b.id, message: `Only ${capacity.current_lines_used}/${capacity.max_lines} lines used` });
+        score = Math.max(0, score - 2);
+      }
+    }
+
+    // Per-page fill ratio check
+    for (const pg of pageNums) {
+      const pgBlocks = placed.filter(b => b.canvas.page === pg);
+      const maxRow = pgBlocks.reduce((m, b) => Math.max(m, b.canvas.row + b.canvas.rowSpan), 0);
+      const totalCells = maxRow * 4;
+      let occupiedCells = 0;
+      for (const b of pgBlocks) {
+        occupiedCells += b.canvas.colSpan * b.canvas.rowSpan;
+      }
+      const fillRatio = totalCells > 0 ? occupiedCells / totalCells : 0;
+      if (fillRatio < 0.5 && pgBlocks.length > 2) {
+        penalties.push({ type: 'low_fill', severity: 'medium', page: pg, message: `Fill ratio ${Math.round(fillRatio * 100)}% — page is sparse` });
+        score = Math.max(0, score - 5);
+      }
+    }
+
+    // Excess vertical gap: find consecutive empty row bands > 2 rows on each page.
+    // A "row band" is a row where all 4 columns are empty across ALL placed blocks on that page.
+    for (const pg of pageNums) {
+      const pgBlocks = placed.filter(b => b.canvas.page === pg);
+      if (pgBlocks.length < 2) continue;
+      const maxRow = pgBlocks.reduce((m, b) => Math.max(m, b.canvas.row + b.canvas.rowSpan), 0);
+      // Build occupancy: which rows have at least one cell occupied
+      const occupiedRows = new Set();
+      for (const b of pgBlocks) {
+        if (b.canvas.colSpan === 0) continue; // vertical dividers don't count
+        for (let r = b.canvas.row; r < b.canvas.row + b.canvas.rowSpan; r++) occupiedRows.add(r);
+      }
+      // Scan for gaps > 2 consecutive empty rows within the used range
+      let gapStart = -1;
+      for (let r = 0; r <= maxRow; r++) {
+        if (!occupiedRows.has(r)) {
+          if (gapStart === -1) gapStart = r;
+        } else {
+          if (gapStart !== -1) {
+            const gapSize = r - gapStart;
+            if (gapSize > 2) {
+              penalties.push({ type: 'excess_vertical_gap', severity: 'medium', page: pg, rows: gapSize, message: `${gapSize}-row empty gap at rows ${gapStart}–${r - 1}. Tighten spacing or move blocks up.` });
+              score = Math.max(0, score - Math.min(10, gapSize * 2));
+              suggestions.push({ action: 'reduce gap', page: pg, message: `Move blocks above row ${r} down or blocks below row ${gapStart} up to close the ${gapSize}-row gap` });
+            }
+            gapStart = -1;
+          }
+        }
+      }
+    }
+
+    // Orphan heading: a heading (h1/h2/h3) whose bottom row is within 2 rows of the
+    // page bottom (row 52) while its section content is on the next page.
+    const allPlaced = blocks.filter(b => b.canvas);
+    for (const b of allPlaced) {
+      if (!['h1', 'h2', 'h3'].includes(b.type)) continue;
+      const headingBottom = b.canvas.row + b.canvas.rowSpan;
+      const isNearPageBottom = headingBottom >= 50; // within 2 rows of row 52
+      if (!isNearPageBottom) continue;
+      // Check if any block that logically follows (by position in blocks array) is on the next page
+      const idx = blocks.indexOf(b);
+      const nextContent = blocks.slice(idx + 1).find(nb => nb.canvas && ['paragraph', 'h3'].includes(nb.type));
+      if (nextContent && nextContent.canvas.page === b.canvas.page + 1) {
+        penalties.push({ type: 'orphan_heading', severity: 'medium', page: b.canvas.page, block: b.name || b.id, message: `Heading "${(b.content||[]).map(n=>n.text||'').join('').slice(0,30)}" is at page bottom but its content is on page ${nextContent.canvas.page}.` });
+        score = Math.max(0, score - 8);
+        suggestions.push({ block: b.name || b.id, action: 'move heading to next page', reason: 'Orphan heading — section body is on a different page' });
+      }
+    }
+
+    // Section split: a heading and the first paragraph of its section are on different pages,
+    // where the heading is NOT at the bottom (already caught by orphan_heading above).
+    for (const b of allPlaced) {
+      if (!['h1', 'h2', 'h3'].includes(b.type)) continue;
+      const headingBottom = b.canvas.row + b.canvas.rowSpan;
+      if (headingBottom >= 50) continue; // already flagged as orphan
+      const idx = blocks.indexOf(b);
+      const nextContent = blocks.slice(idx + 1).find(nb => nb.canvas && nb.type === 'paragraph');
+      if (nextContent && nextContent.canvas.page !== b.canvas.page) {
+        penalties.push({ type: 'section_split', severity: 'medium', page: b.canvas.page, block: b.name || b.id, message: `Section "${(b.content||[]).map(n=>n.text||'').join('').slice(0,30)}" starts on page ${b.canvas.page} but its body is on page ${nextContent.canvas.page}.` });
+        score = Math.max(0, score - 6);
+        suggestions.push({ block: b.name || b.id, action: 'move entire section to one page', reason: 'Section heading and body are on different pages' });
+      }
+    }
+
+    return {
+      result: {
+        valid: score > 0,
+        score: Math.max(0, Math.round(score)),
+        pagesEvaluated: evalPage ? [evalPage] : pageNums,
+        penalties: penalties.slice(0, 15),
+        suggestions: suggestions.slice(0, 10)
+      }
+    };
+  }
+
+  if (name === 'pack_section') {
+    const page = args.page || 1;
+    const strategy = args.strategy || 'auto';
+    const blockIds = args.blockIds || [];
+    const cw = colWidthMm(paddingMm);
+    const results = [];
+
+    for (const id of blockIds) {
+      const block = blocks.find(b => b.id === id);
+      if (!block || block.locked) continue;
+
+      // Measure
+      const lo = computeLayout(block, { leftMm: paddingMm, topMm: paddingMm, widthMm: 4 * cw + 3 * GUTTER_MM, heightMm: 2000 }, { templateName: ctx.templateName, paddingMm, themeColors: ctx.themeColors });
+      const plaintext = (block.content || []).filter(n => n.type === 'text').map(n => n.text).join('');
+      const linesUsed = lo.lines.length;
+      const avgChars = linesUsed > 0 ? plaintext.length / linesUsed : 0;
+
+      let colSpan, rowSpan;
+      if (strategy === 'full-width') {
+        colSpan = 4;
+      } else if (strategy === 'two-column') {
+        colSpan = 2;
+      } else if (strategy === 'sidebar') {
+        colSpan = block.type === 'h1' || block.type === 'h2' ? 4 : 2;
+      } else {
+        // Auto: pick based on readability
+        if (avgChars >= 45 && avgChars <= 90) {
+          colSpan = 4;
+        } else if (avgChars < 45) {
+          colSpan = block.type === 'h1' || block.type === 'h2' ? 4 : 3;
+        } else {
+          colSpan = 2;
+        }
+      }
+      rowSpan = Math.max(1, Math.ceil(lo.usedHeightMm / ROW_MM));
+      if (strategy === 'full-width' && colSpan === 4) rowSpan = Math.max(rowSpan, block.type === 'h1' ? 4 : block.type === 'h2' ? 3 : 1);
+
+      // Find free slot
+      let col = 0;
+      let row = args.startRow || 0;
+      const placed = blocks.filter(b => b.canvas && b.canvas.page === page);
+
+      // Find first row where this block fits without overlap
+      let found = false;
+      const maxSearchRows = 100;
+      for (let attempt = 0; attempt < maxSearchRows && !found; attempt++) {
+        for (let c = 0; c + colSpan <= 4; c++) {
+          if (!anyOverlap(blocks, id, page, { col: c, row, colSpan, rowSpan }, cw, paddingMm)) {
+            col = c;
+            found = true;
+            break;
+          }
+        }
+        if (!found) row++;
+      }
+
+      if (!found) {
+        results.push({ id, status: 'skipped', reason: 'No free space found on page' });
+        continue;
+      }
+
+      // Place
+      block.canvas = { page, col, row, colSpan, rowSpan };
+      results.push({
+        id, status: 'placed',
+        canvas: { page, col, row, colSpan, rowSpan },
+        canvasChange: { blockId: id, canvas: { page, col, row, colSpan, rowSpan } }
+      });
+    }
+
+    return {
+      result: {
+        placed: results.filter(r => r.status === 'placed').length,
+        skipped: results.filter(r => r.status === 'skipped').length,
+        results
+      },
+      canvasChanges: results.filter(r => r.canvasChange).map(r => r.canvasChange)
     };
   }
 
@@ -565,6 +986,12 @@ export async function runLayoutDesignerTool(name, args, ctx) {
     return {
       result: {
         status: "success",
+        area: colSpan * rowSpan,
+        aspectRatio: Math.round((rowSpan / colSpan) * 100) / 100,
+        utilization: capacity ? Math.round(capacity.current_lines_used / Math.max(1, capacity.max_lines) * 100) / 100 : null,
+        fitQuality: capacity && !capacity.is_overflowing
+          ? (capacity.current_lines_used / Math.max(1, capacity.max_lines) >= 0.7 ? 'good' : 'underutilized')
+          : null,
         message: `Block "${block.name || block.id}" placed at page ${page}, col ${col}, row ${row} (span ${colSpan}x${rowSpan}).` +
           (capacity ? ` Content: ${capacity.current_lines_used}/${capacity.max_lines} lines used.` +
             (capacity.is_overflowing ? ` ⚠️ OVERFLOW — content exceeds the block budget by ${capacity.current_lines_used - capacity.max_lines} line(s). Increase rowSpan or split content across blocks.` : '') : '')

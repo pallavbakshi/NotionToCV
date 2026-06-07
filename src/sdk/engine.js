@@ -172,25 +172,30 @@ export class ResumeAgentEngine {
           strictCapacity: opts.strictCapacity || false
         });
 
-        const { result, stagedChangesUpdate, canvasChange, contentChange } = toolResult;
-
         // Layout Designer: track placements and screenshots for visual checkpoints
         if (isLayout) {
           if (tcName === 'place_block') {
             layoutPlacementCount++;
-            if (result?.message?.includes('OVERFLOW')) {
+            if (toolResult.result?.message?.includes('OVERFLOW')) {
               pendingOverflows.add(parsedArgs.id);
             } else {
               pendingOverflows.delete(parsedArgs.id);
             }
           }
-          if (tcName === 'get_block_screenshot') layoutLastScreenshotAt = layoutPlacementCount;
+          if (tcName === 'get_block_screenshot' || tcName === 'get_page_screenshot') layoutLastScreenshotAt = layoutPlacementCount;
         }
+
+        const { result, stagedChangesUpdate, canvasChange, canvasChanges, contentChange } = toolResult;
 
         yield { type: 'tool_result', id: tc.id, name: tcName, result };
 
         if (canvasChange) {
           yield { type: 'canvas_change', blockId: canvasChange.blockId, canvas: canvasChange.canvas };
+        }
+        if (canvasChanges) {
+          for (const cc of canvasChanges) {
+            yield { type: 'canvas_change', blockId: cc.blockId, canvas: cc.canvas };
+          }
         }
 
         if (contentChange) {
@@ -224,7 +229,7 @@ export class ResumeAgentEngine {
       if (isLayout && layoutPlacementCount > 0 && layoutPlacementCount - layoutLastScreenshotAt >= 5) {
         history.push({
           role: 'user',
-          content: `[SYSTEM] You have placed ${layoutPlacementCount - layoutLastScreenshotAt} blocks since your last visual check. Pause now and call get_block_screenshot on a recently placed block to verify the layout. Describe what you see — check for overflow, alignment, spacing, font choices, and overall visual balance. If anything doesn't look right, fix it (re-place with adjusted coords/spans, or change fonts) before continuing. Then resume placing remaining blocks. Note: older screenshots are automatically pruned from context — only your summaries remain.`
+          content: `[SYSTEM] You have placed ${layoutPlacementCount - layoutLastScreenshotAt} blocks since your last visual check. Pause now. Call evaluate_layout on the current page to get a numeric score and penalty list, then call get_page_screenshot to see the full page. Fix any penalties (especially hard fails and tall-thin blocks) before continuing. Then resume placing remaining blocks.`
         });
         layoutLastScreenshotAt = layoutPlacementCount;
       }

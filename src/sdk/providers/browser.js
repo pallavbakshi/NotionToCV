@@ -81,16 +81,20 @@ export async function* browserModelProvider({ messages, systemPrompt, model, too
  *
  * @type {import('../types.js').ScreenshotProvider}
  */
-export async function browserScreenshotProvider({ blocks, pageTitle, paddingMm, templateName, themeColors, blockId }) {
+export async function browserScreenshotProvider({ blocks, pageTitle, paddingMm, templateName, themeColors, blockId, page }) {
   const screenshotAbort = new AbortController();
   const timeout = setTimeout(() => screenshotAbort.abort(), 30000);
 
   try {
+    const payload = { blocks, pageTitle, paddingMm, templateName, themeColors };
+    if (blockId) payload.blockId = blockId;
+    if (page) payload.page = page;
+
     const response = await fetch('/api/screenshot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: screenshotAbort.signal,
-      body: JSON.stringify({ blocks, pageTitle, paddingMm, templateName, themeColors, blockId })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {

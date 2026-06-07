@@ -67,6 +67,7 @@
     if (!layoutCanvasSnapshot) return;
     for (const item of layoutCanvasSnapshot) {
       onPlaceBlock?.(item.id, item.canvas);
+      if (item.content) onSetBlockContent?.(item.id, item.content);
     }
     layoutCanvasSnapshot = null;
     if (layoutResultMsgId) {
@@ -439,7 +440,7 @@
         ? getAgentSystemPrompt(blocks, pageTitle)
         : getSystemPromptOutline(blocks, pageTitle);
     const activeModel = isLayoutDesigner
-      ? 'google/gemini-3.1-flash-lite'
+      ? 'anthropic/claude-sonnet-4-5'
       : chatMode === 'agent' ? 'anthropic/claude-sonnet-4-5' : 'google/gemini-2.5-flash';
 
     const historyPayload = [];
@@ -612,7 +613,11 @@
     try {
       // Snapshot canvas before layout designer runs so we can roll back
       if (isLayoutDesigner) {
-        layoutCanvasSnapshot = blocks.map(b => ({ id: b.id, canvas: b.canvas ? { ...b.canvas } : null }));
+        layoutCanvasSnapshot = blocks.map(b => ({
+          id: b.id,
+          canvas: b.canvas ? { ...b.canvas } : null,
+          content: b.content ? JSON.parse(JSON.stringify(b.content)) : null
+        }));
       }
 
       for await (const ev of engine.optimizeResume(resumeState, queryText, {

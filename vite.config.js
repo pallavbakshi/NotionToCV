@@ -945,6 +945,18 @@ Return ONLY valid JSON. You may wrap it in \`\`\`json fences.`;
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ error: `Block ${data.blockId} not found` }));
                 }
+              } else if (data.page) {
+                const pageEls = await page.$$('.cv-page-container');
+                const target = pageEls[data.page - 1];
+                if (target) {
+                  const buffer = await target.screenshot({ type: 'jpeg', quality: 80 });
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ screenshot: buffer.toString('base64') }));
+                } else {
+                  res.statusCode = 404;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: `Page ${data.page} not found` }));
+                }
               } else {
                 const pageElements = await page.$$('.cv-page');
                 const screenshots = [];
