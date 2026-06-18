@@ -21,6 +21,8 @@ import { getTypeStyle } from './template-metrics.js';
  * @property {{widthPt:number,color:string}|null} borderBottom
  * @property {{widthMm:number,color:string}|null} borderLeft
  * @property {number|null} paddingLeftMm
+ * @property {number|null} paddingTopMm
+ * @property {number|null} paddingBottomMm
  */
 
 /**
@@ -419,6 +421,8 @@ export function effectiveBaseStyle(templateName, blockType, themeColors) {
     // in sync; this only makes the decoration track the theme.
     borderLeft: raw.borderLeft ? { ...raw.borderLeft, color } : null,
     paddingLeftMm: raw.paddingLeftMm,
+    paddingTopMm: raw.paddingTopMm || 0,
+    paddingBottomMm: raw.paddingBottomMm || 0,
   };
 }
 

@@ -108,10 +108,17 @@
       selectedBlockIds = [];
       e.preventDefault();
     } else if (e.key === 'Escape') { selectedBlockIds = []; e.preventDefault(); }
-  }
+  }  let ignoreNextClick = false;
+  let startX = 0;
+  let startY = 0;
+  let hasDragged = false;
 
   // Container click
   function handleContainerClick(e) {
+    if (ignoreNextClick) {
+      ignoreNextClick = false;
+      return;
+    }
     const target = e.target;
     if (target.closest('.canvas-block') || target.closest('.canvas-toolbar') || target.closest('.elements-dock') ||
         target.closest('.ham-dropdown') || target.closest('.btn-delete-page') || target.closest('.floating-chat-bubble-container') ||
@@ -133,6 +140,9 @@
     if (e.button !== 0) return;
 
     if (!e.shiftKey && !e.ctrlKey && !e.metaKey) selectedBlockIds = [];
+    hasDragged = false;
+    startX = e.clientX;
+    startY = e.clientY;
     marqueeState = { startX: e.clientX, startY: e.clientY, currentX: e.clientX, currentY: e.clientY };
     window.addEventListener('pointermove', handleMarqueePointerMove);
     window.addEventListener('pointerup', handleMarqueePointerUp, { once: true });
@@ -142,33 +152,48 @@
   function handleMarqueePointerMove(e) {
     if (!marqueeState) return;
     marqueeState = { ...marqueeState, currentX: e.clientX, currentY: e.clientY };
+    if (Math.abs(e.clientX - startX) > 3 || Math.abs(e.clientY - startY) > 3) {
+      hasDragged = true;
+    }
   }
 
   function handleMarqueePointerUp(e) {
     if (!marqueeState) return;
     window.removeEventListener('pointermove', handleMarqueePointerMove);
 
+    if (hasDragged) {
+      ignoreNextClick = true;
+      setTimeout(() => { ignoreNextClick = false; }, 50);
+    }
+
+    const currentX = e.clientX;
+    const currentY = e.clientY;
     const rect = {
-      left: Math.min(marqueeState.startX, marqueeState.currentX),
-      top: Math.min(marqueeState.startY, marqueeState.currentY),
-      right: Math.max(marqueeState.startX, marqueeState.currentX),
-      bottom: Math.max(marqueeState.startY, marqueeState.currentY)
+      left: Math.min(marqueeState.startX, currentX),
+      top: Math.min(marqueeState.startY, currentY),
+      right: Math.max(marqueeState.startX, currentX),
+      bottom: Math.max(marqueeState.startY, currentY)
     };
 
-    const selected = [];
-    const pageElements = document.querySelectorAll('.cv-page-container');
-    pageElements.forEach(pageEl => {
-      const pageRect = pageEl.getBoundingClientRect();
-      if (rect.right < pageRect.left || rect.left > pageRect.right || rect.bottom < pageRect.top || rect.top > pageRect.bottom) return;
+    console.log('[Marquee Debug] Viewport Rect:', rect);
 
-      const blocksOnPage = pageEl.querySelectorAll('.canvas-block');
-      blocksOnPage.forEach(blockEl => {
-        const bRect = blockEl.getBoundingClientRect();
-        if (rect.right > bRect.left && rect.left < bRect.right && rect.bottom > bRect.top && rect.top < bRect.bottom) {
-          const id = blockEl.getAttribute('data-block-id');
-          if (id) selected.push(id);
-        }
-      });
+    const selected = [];
+    const blocksOnPage = document.querySelectorAll('.canvas-block');
+    blocksOnPage.forEach(blockEl => {
+      const bRect = blockEl.getBoundingClientRect();
+      const id = blockEl.getAttribute('data-block-id');
+      const intersects = rect.right > bRect.left && rect.left < bRect.right && rect.bottom > bRect.top && rect.top < bRect.bottom;
+      
+      console.log(`[Marquee Debug] Block ID: ${id}, Rect:`, {
+        left: Math.round(bRect.left),
+        top: Math.round(bRect.top),
+        right: Math.round(bRect.right),
+        bottom: Math.round(bRect.bottom)
+      }, `intersects: ${intersects}`);
+
+      if (intersects) {
+        if (id) selected.push(id);
+      }
     });
 
     if (e.shiftKey || e.ctrlKey || e.metaKey) {

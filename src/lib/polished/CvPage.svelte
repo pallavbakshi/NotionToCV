@@ -3,6 +3,7 @@
   import CanvasBlock from './CanvasBlock.svelte';
   import GridOverlay from './GridOverlay.svelte';
   import { anyOverlap } from './canvasUtils.js';
+  import { ROW_MM, MAX_ROWS } from '../layout/index.js';
 
   let {
     page,
@@ -49,7 +50,7 @@
     const contentY = mmY - paddingMm;
     const colWidthVal = (210 - 2 * paddingMm - 12) / 4;
     const col = Math.max(0, Math.min(3, Math.round(contentX / (colWidthVal + 4))));
-    const row = Math.max(0, Math.min(52, Math.round(contentY / 5)));
+    const row = Math.max(0, Math.min(MAX_ROWS - 1, Math.round(contentY / ROW_MM)));
     return { col, row };
   }
 
@@ -89,13 +90,13 @@
         if (dist < minDist) { minDist = dist; bestGutter = g; }
       }
       targetCol = bestGutter;
-      targetRow = Math.max(0, Math.min(53 - rowSpan, Math.round(mmY / 5)));
+      targetRow = Math.max(0, Math.min(MAX_ROWS - rowSpan, Math.round(mmY / ROW_MM)));
     } else {
       const gridPos = pxToGrid(pxX, pxY, paddingMm);
       targetCol = gridPos.col;
       targetRow = gridPos.row;
       if (targetCol + colSpan > 4) targetCol = 4 - colSpan;
-      if (targetRow + rowSpan > 53) targetRow = 53 - rowSpan;
+      if (targetRow + rowSpan > MAX_ROWS) targetRow = MAX_ROWS - rowSpan;
     }
 
     const isDraggedSelected = selectedBlockIds.includes(draggedBlockId);
@@ -127,12 +128,12 @@
 
         // Bounds checks
         if (isG) {
-          if (newC < 0 || newC > 2 || newR < 0 || newR + rSpan > 53) {
+          if (newC < 0 || newC > 2 || newR < 0 || newR + rSpan > MAX_ROWS) {
             allValid = false;
             break;
           }
         } else {
-          if (newC < 0 || newC + cSpan > 4 || newR < 0 || newR + rSpan > 53) {
+          if (newC < 0 || newC + cSpan > 4 || newR < 0 || newR + rSpan > MAX_ROWS) {
             allValid = false;
             break;
           }
@@ -222,13 +223,13 @@
           : paddingMm + dragOverCoords.col * (colWidth + 4))
       : 0
   );
-  let ghostTopMm    = $derived(dragOverCoords ? paddingMm + dragOverCoords.row * 5 : 0);
+  let ghostTopMm    = $derived(dragOverCoords ? paddingMm + dragOverCoords.row * ROW_MM : 0);
   let ghostWidthMm  = $derived(
     dragOverCoords
       ? (dragOverCoords.isGutter ? 4 : dragOverCoords.colSpan * colWidth + (dragOverCoords.colSpan - 1) * 4)
       : 0
   );
-  let ghostHeightMm = $derived(dragOverCoords ? dragOverCoords.rowSpan * 5 : 0);
+  let ghostHeightMm = $derived(dragOverCoords ? dragOverCoords.rowSpan * ROW_MM : 0);
 </script>
 
 <div
@@ -251,9 +252,9 @@
               class:invalid={!dragOverCoords.isValid}
               style="
                 left: {cand.colSpan === 0 ? paddingMm + cand.col * (colWidth + 4) + colWidth : paddingMm + cand.col * (colWidth + 4)}mm;
-                top: {paddingMm + cand.row * 5}mm;
+                top: {paddingMm + cand.row * ROW_MM}mm;
                 width: {cand.colSpan === 0 ? 4 : cand.colSpan * colWidth + (cand.colSpan - 1) * 4}mm;
-                height: {cand.rowSpan * 5}mm;
+                height: {cand.rowSpan * ROW_MM}mm;
               "
             ></div>
           {/if}

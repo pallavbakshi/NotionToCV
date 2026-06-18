@@ -74,9 +74,14 @@ export function composeBlock(block, blockRect, ctx) {
   const leftInsetMm = (baseStyle.borderLeft?.widthMm || 0) + (baseStyle.paddingLeftMm || 0);
   const contentWidthMm = blockRect.widthMm - leftInsetMm;
 
+  // Vertical insets (padding-top + padding-bottom)
+  const paddingTopMm = baseStyle.paddingTopMm || 0;
+  const paddingBottomMm = baseStyle.paddingBottomMm || 0;
+  const contentHeightLimitMm = Math.max(0, blockRect.heightMm - paddingTopMm - paddingBottomMm);
+
   // Lay out each segment
   const allLines = [];
-  let runningYOffset = 0;
+  let runningYOffset = paddingTopMm;
 
   for (const segment of segments) {
     if (segment.length === 0) {
@@ -87,8 +92,7 @@ export function composeBlock(block, blockRect, ctx) {
     }
 
     const runs = contentToRuns(segment, baseStyle);
-    const blockHeightMm = blockRect.heightMm;
-    const laidOut = layoutRuns(runs, contentWidthMm, blockHeightMm, {
+    const laidOut = layoutRuns(runs, contentWidthMm, contentHeightLimitMm, {
       blockId: block.id,
       blockType,
       align: block.canvas?.align || 'left',
@@ -120,7 +124,7 @@ export function composeBlock(block, blockRect, ctx) {
     decorations.borderBottom = {
       widthPt: baseStyle.borderBottom.widthPt,
       color: baseStyle.borderBottom.color,
-      yMm: runningYOffset,
+      yMm: runningYOffset + paddingBottomMm,
     };
   }
   if (baseStyle.borderLeft) {
@@ -128,15 +132,15 @@ export function composeBlock(block, blockRect, ctx) {
       widthMm: baseStyle.borderLeft.widthMm,
       color: baseStyle.borderLeft.color,
       paddingLeftMm: baseStyle.paddingLeftMm || 0,
+      heightMm: runningYOffset + paddingBottomMm,
     };
   }
   const finalDecorations = Object.keys(decorations).length > 0 ? decorations : null;
 
-  const contentHeightMm = allLines.reduce((sum, line) => sum + line.lineHeightMm, 0);
-  const usedHeightMm = contentHeightMm + borderHeightMm;
+  const usedHeightMm = runningYOffset + paddingBottomMm + borderHeightMm;
   const baseLineHeight = baseStyle.lineHeightMm;
-  const maxLines = Math.floor(blockRect.heightMm / baseLineHeight);
-  const overflow = contentHeightMm > blockRect.heightMm + EPSILON;
+  const maxLines = baseLineHeight > 0 ? Math.floor(blockRect.heightMm / baseLineHeight) : 0;
+  const overflow = (usedHeightMm - borderHeightMm) > blockRect.heightMm + EPSILON;
   const linesRemaining = maxLines - allLines.length;
 
   return {
@@ -254,11 +258,13 @@ export function unplacedBlock(block, ctx) {
   const { templateName, themeColors } = ctx;
   const blockType = block.type;
   const baseStyle = effectiveBaseStyle(templateName, blockType, themeColors);
+  const paddingTopMm = baseStyle.paddingTopMm || 0;
+  const paddingBottomMm = baseStyle.paddingBottomMm || 0;
 
   // Split by hardBreak, lay out each segment at unconstrained width
   const segments = splitByHardBreak(block.content || []);
   const allLines = [];
-  let runningYOffset = 0;
+  let runningYOffset = paddingTopMm;
 
   for (const segment of segments) {
     if (segment.length === 0) {
@@ -283,7 +289,7 @@ export function unplacedBlock(block, ctx) {
     runningYOffset += laidOut.usedHeightMm;
   }
 
-  const usedHeightMm = allLines.reduce((sum, line) => sum + line.lineHeightMm, 0);
+  const usedHeightMm = runningYOffset + paddingBottomMm;
 
   return {
     blockId: block.id,

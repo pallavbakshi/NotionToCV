@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { enqueue, getJob, canAccess, cancelJob } from './server/agent/queue.js'
 import { dehydrateState } from './server/agent/imageStore.js'
 import { start as startWorker } from './server/agent/worker.js'
+import { getAllResumes, saveResume, deleteResume, getChats, saveChats, deleteChats } from './server/db.js'
 
 const printCache = new Map();
 
@@ -154,6 +155,90 @@ function mainPlugin(env) {
       startWorker();
 
       server.middlewares.use((req, res, next) => {
+
+        // ── /api/resumes (GET) ───────────────────────────────────────────
+        if (req.url === '/api/resumes' && req.method === 'GET') {
+          try {
+            const list = getAllResumes();
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(list));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+          return;
+        }
+
+        // ── /api/resumes (POST) ──────────────────────────────────────────
+        if (req.url === '/api/resumes' && req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const resume = JSON.parse(body);
+              if (!resume.id) throw new Error('Resume ID is required');
+              saveResume(resume);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true }));
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
+        // ── /api/resumes (DELETE) ────────────────────────────────────────
+        if (req.url.startsWith('/api/resumes') && req.method === 'DELETE') {
+          try {
+            const url = new URL(req.url, 'http://localhost');
+            const id = url.searchParams.get('id');
+            if (!id) throw new Error('ID query parameter is required');
+            deleteResume(id);
+            deleteChats(id);
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true }));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+          return;
+        }
+
+        // ── /api/chats (GET) ─────────────────────────────────────────────
+        if (req.url.startsWith('/api/chats') && req.method === 'GET') {
+          try {
+            const url = new URL(req.url, 'http://localhost');
+            const resumeId = url.searchParams.get('resumeId');
+            if (!resumeId) throw new Error('resumeId query parameter is required');
+            const chats = getChats(resumeId);
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ chats }));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err.message }));
+          }
+          return;
+        }
+
+        // ── /api/chats (POST) ────────────────────────────────────────────
+        if (req.url === '/api/chats' && req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const payload = JSON.parse(body);
+              if (!payload.resumeId) throw new Error('resumeId is required');
+              saveChats(payload.resumeId, payload.chats);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true }));
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
 
         // ── /api/print ──────────────────────────────────────────────────
         // Canonical PDF generation: uses the layout engine's renderResumePDF

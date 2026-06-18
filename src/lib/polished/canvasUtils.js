@@ -4,6 +4,8 @@
  * and any future element types are all checked uniformly.
  */
 
+import { ROW_MM } from '../layout/index.js';
+
 /**
  * Convert a canvas placement to a physical mm rectangle.
  * Works for both column blocks (colSpan >= 1) and gutter elements (colSpan === 0).
@@ -21,8 +23,8 @@ export function canvasToRect(canvas, colWidth, paddingMm) {
     width = canvas.colSpan * colWidth + (canvas.colSpan - 1) * 4;
   }
 
-  const top = paddingMm + canvas.row * 5;
-  const height = canvas.rowSpan * 5;
+  const top = paddingMm + canvas.row * ROW_MM;
+  const height = canvas.rowSpan * ROW_MM;
 
   return { left, top, right: left + width, bottom: top + height };
 }

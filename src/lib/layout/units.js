@@ -10,7 +10,8 @@ export const PAGE_H_MM = 297;
 // Grid
 export const COLUMNS = 4;
 export const GUTTER_MM = 4;
-export const ROW_MM = 5;
+export const ROW_MM = 6;
+export const MAX_ROWS = Math.floor((PAGE_H_MM - 30) / ROW_MM);
 
 /**
  * Column width in mm for a given page padding.

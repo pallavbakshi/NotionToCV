@@ -145,9 +145,10 @@ export async function renderResumePDF(blocks, ctx) {
               size: mmToPt(glyph.fontSizeMm),
               color: hexToRgb(glyph.color),
             };
-            // Apply faux-italic skew (-12°) per glyph
+            // Apply faux-italic skew (12°) per glyph. ySkew in pdf-lib skews horizontally
+            // along the X axis (slants vertical strokes) since Y goes up in PDF.
             if (glyph.faux && glyph.faux.italic) {
-              opts.xSkew = degrees(-12);
+              opts.ySkew = degrees(12);
             }
             page.drawText(glyph.char, opts);
             // Faux bold: binary is lighter than requested — overprint with a small
@@ -194,13 +195,13 @@ export async function renderResumePDF(blocks, ctx) {
         });
       }
       if (lo.decorations && lo.decorations.borderLeft) {
-        const { widthMm, color } = lo.decorations.borderLeft;
-        const contentHeightMm = lo.lines.reduce((sum, line) => sum + line.lineHeightMm, 0);
+        const { widthMm, color, heightMm } = lo.decorations.borderLeft;
+        const h = heightMm !== undefined ? heightMm : lo.lines.reduce((sum, line) => sum + line.lineHeightMm, 0);
         page.drawRectangle({
           x: mmToPt(rect.leftMm),
-          y: mmToPt(PAGE_H_MM - (rect.topMm + contentHeightMm)),
+          y: mmToPt(PAGE_H_MM - (rect.topMm + h)),
           width: mmToPt(widthMm),
-          height: mmToPt(contentHeightMm),
+          height: mmToPt(h),
           color: hexToRgb(color),
         });
       }

@@ -1,5 +1,6 @@
 <!-- GridOverlay.svelte -->
 <script>
+  import { ROW_MM } from '../layout/index.js';
   let { paddingMm = 15, isVisible = false } = $props();
 
   let colWidth = $derived((210 - 2 * paddingMm - 12) / 4);
@@ -13,7 +14,7 @@
       right: {paddingMm}mm; 
       top: {paddingMm}mm; 
       bottom: {paddingMm}mm;
-      background-size: 100% 5mm;
+      --row-mm: {ROW_MM}mm;
     "
   >
     {#each Array(4) as _, i}
@@ -40,11 +41,11 @@
     background-image: linear-gradient(
       to bottom,
       transparent,
-      transparent calc(5mm - 1px),
-      #efefef calc(5mm - 1px),
-      #efefef 5mm
+      transparent calc(var(--row-mm) - 1px),
+      #efefef calc(var(--row-mm) - 1px),
+      #efefef var(--row-mm)
     );
-    background-size: 100% 5mm;
+    background-size: 100% var(--row-mm);
   }
 
   .grid-col {

@@ -350,7 +350,7 @@
           currentResume.templateName !== activeTemplate ||
           JSON.stringify(currentResume.themeColors) !== JSON.stringify(themeColors)
         ) {
-          resumes[idx] = {
+          const updatedResume = {
             ...currentResume,
             blocks,
             pageTitle,
@@ -359,7 +359,15 @@
             themeColors: { ...themeColors },
             updatedAt: new Date().toISOString()
           };
+          resumes[idx] = updatedResume;
           localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
+
+          // Save to backend SQLite database
+          fetch('/api/resumes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedResume)
+          }).catch(e => console.error('Failed to auto-save resume in SQLite:', e));
         }
       }
     }
@@ -435,6 +443,37 @@
   onMount(async () => {
     // Initialize layout engine fonts (cached — no-op after first call)
     initFonts().catch(e => console.error('Font init error:', e));
+
+    // Fetch resumes from SQLite database
+    try {
+      const dbRes = await fetch('/api/resumes');
+      if (dbRes.ok) {
+        const dbList = await dbRes.json();
+        if (dbList && dbList.length > 0) {
+          resumes = dbList;
+        } else {
+          // One-time migration: if SQLite is empty but localStorage has resumes,
+          // migrate them to SQLite.
+          const storedResumes = localStorage.getItem('notionToCV_resumes');
+          if (storedResumes) {
+            const list = JSON.parse(storedResumes);
+            if (list && list.length > 0) {
+              resumes = list;
+              // Migrate each to backend SQLite
+              await Promise.all(list.map(r => 
+                fetch('/api/resumes', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(r)
+                }).catch(() => {})
+              ));
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load resumes from SQLite:', e);
+    }
 
     const params = new URLSearchParams(window.location.search);
     const hasExport = params.has('export');
@@ -592,6 +631,11 @@
     };
     resumes = [newResume, ...resumes];
     localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
+    fetch('/api/resumes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newResume)
+    }).catch(e => console.error('Failed to save new resume in SQLite:', e));
     navigate('/resume/' + newResume.id);
   }
 
@@ -624,6 +668,11 @@
     };
     resumes = [newResume, ...resumes];
     localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
+    fetch('/api/resumes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newResume)
+    }).catch(e => console.error('Failed to save imported resume in SQLite:', e));
     navigate('/resume/' + newResume.id);
   }
 
@@ -632,6 +681,7 @@
     activeTemplate = templateId;
   }
 
+  // callbacks inside /resume/<id> when importing
   function handleEditImport({ blocks: importedBlocks, templateId }) {
     blocks = importedBlocks.map(b => ({ locked: false, ...b }));
     activeTemplate = normalizeTemplateName(templateId);
@@ -662,6 +712,9 @@
   function handleDeleteResume(id) {
     resumes = resumes.filter(r => r.id !== id);
     localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
+    fetch(`/api/resumes?id=${id}`, {
+      method: 'DELETE'
+    }).catch(e => console.error('Failed to delete resume in SQLite:', e));
   }
 
   // Human-review gate for the JD pipeline (Phase 6 FR6.6): an approved tailored
@@ -694,6 +747,11 @@
     };
     resumes = [newResume, ...resumes];
     localStorage.setItem('notionToCV_resumes', JSON.stringify(resumes));
+    fetch('/api/resumes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newResume)
+    }).catch(e => console.error('Failed to save approved resume in SQLite:', e));
     navigate('/resume/' + newResume.id);
   }
 </script>

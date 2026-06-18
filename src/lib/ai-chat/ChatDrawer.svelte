@@ -121,21 +121,42 @@
 
     try {
       localStorage.setItem(`notionToCV_chats_${resumeId}`, JSON.stringify(cleanList));
+      fetch('/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeId, chats: cleanList })
+      }).catch(e => console.error('Failed to save chats to SQLite:', e));
     } catch (e) {
       console.error('Failed to persist chats to localStorage:', e);
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     initFonts().catch(e => console.error('Font init error:', e));
 
     try {
-      const stored = localStorage.getItem(`notionToCV_chats_${resumeId}`);
-      if (stored) {
-        chatList = JSON.parse(stored);
+      const res = await fetch(`/api/chats?resumeId=${resumeId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.chats && data.chats.length > 0) {
+          chatList = data.chats;
+        } else {
+          // Migration from localStorage
+          const stored = localStorage.getItem(`notionToCV_chats_${resumeId}`);
+          if (stored) {
+            chatList = JSON.parse(stored);
+            if (chatList.length > 0) {
+              await fetch('/api/chats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ resumeId, chats: chatList })
+              }).catch(() => {});
+            }
+          }
+        }
       }
     } catch (e) {
-      console.error('Error loading chats from localStorage', e);
+      console.error('Error loading chats from SQLite/localStorage:', e);
     }
 
     // Restore background job polling across page reloads (FR5.5 DoD)
@@ -214,6 +235,11 @@
     }
     if (chatList.length === 0) {
       localStorage.removeItem(`notionToCV_chats_${resumeId}`);
+      fetch(`/api/chats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeId, chats: [] })
+      }).catch(() => {});
     } else {
       saveChats();
     }

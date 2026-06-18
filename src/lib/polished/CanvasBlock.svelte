@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import BlockRenderer from './BlockRenderer.svelte';
   import { anyOverlap } from './canvasUtils.js';
-  import { computeLayout, blockRectMm, renderBlockSVG, initFonts, fontsReady } from '../layout/index.js';
+  import { computeLayout, blockRectMm, renderBlockSVG, initFonts, fontsReady, ROW_MM, MAX_ROWS } from '../layout/index.js';
 
   let {
     block,
@@ -52,13 +52,13 @@
           : paddingMm + block.canvas.col * (colWidth + 4))
       : 0
   );
-  let topMm    = $derived(block.canvas ? paddingMm + block.canvas.row * 5 : 0);
+  let topMm    = $derived(block.canvas ? paddingMm + block.canvas.row * ROW_MM : 0);
   let widthMm  = $derived(
     block.canvas
       ? (isGutterElement ? 4 : block.canvas.colSpan * colWidth + (block.canvas.colSpan - 1) * 4)
       : 0
   );
-  let heightMm = $derived(block.canvas ? block.canvas.rowSpan * 5 : 0);
+  let heightMm = $derived(block.canvas ? block.canvas.rowSpan * ROW_MM : 0);
 
   // Layout engine: compute deterministic layout for text blocks.
   // Gated on fontsDone so we never call computeLayout before initFonts() resolves —
@@ -184,18 +184,18 @@
 
       if (handle.includes('b')) {
         let bestRow = 0, minDiff = Infinity;
-        for (let r = 0; r < 53; r++) {
-          const edge = (r + 1) * 5;
+        for (let r = 0; r < MAX_ROWS; r++) {
+          const edge = (r + 1) * ROW_MM;
           const diff = Math.abs(contentY - edge);
           if (diff < minDiff) { minDiff = diff; bestRow = r; }
         }
         newRowSpan = Math.max(1, bestRow - resizeState.original.row + 1);
-        if (newRow + newRowSpan > 53) newRowSpan = 53 - newRow;
+        if (newRow + newRowSpan > MAX_ROWS) newRowSpan = MAX_ROWS - newRow;
       }
       if (handle.includes('t')) {
         let bestRow = 0, minDiff = Infinity;
-        for (let r = 0; r < 53; r++) {
-          const edge = r * 5;
+        for (let r = 0; r < MAX_ROWS; r++) {
+          const edge = r * ROW_MM;
           const diff = Math.abs(contentY - edge);
           if (diff < minDiff) { minDiff = diff; bestRow = r; }
         }
@@ -207,7 +207,7 @@
       const collides = anyOverlap(blocks, block.id, block.canvas.page, candidateCanvas, colWidth, paddingMm);
       const isValid  = !collides &&
                        (newColSpan === 0 || (newCol + newColSpan <= 4)) &&
-                       (newRow + newRowSpan <= 53);
+                       (newRow + newRowSpan <= MAX_ROWS);
 
       resizeState.current = candidateCanvas;
       resizeState.isValid = isValid;

@@ -114,9 +114,9 @@ export function renderBlockSVG(laidOutBlock, opts = {}) {
   // Decorations: border-left — drawn BEFORE text so it sits behind it
   // (SVG paints in document order; later elements are on top).
   if (decorations && decorations.borderLeft) {
-    const { widthMm, color } = decorations.borderLeft;
-    const contentHeightMm = lines.reduce((sum, line) => sum + line.lineHeightMm, 0);
-    parts.push(`<rect x="0" y="0" width="${widthMm}" height="${contentHeightMm}" fill="${escapeXml(color)}" />`);
+    const { widthMm, color, heightMm } = decorations.borderLeft;
+    const h = heightMm !== undefined ? heightMm : lines.reduce((sum, line) => sum + line.lineHeightMm, 0);
+    parts.push(`<rect x="0" y="0" width="${widthMm}" height="${h}" fill="${escapeXml(color)}" />`);
   }
 
   // Render each line
