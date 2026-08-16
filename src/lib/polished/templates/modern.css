@@ -41,6 +41,16 @@
   display: block;
 }
 
+.tmpl-modern.block-type-h4 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 5mm;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 6.5mm;
+  margin: 0;
+  display: block;
+}
+
 .tmpl-modern.block-type-paragraph {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 3.8mm;

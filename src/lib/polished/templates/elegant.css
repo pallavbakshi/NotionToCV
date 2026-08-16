@@ -39,6 +39,16 @@
   display: block;
 }
 
+.tmpl-elegant.block-type-h4 {
+  font-family: 'Playfair Display', serif;
+  font-size: 5.2mm;
+  font-weight: 700;
+  color: #292524;
+  line-height: 6.8mm;
+  margin: 0;
+  display: block;
+}
+
 .tmpl-elegant.block-type-paragraph {
   font-family: 'Lora', serif;
   font-size: 4mm;

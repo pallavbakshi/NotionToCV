@@ -40,6 +40,16 @@
   display: block;
 }
 
+.tmpl-clean.block-type-h4 {
+  font-family: 'Inter', sans-serif;
+  font-size: 5.5mm;
+  font-weight: 600;
+  color: #111111;
+  line-height: 7.2mm;
+  margin: 0;
+  display: block;
+}
+
 .tmpl-clean.block-type-paragraph {
   font-family: 'Inter', sans-serif;
   font-size: 4mm;

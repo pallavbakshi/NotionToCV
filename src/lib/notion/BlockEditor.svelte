@@ -182,6 +182,7 @@
     { type: 'h1',       label: 'Heading 1',    desc: 'Large section title',               keywords: ['h1', 'heading1'],       icon: 'H1' },
     { type: 'h2',       label: 'Heading 2',    desc: 'Medium heading',                    keywords: ['h2', 'heading2'],       icon: 'H2' },
     { type: 'h3',       label: 'Heading 3',    desc: 'Small heading',                     keywords: ['h3', 'heading3'],       icon: 'H3' },
+    { type: 'h4',       label: 'Heading 4',    desc: 'Extra small heading',               keywords: ['h4', 'heading4'],       icon: 'H4' },
     { type: 'name',     label: 'Name Block',   desc: 'Assign a unique @name to this block', keywords: ['name', 'rename', 'label'], icon: '@' }
   ];
 
@@ -249,7 +250,7 @@
       editable: !block.locked,
       extensions: [
         StarterKit.configure({
-          heading: { levels: [1, 2, 3] },
+          heading: { levels: [1, 2, 3, 4] },
           bulletList: false,
           orderedList: false,
           listItem: false,
@@ -1033,6 +1034,9 @@
         <button type="button" class="subpanel-btn" onclick={() => applyTurnInto('h3')}>
           <span class="subpanel-icon">H3</span> Heading 3
         </button>
+        <button type="button" class="subpanel-btn" onclick={() => applyTurnInto('h4')}>
+          <span class="subpanel-icon">H4</span> Heading 4
+        </button>
       </div>
     {/if}
     </div>
@@ -1132,6 +1136,9 @@
       </button>
       <button type="button" class="action-menu-btn" onclick={() => handleActionTurnInto('h3')}>
         <span class="action-menu-icon">H3</span> Heading 3
+      </button>
+      <button type="button" class="action-menu-btn" onclick={() => handleActionTurnInto('h4')}>
+        <span class="action-menu-icon">H4</span> Heading 4
       </button>
       {/if}
     </div>
@@ -1331,10 +1338,18 @@
     color: #37352f;
   }
 
+  .type-h4 :global(.editor-wrapper .ProseMirror h4) {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.45;
+    color: #37352f;
+  }
+
   /* Placeholders: Section 10 rules */
   .type-h1 :global(.editor-wrapper h1.is-editor-empty:first-child::before) { content: "Heading 1"; }
   .type-h2 :global(.editor-wrapper h2.is-editor-empty:first-child::before) { content: "Heading 2"; }
   .type-h3 :global(.editor-wrapper h3.is-editor-empty:first-child::before) { content: "Heading 3"; }
+  .type-h4 :global(.editor-wrapper h4.is-editor-empty:first-child::before) { content: "Heading 4"; }
   
   /* First block paragraph placeholder shown always when empty */
   .is-first-block :global(.editor-wrapper p.is-editor-empty:first-child::before) {

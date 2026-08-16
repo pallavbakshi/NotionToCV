@@ -65,7 +65,7 @@ function parseInternalJson(json) {
 // 2. HTML
 // ---------------------------------------------------------------------------
 
-const HEADING_TAGS = { H1: 'h1', H2: 'h2', H3: 'h3', H4: 'h3', H5: 'h3', H6: 'h3' };
+const HEADING_TAGS = { H1: 'h1', H2: 'h2', H3: 'h3', H4: 'h4', H5: 'h4', H6: 'h4' };
 
 // Tags that, when found inside a container, mean "recurse — this isn't a leaf".
 const BLOCK_TAGS = new Set([
@@ -290,6 +290,7 @@ function parsePlainText(text) {
     let contentText = line;
     if (line.startsWith('# ')) { type = 'h1'; contentText = line.substring(2); }
     else if (line.startsWith('## ')) { type = 'h2'; contentText = line.substring(3); }
+    else if (line.startsWith('#### ')) { type = 'h4'; contentText = line.substring(5); }
     else if (line.startsWith('### ')) { type = 'h3'; contentText = line.substring(4); }
     return makeBlock(type, contentText ? [{ type: 'text', text: contentText }] : []);
   });

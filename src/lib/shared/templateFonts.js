@@ -10,10 +10,10 @@
 
 /** @type {Record<string, {h1:string,h2:string,h3:string,text:string}>} */
 export const templateDefaultFonts = {
-  clean: { h1: 'Inter', h2: 'Inter', h3: 'Inter', text: 'Inter' },
-  modern: { h1: 'Space Grotesk', h2: 'Space Grotesk', h3: 'Space Grotesk', text: 'Space Grotesk' },
-  elegant: { h1: 'Playfair Display', h2: 'Playfair Display', h3: 'Playfair Display', text: 'Lora' },
-  compact: { h1: 'Outfit', h2: 'Outfit', h3: 'Outfit', text: 'Outfit' },
+  clean: { h1: 'Inter', h2: 'Inter', h3: 'Inter', h4: 'Inter', text: 'Inter' },
+  modern: { h1: 'Space Grotesk', h2: 'Space Grotesk', h3: 'Space Grotesk', h4: 'Space Grotesk', text: 'Space Grotesk' },
+  elegant: { h1: 'Playfair Display', h2: 'Playfair Display', h3: 'Playfair Display', h4: 'Playfair Display', text: 'Lora' },
+  compact: { h1: 'Outfit', h2: 'Outfit', h3: 'Outfit', h4: 'Outfit', text: 'Outfit' },
 };
 
 /**

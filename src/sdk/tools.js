@@ -25,7 +25,7 @@ export { getAgentSystemPrompt, getSystemPromptOutline };
 
 const extensions = [
   StarterKit.configure({
-    heading: { levels: [1, 2, 3] },
+    heading: { levels: [1, 2, 3, 4] },
     bulletList: false,
     orderedList: false,
     listItem: false,
@@ -212,7 +212,7 @@ export async function runAgentTool(name, args, ctx) {
 
     const plaintext = block.content?.map(node => node.text || '').join('') || '';
 
-    const isTextBlock = ['paragraph', 'h1', 'h2', 'h3'].includes(block.type);
+    const isTextBlock = ['paragraph', 'h1', 'h2', 'h3', 'h4'].includes(block.type);
     let appliedStyles = null;
     if (isTextBlock) {
       const bs = effectiveBaseStyle(templateName, block.type, themeColors);

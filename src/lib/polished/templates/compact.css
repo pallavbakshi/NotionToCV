@@ -40,6 +40,16 @@
   display: block;
 }
 
+.tmpl-compact.block-type-h4 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 4.8mm;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 6.2mm;
+  margin: 0;
+  display: block;
+}
+
 .tmpl-compact.block-type-paragraph {
   font-family: 'Outfit', sans-serif;
   font-size: 3.6mm;

@@ -42,11 +42,13 @@
     h1Color: '#0a2463',
     h2Color: '#0a2463',
     h3Color: '#1e1b18',
+    h4Color: '#475569',
     textColor: '#1e1b18',
     backgroundColor: '#ffffff',
     h1Font: 'Inter',
     h2Font: 'Inter',
     h3Font: 'Inter',
+    h4Font: 'Inter',
     textFont: 'Inter'
   });
 
@@ -413,11 +415,13 @@
           h1Color: resume.themeColors?.h1Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
           h2Color: resume.themeColors?.h2Color ?? resume.themeColors?.primaryColor ?? '#0a2463',
           h3Color: resume.themeColors?.h3Color ?? resume.themeColors?.textColor ?? '#1e1b18',
+          h4Color: resume.themeColors?.h4Color ?? resume.themeColors?.textColor ?? '#475569',
           textColor: resume.themeColors?.textColor ?? '#1e1b18',
           backgroundColor: resume.themeColors?.backgroundColor ?? '#ffffff',
           h1Font: resume.themeColors?.h1Font ?? tdf?.h1 ?? 'Inter',
           h2Font: resume.themeColors?.h2Font ?? tdf?.h2 ?? 'Inter',
           h3Font: resume.themeColors?.h3Font ?? tdf?.h3 ?? 'Inter',
+          h4Font: resume.themeColors?.h4Font ?? tdf?.h4 ?? 'Inter',
           textFont: resume.themeColors?.textFont ?? tdf?.text ?? 'Inter'
         };
       }
@@ -501,11 +505,13 @@
                 h1Color: data.themeColors.h1Color ?? data.themeColors.primaryColor ?? '#0a2463',
                 h2Color: data.themeColors.h2Color ?? data.themeColors.primaryColor ?? '#0a2463',
                 h3Color: data.themeColors.h3Color ?? data.themeColors.textColor ?? '#1e1b18',
+                h4Color: data.themeColors.h4Color ?? data.themeColors.textColor ?? '#475569',
                 textColor: data.themeColors.textColor ?? '#1e1b18',
                 backgroundColor: data.themeColors.backgroundColor ?? '#ffffff',
                 h1Font: data.themeColors.h1Font ?? tdf?.h1 ?? 'Inter',
                 h2Font: data.themeColors.h2Font ?? tdf?.h2 ?? 'Inter',
                 h3Font: data.themeColors.h3Font ?? tdf?.h3 ?? 'Inter',
+                h4Font: data.themeColors.h4Font ?? tdf?.h4 ?? 'Inter',
                 textFont: data.themeColors.textFont ?? tdf?.text ?? 'Inter'
               };
             }
@@ -620,11 +626,13 @@
         h1Color: '#0a2463',
         h2Color: '#0a2463',
         h3Color: '#1e1b18',
+        h4Color: '#475569',
         textColor: '#1e1b18',
         backgroundColor: '#ffffff',
         h1Font: templateDefaultFonts[templateId]?.h1 ?? 'Inter',
         h2Font: templateDefaultFonts[templateId]?.h2 ?? 'Inter',
         h3Font: templateDefaultFonts[templateId]?.h3 ?? 'Inter',
+        h4Font: templateDefaultFonts[templateId]?.h4 ?? 'Inter',
         textFont: templateDefaultFonts[templateId]?.text ?? 'Inter'
       },
       updatedAt: new Date().toISOString()
@@ -654,6 +662,7 @@
         h1Color: importedColors?.h1Color ?? '#0a2463',
         h2Color: importedColors?.h2Color ?? '#0a2463',
         h3Color: importedColors?.h3Color ?? '#1e1b18',
+        h4Color: importedColors?.h4Color ?? importedColors?.textColor ?? '#475569',
         textColor: importedColors?.textColor ?? '#1e1b18',
         backgroundColor: importedColors?.backgroundColor ?? '#ffffff',
         // Default to the normalized template's fonts (e.g. elegant → Playfair/Lora),
@@ -662,6 +671,7 @@
         h1Font: importedColors?.h1Font ?? tdf?.h1 ?? 'Inter',
         h2Font: importedColors?.h2Font ?? tdf?.h2 ?? 'Inter',
         h3Font: importedColors?.h3Font ?? tdf?.h3 ?? 'Inter',
+        h4Font: importedColors?.h4Font ?? tdf?.h4 ?? 'Inter',
         textFont: importedColors?.textFont ?? tdf?.text ?? 'Inter'
       },
       updatedAt: new Date().toISOString()
@@ -699,11 +709,13 @@
         h1Color: tc.h1Color ?? tc.primaryColor ?? '#0a2463',
         h2Color: tc.h2Color ?? tc.primaryColor ?? '#0a2463',
         h3Color: tc.h3Color ?? tc.textColor ?? '#1e1b18',
+        h4Color: tc.h4Color ?? tc.textColor ?? '#475569',
         textColor: tc.textColor ?? '#1e1b18',
         backgroundColor: tc.backgroundColor ?? '#ffffff',
         h1Font: tc.h1Font ?? tdf?.h1 ?? 'Inter',
         h2Font: tc.h2Font ?? tdf?.h2 ?? 'Inter',
         h3Font: tc.h3Font ?? tdf?.h3 ?? 'Inter',
+        h4Font: tc.h4Font ?? tdf?.h4 ?? 'Inter',
         textFont: tc.textFont ?? tdf?.text ?? 'Inter'
       };
     }
@@ -736,11 +748,13 @@
         h1Color: srcColors.h1Color ?? '#0a2463',
         h2Color: srcColors.h2Color ?? '#0a2463',
         h3Color: srcColors.h3Color ?? '#1e1b18',
+        h4Color: srcColors.h4Color ?? srcColors.textColor ?? '#475569',
         textColor: srcColors.textColor ?? '#1e1b18',
         backgroundColor: srcColors.backgroundColor ?? '#ffffff',
         h1Font: srcColors.h1Font ?? tdf?.h1 ?? 'Inter',
         h2Font: srcColors.h2Font ?? tdf?.h2 ?? 'Inter',
         h3Font: srcColors.h3Font ?? tdf?.h3 ?? 'Inter',
+        h4Font: srcColors.h4Font ?? tdf?.h4 ?? 'Inter',
         textFont: srcColors.textFont ?? tdf?.text ?? 'Inter'
       },
       updatedAt: new Date().toISOString()

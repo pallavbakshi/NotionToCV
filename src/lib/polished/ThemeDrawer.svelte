@@ -16,11 +16,13 @@
       h1Color: '#0a2463',
       h2Color: '#0a2463',
       h3Color: '#1e293b',
+      h4Color: '#475569',
       textColor: '#1e1b18',
       backgroundColor: '#ffffff',
       h1Font: 'Inter',
       h2Font: 'Inter',
       h3Font: 'Inter',
+      h4Font: 'Inter',
       textFont: 'Inter'
     },
     {
@@ -28,11 +30,13 @@
       h1Color: '#1e293b',
       h2Color: '#334155',
       h3Color: '#475569',
+      h4Color: '#6b7280',
       textColor: '#1e1b18',
       backgroundColor: '#ffffff',
       h1Font: 'Inter',
       h2Font: 'Inter',
       h3Font: 'Inter',
+      h4Font: 'Inter',
       textFont: 'Inter'
     },
     {
@@ -40,11 +44,13 @@
       h1Color: '#3e2723',
       h2Color: '#4e342e',
       h3Color: '#5d4037',
+      h4Color: '#6d4c41',
       textColor: '#1e1b18',
       backgroundColor: '#ffffff',
       h1Font: 'Lora',
       h2Font: 'Lora',
       h3Font: 'Lora',
+      h4Font: 'Inter',
       textFont: 'Inter'
     },
     {
@@ -52,11 +58,13 @@
       h1Color: '#0f172a',
       h2Color: '#1e293b',
       h3Color: '#334155',
+      h4Color: '#4b5563',
       textColor: '#374151',
       backgroundColor: '#f8fafc',
       h1Font: 'Playfair Display',
       h2Font: 'Playfair Display',
       h3Font: 'Playfair Display',
+      h4Font: 'Lora',
       textFont: 'Lora'
     },
     {
@@ -64,11 +72,13 @@
       h1Color: '#1b1b1b',
       h2Color: '#1b1b1b',
       h3Color: '#3f3f3f',
+      h4Color: '#5a5a5a',
       textColor: '#3f3f3f',
       backgroundColor: '#ffffff',
       h1Font: 'Inter',
       h2Font: 'Inter',
       h3Font: 'Inter',
+      h4Font: 'Inter',
       textFont: 'Inter'
     }
   ];
@@ -110,11 +120,13 @@
                 themeColors.h1Color = preset.h1Color;
                 themeColors.h2Color = preset.h2Color;
                 themeColors.h3Color = preset.h3Color;
+                themeColors.h4Color = preset.h4Color;
                 themeColors.textColor = preset.textColor;
                 themeColors.backgroundColor = preset.backgroundColor;
                 themeColors.h1Font = preset.h1Font;
                 themeColors.h2Font = preset.h2Font;
                 themeColors.h3Font = preset.h3Font;
+                themeColors.h4Font = preset.h4Font;
                 themeColors.textFont = preset.textFont;
               }}
             >
@@ -123,6 +135,7 @@
                 <span class="swatch" style="background-color: {preset.h1Color}; border: 1px solid rgba(0,0,0,0.1);" title="H1 Title"></span>
                 <span class="swatch" style="background-color: {preset.h2Color}; border: 1px solid rgba(0,0,0,0.1);" title="H2 Header"></span>
                 <span class="swatch" style="background-color: {preset.h3Color}; border: 1px solid rgba(0,0,0,0.1);" title="H3 Role"></span>
+                <span class="swatch" style="background-color: {preset.h4Color}; border: 1px solid rgba(0,0,0,0.1);" title="H4 Subtitle"></span>
                 <span class="swatch" style="background-color: {preset.textColor}; border: 1px solid rgba(0,0,0,0.1);" title="Text"></span>
                 <span class="swatch" style="background-color: {preset.backgroundColor}; border: 1px solid rgba(0,0,0,0.1);" title="Background"></span>
               </div>
@@ -194,6 +207,26 @@
           {/if}
         </div>
 
+        <!-- H4 Subtitles -->
+        <div class="picker-group">
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="picker-summary" onclick={() => activePicker = (activePicker === 'h4' ? null : 'h4')}>
+            <span>Subtitle / H4</span>
+            <div class="swatch-preview-wrapper">
+              <span class="swatch-preview" style="background-color: {themeColors.h4Color}"></span>
+              <span class="swatch-hex">{themeColors.h4Color}</span>
+            </div>
+          </div>
+          {#if activePicker === 'h4'}
+            <div class="inline-picker-container">
+              <div class="inline-color-wrapper">
+                <ColorPicker bind:hex={themeColors.h4Color} isAlpha={false} isDialog={false} />
+              </div>
+            </div>
+          {/if}
+        </div>
+
         <!-- Body Text -->
         <div class="picker-group">
           <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -242,6 +275,7 @@
           { key: 'h1Font', label: 'Name / H1 Title' },
           { key: 'h2Font', label: 'Section Header / H2' },
           { key: 'h3Font', label: 'Role Title / H3' },
+          { key: 'h4Font', label: 'Subtitle / H4' },
           { key: 'textFont', label: 'Body Text' }
         ] as font}
           <div class="font-group">

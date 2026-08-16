@@ -369,7 +369,7 @@ export function getFont(family, weight, style) {
  * @returns {'h1'|'h2'|'h3'|'text'}
  */
 export function fontCategory(blockType) {
-  if (blockType === 'h1' || blockType === 'h2' || blockType === 'h3') {
+  if (blockType === 'h1' || blockType === 'h2' || blockType === 'h3' || blockType === 'h4') {
     return blockType;
   }
   return 'text';

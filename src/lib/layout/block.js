@@ -135,12 +135,53 @@ export function composeBlock(block, blockRect, ctx) {
       heightMm: runningYOffset + paddingBottomMm,
     };
   }
-  const finalDecorations = Object.keys(decorations).length > 0 ? decorations : null;
-
   const usedHeightMm = runningYOffset + paddingBottomMm + borderHeightMm;
+
+  const isHeading = ['h1', 'h2', 'h3', 'h4'].includes(blockType);
+  let charsHeight = 0;
+  let visualAscentMm = 0;
+  let visualDescentMm = 0;
+
+  if (isHeading && allLines.length > 0) {
+    const headingRunStyle = resolveRunStyle(baseStyle, []);
+    const font = headingRunStyle.font;
+    const unitsPerEm = headingRunStyle.unitsPerEm;
+    const capHeight = font.capHeight !== undefined ? font.capHeight : font.ascent;
+    visualAscentMm = (capHeight / unitsPerEm) * baseStyle.fontSizeMm;
+    visualDescentMm = Math.abs((font.descent / unitsPerEm) * baseStyle.fontSizeMm);
+    const firstLine = allLines[0];
+    const lastLine = allLines[allLines.length - 1];
+    charsHeight = (lastLine.baselineYMm + visualDescentMm) - (firstLine.baselineYMm - visualAscentMm);
+  }
+
+  // Heading overflow is determined by character height bounds (not line-height metric),
+  // avoiding false overflow warnings on single-row blocks.
+  const overflow = isHeading
+    ? (charsHeight + paddingTopMm + paddingBottomMm + borderHeightMm) > blockRect.heightMm + EPSILON
+    : (usedHeightMm - borderHeightMm) > blockRect.heightMm + EPSILON;
+
+  // Apply vertical centering for headings (h1, h2, h3, h4) if there is unused height based on characters
+  if (isHeading && !overflow && allLines.length > 0) {
+    const extraSpaceCharsMm = blockRect.heightMm - borderHeightMm - paddingTopMm - paddingBottomMm - charsHeight;
+    if (extraSpaceCharsMm > 0) {
+      const firstLine = allLines[0];
+      const leadingAbove0 = firstLine.baselineYMm - paddingTopMm - visualAscentMm;
+      const shiftYMm = extraSpaceCharsMm / 2 - leadingAbove0;
+      for (const line of allLines) {
+        line.baselineYMm += shiftYMm;
+      }
+      if (decorations.borderLeft) {
+        decorations.borderLeft.heightMm = blockRect.heightMm;
+      }
+      if (decorations.borderBottom) {
+        decorations.borderBottom.yMm = blockRect.heightMm - borderHeightMm;
+      }
+    }
+  }
+
+  const finalDecorations = Object.keys(decorations).length > 0 ? decorations : null;
   const baseLineHeight = baseStyle.lineHeightMm;
   const maxLines = baseLineHeight > 0 ? Math.floor(blockRect.heightMm / baseLineHeight) : 0;
-  const overflow = (usedHeightMm - borderHeightMm) > blockRect.heightMm + EPSILON;
   const linesRemaining = maxLines - allLines.length;
 
   return {

@@ -46,7 +46,7 @@ export { renderResumePDF } from './render-pdf.js';
  * @returns {LaidOutBlock}
  */
 export function computeLayout(block, blockRect, ctx) {
-  const isTextBlock = ['paragraph', 'h1', 'h2', 'h3'].includes(block.type);
+  const isTextBlock = ['paragraph', 'h1', 'h2', 'h3', 'h4'].includes(block.type);
   const isCanvas = block.source === 'canvas';
 
   if (isCanvas || !isTextBlock) {

@@ -25,3 +25,8 @@ dist-ssr
 .vscode/
 .env
 server/*.db
+
+# Scratch and personal notes
+scratch/
+test-skew.pdf
+weekly-summaries.md
